@@ -110,6 +110,12 @@ textarea {
 textarea:focus { border-color: var(--accent); }
 textarea::placeholder { color: var(--fg-dim); }
 
+/* ⚠ 必须显式写 `[hidden]`：下面这条 `.empty` 设了 `display:flex`，
+ *   而 `hidden` 属性只靠 UA 样式的 `display:none` 生效 —— 作者样式优先级更高，
+ *   于是 `el.hidden = true` 压根藏不住它，**解析成功时失败原因也会一起显示**。
+ *   选择器权重 `.empty[hidden]` > `.empty`，放哪儿都能盖住，不必加 !important。 */
+.empty[hidden] { display: none; }
+
 .empty {
     flex: 1 1 auto;
     display: flex;
@@ -203,6 +209,10 @@ button:disabled:hover { background: var(--card); }
     <button type="button" class="ghost" id="btnClose">关闭</button>
 </div>
 
+<!-- shared.js：只为了那段**统一主题引导**（把配置里的 theme 写到 <html data-theme>）。
+     少了它，用户在设置里选了「强制亮色」而系统是深色时，这个窗口仍然是深的 ——
+     ocr / 翻译 / 图标编辑器都因为同一份引导才对齐，这里不能例外。 -->
+<script src="shared.js"></script>
 <script src="vendor/jsqr.min.js"></script>
 <script>
 /* IPC 兼容层：这个窗口和 region.html / ocr.html 一样，`__TAURI__` 是宿主注入的

@@ -12131,6 +12131,15 @@ fn ocr_cancel() {
 /// 存字节而不是 base64：只有真要发给前端时才编一次，免得每次事件重编一遍。
 static QR_LAST_PNG: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
+/// 同一张图的 data URL 缓存。
+///
+/// 为什么需要：结果页 boot 时是**轮询**要图的（`takeImage` 最多试 12 次，
+/// 每次间隔 120ms —— 建窗和裁图分属两个线程，页面很可能先就绪）。
+/// 没有缓存的话每次轮询都要把整张截图重新 base64 一遍：4K 全屏截图约 8MB，
+/// 编码一次几十毫秒、产生一个 10MB 级字符串，连试 12 次就是几百毫秒的无谓开销
+/// 和十几份临时大字符串。这里在裁图那一刻编一次，之后原样返回。 */
+static QR_LAST_URL: Mutex<String> = Mutex::new(String::new());
+
 /// 打开二维码结果窗（先隐藏，等页面 `qr_ready` 再显示）。
 ///
 /// 规矩和 OCR 结果窗完全一致，连"2.5 秒兜底显示"都一样 —— 页面脚本万一报错，
@@ -12202,6 +12211,19 @@ fn qr_start_flow() {
         focus_lock_window();
         return;
     }
+    /* ⚠ 先把上一轮的结果窗藏起来，再拉遮罩。
+     *
+     * 代价很小的一个动作，躲开的是个真会踩的坑：结果窗是个 760×600 的普通窗口，
+     * 用户想再框一次时，它很可能正好压在要框的那块内容上 —— 遮罩背后是**冻结的
+     * 屏幕**，紧接着的截图也是从**实时屏幕**取的，两处都会把它自己截进去，
+     * 于是"明明框住了二维码，却提示没认出来"。
+     * 藏起来（不是关掉）就够了：这一轮跑完 open_qr_window 会重新 show 出来。 */
+    if let Some(w) = app().get_webview_window("qr") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = w.hide();
+            win::log("qr: 先隐藏上一轮的结果窗，避免挡住这次框选");
+        }
+    }
     notify_feature("二维码解析");
     // 遮罩用和 OCR 同一个窗口，只是 mode 不同 —— 冻屏、拖框、Esc 取消、
     // 6 秒看门狗、失焦兜底这些交互全部原样复用。
@@ -12252,8 +12274,12 @@ fn qr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
             return;
         }
         let png = cur.into_inner();
+        let url = ocr_image_data_url(&png);
         if let Ok(mut g) = QR_LAST_PNG.lock() {
             *g = png;
+        }
+        if let Ok(mut g) = QR_LAST_URL.lock() {
+            *g = url;
         }
         win::log(&format!("qr: 已裁图 {cw}x{ch}，打开结果窗"));
         open_qr_window();
@@ -12272,21 +12298,18 @@ fn qr_ready() {
 /// 就不会因为错过推送而只能等用户再框一遍。
 #[crate::t::command]
 fn qr_take_image() -> String {
-    QR_LAST_PNG
+    QR_LAST_URL
         .lock()
-        .map(|g| {
-            if g.is_empty() {
-                String::new()
-            } else {
-                ocr_image_data_url(&g)
-            }
-        })
+        .map(|g| g.clone())
         .unwrap_or_default()
 }
 
 #[crate::t::command]
 fn close_qr_window() {
     if let Ok(mut g) = QR_LAST_PNG.lock() {
+        g.clear();
+    }
+    if let Ok(mut g) = QR_LAST_URL.lock() {
         g.clear();
     }
     close_window("qr");
