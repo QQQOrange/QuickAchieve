@@ -629,15 +629,16 @@ function renderBarList() {
 
         const nm = document.createElement('span');
         nm.className = 'nm';
-        /* 功能哨兵（`@wrap` / `@txt:trim` / `@ocr:<id>` …）必须翻成中文再显示 ——
-         * 直接把内部写法 `@txt:trim` 摆在这一列里，用户根本看不出这是"去空格"。 */
-        const pretty = (typeof name === 'string' && (name === QS_WRAP
-            || name === QS_OCR || name === QS_IMG || name === QS_TRANS
-            || name.startsWith(window.QS_OCR + ':') || name.startsWith(window.QS_TRANS + ':')
-            || name.startsWith(window.QS_IMG + ':')
-            || (window.qsTextOpId && window.qsTextOpId(name) !== null)))
-            ? (window.qsDisplayName ? window.qsDisplayName(name) : name)
-            : name;
+        /* 功能哨兵（`@wrap` / `@txt:trim` / `@ocr:<id>` / `@qr` / `@qrmake` …）
+         * 必须翻成中文再显示 —— 直接把内部写法摆在这一列里，用户根本看不出
+         * 这是"去空格"还是"生成二维码"。
+         *
+         * ⚠ v2.12.3：这里以前是**逐个枚举**（只认 @wrap/@ocr/@img/@trans/…），
+         *   新加的 `@qr` / `@qrmake` 没进名单，于是这一列出现了 "qr / qrmake"
+         *   这种内部代号（用户报的正是这个）。现在一律问 `qsSentinelLabel`，
+         *   新增功能只要登记进 shared.js 的注册表就自动有名字，不会再漏。 */
+        const pretty = (window.qsSentinelLabel && window.qsSentinelLabel(name))
+            || name;
         nm.textContent = isSep ? '分隔线'
             : (isOcr ? '识别图片文字'
                 : (isImg ? '识图搜索'
@@ -4384,8 +4385,10 @@ function gridLookDraft() {
 /** 预览用的格子内容：每个格子的图标**在设置页这边就序列化好**，
  *  再递给 iframe —— 这样预览里那张图和横条上那张是同一张
  *  （img 的 src / 统一图标大小算出的 transform 都原样带过去）。 */
-/** 内置功能哨兵：这四个在真网格里用的是 `qsFuncIcon()` 画的图（和横条同一张）。 */
-const PREVIEW_FUNC_SENTINELS = ['@ocr', '@trans', '@img', window.QS_WRAP || '@wrap'];
+/* v2.12.3：这里原来有一张 `PREVIEW_FUNC_SENTINELS`（只列了 @ocr/@trans/@img/@wrap），
+ * 预览里凡是没进这张表的哨兵都会掉到 `iconNode()` 的字母徽标分支 —— 二维码那两格
+ * 于是在实时预览里显示成「Q」，和真网格里的图标对不上（用户报的第二个问题）。
+ * 判据统一交给 shared.js 的 `qsIsFuncSentinel()`，不再各自维护白名单。 */
 
 /** 一格最终用哪种显示样式 —— 和 bar.js 的 `gridCellMode()` **同一口径**：
  *  单项覆盖优先，否则跟网格级默认（`gridShowLabel`）走。 */
@@ -4398,12 +4401,14 @@ function gridItemMode(name) {
 
 function gridPreviewItems() {
     return gridItemsNow().map((name) => {
-        const label = window.qsDisplayName ? window.qsDisplayName(name) : String(name);
+        const label = (window.qsSentinelLabel && window.qsSentinelLabel(name))
+            || (window.qsDisplayName ? window.qsDisplayName(name) : String(name));
         // 绑定模型的格子（@ocr:<id>）先归一成基础哨兵，图标/分支判断都用它
         const base = window.qsFuncBase ? window.qsFuncBase(name) : name;
         let node = null;
         try {
-            if (PREVIEW_FUNC_SENTINELS.indexOf(base) >= 0 && typeof window.qsFuncIcon === 'function') {
+            if (window.qsIsFuncSentinel && window.qsIsFuncSentinel(name)
+                && typeof window.qsFuncIcon === 'function') {
                 /* ⚠ v2.7.0：这里原来对 @ocr/@trans/@img 用的是 emoji（🔤🌐🖼），
                  * 而真网格用的是 `qsFuncIcon()` 的 SVG —— 两处画出来不是一个东西。
                  * @wrap 连 emoji 都没有，直接落到设置页的字母徽标分支，于是预览里
@@ -4640,7 +4645,11 @@ async function gridSaveItemStyle(map) {
  *  那样列表里就会留下一个空白的 24px 方块（用户说的"空白格"）。 */
 function gridItemIcon(name) {
     const base = window.qsFuncBase ? window.qsFuncBase(name) : name;
-    const isFunc = (window.QS_FUNC_BASES || ['@ocr', '@trans', '@img', '@wrap', '@txt']).indexOf(base) >= 0;
+    /* v2.12.3：判据改成问 shared.js 的注册表 —— 原来这里硬编码五个哨兵，
+     * `@qr` / `@qrmake` 不在里面，于是二维码那两行画出来是字母徽标「Q」。 */
+    const isFunc = window.qsIsFuncSentinel
+        ? window.qsIsFuncSentinel(name)
+        : ((window.QS_FUNC_BASES || []).indexOf(base) >= 0);
     try {
         if (isFunc && window.qsFuncIcon) return window.qsFuncIcon(base);
         if (typeof name === 'string') {
@@ -4680,6 +4689,13 @@ function gridItemDesc(name) {
             return '翻译当前这段文字（当前模型：' + nm(CONF && CONF.transEngine) + '）';
         case '@wrap':
             return '点开一组符号（“” 《》 【】 等），把选中的文字套上 / 拆掉 / 换一对';
+        /* v2.12.3：二维码两格以前没有说明（switch 里没有分支，直接空字符串），
+         * 而旁边的 OCR / 识图 / 翻译都有 —— 同一列表里"有的有说明、有的没有"
+         * 本身就是一种不一致。补上，口径与它们一致：动作 + 产出。 */
+        case '@qr':
+            return '框选屏幕上的二维码 → 解出里面的链接或文字';
+        case '@qrmake':
+            return '把当前选中的文字 / 链接变成二维码（弹出窗口里可直接复制）';
         case '|':
             return '分隔线（横条上的一条竖线，网格里只是一格占位）';
         default:
@@ -4731,13 +4747,13 @@ function renderGridItems() {
         nm.className = 'nm';
         // 显示给人看的名字；原始名（可能是 @ocr 这类哨兵）放后面小字，
         // 方便用户对照，但不再是界面上唯一的信息
-        const pretty = (window.qsDisplayName ? window.qsDisplayName(name) : name);
+        const pretty = (window.qsSentinelLabel && window.qsSentinelLabel(name))
+            || (window.qsDisplayName ? window.qsDisplayName(name) : name);
         nm.textContent = pretty;
-        if (pretty !== name) {
-            const rawTag = document.createElement('em');
-            rawTag.textContent = name;
-            nm.appendChild(rawTag);
-        }
+        /* ⚠ v2.12.3：这里原来会把原始名当"对照"小字挂在后面（`@ocr:windows`、
+         * `@qr` 这种），理由是想让用户对上号 —— 但那等于把内部代号直接摆到
+         * 界面上，用户看不懂还显得像乱码。用户明确要求"任何功能都不得暴露
+         * 内部代号"，所以整段删掉，只留正式功能名。 */
         /* 功能格子给一句"点了会发生什么" —— 光看「包裹符号」四个字猜不出作用，
          * 用户在设置里应该能直接读懂。 */
         const desc = gridItemDesc(name);
@@ -11255,6 +11271,30 @@ function aiToolsInit() {
 /* 启动                                                                */
 /* ------------------------------------------------------------------ */
 
+/** 扫一遍**可见**文本，找出像内部哨兵（`@xxx`）的片段并写进日志。
+ *
+ *  只用于调试构建（见 boot 里那处调用）。判据故意保守：`@` + 小写字母/斜杠，
+ *  长度 < 40 —— 避免把邮箱（`a@b.com`）这类正常文本误报。 */
+function qsScanSentinelLeak() {
+    const hits = new Set();
+    const walk = (n) => {
+        for (const c of n.childNodes) {
+            if (c.nodeType === 3) {
+                const t = (c.textContent || '').trim();
+                if (t && t.length < 40 && /(^|[\s(（])@[a-z][a-z0-9:_-]*/i.test(t)) hits.add(t);
+            } else if (c.nodeType === 1) {
+                const el = c;
+                // 只看真正渲染出来的（`offsetParent` 为空 = 隐藏）
+                if (el.offsetParent !== null || el === document.body) walk(el);
+            }
+        }
+    };
+    walk(document.body);
+    if (hits.size) {
+        invoke('log_msg', { msg: 'ui 巡检：界面上出现内部代号 → ' + [...hits].slice(0, 12).join(' | ') }).catch(() => { });
+    }
+}
+
 /* 首帧一画完就通知 Rust 把（隐藏建出来的）设置窗口显示出来。
  *  为什么隐藏建窗：见 Rust 侧 open_settings_win 的注释 —— 主要是不让用户先看到
  *  WebView2 还没渲染时那块原生黑底。双重 rAF 保证这一帧真的提交上屏了再 show。 */
@@ -11563,6 +11603,14 @@ document.addEventListener('keydown', (e) => {
     fillAbout();
     // 调试构建才打开自动化辅助（坐标上报等）
     if (CONF.debug) document.body.dataset.qsDebug = '1';
+
+    /* v2.12.3：调试构建里额外做一次"内部代号泄漏"巡检。
+     *
+     * 为什么要有：这类问题（页面上出现 `@qr` / `@qrmake` / `@ocr:xxx`）不会报错、
+     * 不会崩，只是文字难看，人工点页面很容易漏掉；而它几次都是"某处又抄了一份
+     * 白名单"导致的。这里在每次打开设置时扫一遍可见文本，命中就写日志 ——
+     * 开发/联调时一眼能看到，正式构建不跑（`CONF.debug` 只在调试构建为真）。 */
+    if (CONF.debug) setTimeout(qsScanSentinelLeak, 600);
 
     // 内建自检：QS_SELFTEST=1 时把真实控件的自检跑一遍（只用于开发验证）
     if (CONF.selftest) setTimeout(() => { qsSelfTest().catch((e) => console.warn(e)); }, 300);

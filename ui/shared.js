@@ -174,6 +174,60 @@ window.qsGoLabel = function (it) {
     return String(it.target || '').trim();
 };
 
+/** 所有「功能哨兵」：横条 / 网格里的这一格代表**内置功能**，而不是某个搜索引擎。
+ *
+ *  ⚠ 这是**唯一**的功能清单。新增一件内置功能时只改两处：
+ *    ① 这里加进 `QS_FUNC_BASES`（让 `qsFuncIcon` 认它、让各页走统一图标）；
+ *    ② 下面 `qsDisplayName` 的 `FIXED` 表加一条正式名（让任何界面显示中文名）。
+ *
+ *  为什么要有这一份：这张表以前散在 settings.js 的**三处**独立硬编码里
+ *  （「横条上的引擎」列表的功能名判断 / 网格条目行的图标判断 / 实时预览的
+ *  `PREVIEW_FUNC_SENTINELS`）。每加一件功能都要改三遍，漏一遍的具体症状：
+ *    · 列表里出现 `@qr` / `@qrmake` 这种内部代号（用户报的"qr qrmake"）；
+ *    · 网格条目行 / 实时预览里画出一个字母徽标「Q」而不是那颗二维码图标。
+ *  收成一份之后，上述三处都改成问 `qsIsFuncSentinel()`，不会再各写一遍。 */
+window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@wrap', '@txt', '@qr', '@qrmake'];
+
+/** 这一项是不是内置功能（`@ocr`、`@wrap`、`@qr`、绑定模型的 `@ocr:<id>` …）。
+ *  `@go:` / `@app:` / `@fav:` 不在这里 —— 它们是"用户数据"，各有各的图标与名字来源。 */
+window.qsIsFuncSentinel = function (name) {
+    if (typeof name !== 'string' || !name) return false;
+    const base = window.qsFuncBase ? window.qsFuncBase(name) : name;
+    return window.QS_FUNC_BASES.indexOf(base) >= 0;
+};
+
+/** 「功能哨兵」→ **正式功能名**。不是哨兵就返回空串（调用方自己决定怎么显示）。
+ *
+ *  和 `qsDisplayName` 的分工：
+ *    · `qsDisplayName` 是个"尽量翻成中文"的通用函数，对完全没登记的名字会把
+ *      `@xxx` 剥成 `xxx` —— 仍然是内部代号；
+ *    · 这里更严格：**只要拿不到正式名，就绝不把代号露出去**，统一显示
+ *      「未命名功能」，并把这件事写进日志（方便我们发现自己漏登记）。
+ *  所有"把哨兵摆到界面上"的地方都应该先问它。 */
+const qsUnknownSentinels = new Set();
+window.qsSentinelLabel = function (name) {
+    if (typeof name !== 'string') return '';
+    const raw = name.trim();
+    if (!raw) return '';
+    if (raw === window.QS_SEP) return '分隔线';
+    // 普通引擎名（百度 / Google…）不归这里管
+    if (!raw.startsWith('@')) return '';
+    let label = '';
+    try { label = window.qsDisplayName(raw) || ''; } catch (_) { label = ''; }
+    const stripped = raw.replace(/^[@\\/\s]+|[@\\/\s]+$/g, '');
+    const looksRaw = !label || label.toLowerCase() === stripped.toLowerCase();
+    if (!looksRaw) return label;
+    /* 没登记：界面给一个中性名，同时留一条日志。只报一次，避免每帧刷屏。 */
+    if (!qsUnknownSentinels.has(stripped)) {
+        qsUnknownSentinels.add(stripped);
+        try {
+            window.__TAURI__ && window.__TAURI__.core
+                && window.__TAURI__.core.invoke('log_msg', { msg: 'ui: 未登记的哨兵 ' + raw + '（界面显示为「未命名功能」）' });
+        } catch (_) { }
+    }
+    return '未命名功能';
+};
+
 window.qsDisplayName = function (name) {
     if (typeof name !== 'string') return String(name == null ? '' : name);
     const raw = name.trim();

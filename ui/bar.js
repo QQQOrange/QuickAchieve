@@ -3699,7 +3699,10 @@ function gridPickSections() {
         if (!meta) continue;
         builtin.push({
             name: key,
-            label: meta.label,
+            /* v2.12.3：名字统一从 shared.js 的注册表取（`GRID_SENTINELS` 里的
+             * label 只当兜底）—— 两处各写一份名字迟早会分叉，用户就会在
+             * 「添加内容」里看到和设置页不一样的说法。 */
+            label: (window.qsSentinelLabel && window.qsSentinelLabel(key)) || meta.label,
             added: inGrid.has(key),
             node: () => (window.qsFuncIcon ? window.qsFuncIcon(key) : document.createTextNode('•')),
         });
@@ -3839,7 +3842,8 @@ async function gridRemoveAt(i) {
         await invoke('set_grid_items', { items: cur, page: pg.id || null });
         pg.items = cur;
         renderGrid(gridPayloadNow());
-        showBarTip('已移出：' + (window.qsDisplayName ? window.qsDisplayName(name) : name));
+        showBarTip('已移出：' + ((window.qsSentinelLabel && window.qsSentinelLabel(name))
+            || (window.qsDisplayName ? window.qsDisplayName(name) : name)));
     } catch (e) {
         showBarTip('移出失败：' + String(e || '').slice(0, 40));
     }
@@ -4706,7 +4710,10 @@ function renderGrid(g) {
             cell.appendChild(inner);
             const lb = document.createElement('span');
             lb.className = 'qs-glabel';
-            const lbl = window.qsDisplayName ? window.qsDisplayName(name) : sent.label;
+            /* v2.12.3：哨兵名统一走 `qsSentinelLabel`（拿不到正式名就显示
+             * 「未命名功能」，绝不把 `@qrmake` 这种代号摆到格子上）。 */
+            const lbl = (window.qsSentinelLabel && window.qsSentinelLabel(name))
+                || (window.qsDisplayName ? window.qsDisplayName(name) : sent.label);
             lb.textContent = lbl;
             cell.appendChild(lb);
             cell.title = lbl;
@@ -4759,7 +4766,8 @@ function renderGrid(g) {
             lb.className = 'qs-glabel';
             // 可读名：普通引擎就是原名；哨兵（@ocr 之类）翻成中文，
             // 绝不让 "@//ocr/" 这种内部写法露到界面上
-            const label = (window.qsDisplayName ? window.qsDisplayName(name) : name);
+            const label = (window.qsSentinelLabel && window.qsSentinelLabel(name))
+                || (window.qsDisplayName ? window.qsDisplayName(name) : name);
             lb.textContent = label;
             cell.appendChild(lb);
             const willSearch = gridClickMode === 'auto' && !!currentText;
