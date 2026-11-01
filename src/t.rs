@@ -559,7 +559,7 @@ impl WebviewWindow {
         Ok(self
             .st()
             .map(|s| s.title)
-            .unwrap_or_else(|| "Quick Search".into()))
+            .unwrap_or_else(|| "Quick Achieve".into()))
     }
 
     pub fn inner_size(&self) -> Result<PhysicalSize<u32>> {
@@ -865,7 +865,7 @@ impl WebviewWindowBuilder {
         WebviewWindowBuilder {
             label: label.to_string(),
             url,
-            title: "Quick Search".into(),
+            title: "Quick Achieve".into(),
             inner_size: (800.0, 600.0),
             pos: None,
             min_size: None,
@@ -2002,7 +2002,7 @@ pub static BUILDER_WIN_EVENT: OnceLock<Arc<WinEventFn>> = OnceLock::new();
 // 宏再导出（main.rs 里用 `#[command]` / `crate::t::generate_handler![..]`）
 // ---------------------------------------------------------------------------
 
-pub use qs_macros::{command, generate_handler};
+pub use qa_macros::{command, generate_handler};
 
 // ---------------------------------------------------------------------------
 // 二进制回传（对应 tauri::ipc::Response）

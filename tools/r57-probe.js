@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r57-probe.txt');
 const PORT = 9401;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -70,12 +70,12 @@ async function connect(sub, ms) {
     return null;
 }
 const readLog = (tmp) => {
-    try { return fs.readFileSync(path.join(tmp, 'QuickSearch', 'log.txt'), 'utf8'); } catch (e) { return ''; }
+    try { return fs.readFileSync(path.join(tmp, 'QuickAchieve', 'log.txt'), 'utf8'); } catch (e) { return ''; }
 };
 
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r57-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true,
@@ -152,7 +152,7 @@ const readLog = (tmp) => {
         (log.match(/对方返回 \d+|识图没打开[^\n]*/g) || []).join(' | '));
 
     // 1g. 临时图确实留了一张（给只吃文件框的那几家）
-    const tmpImg = path.join(os.tmpdir(), 'QuickSearch', 'img', 'shot.jpg');
+    const tmpImg = path.join(os.tmpdir(), 'QuickAchieve', 'img', 'shot.jpg');
     // 注意：临时图写在真实 %TEMP%，不在隔离 APPDATA 里（那是刻意的：
     // 用户点文件对话框时看到的是系统临时目录）
     const tmpExists = fs.existsSync(tmpImg);

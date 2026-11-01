@@ -31,7 +31,7 @@ const koffi = require('koffi');
 const ROOT = path.join(__dirname, '..');
 const EXE = process.env.QS_E2E_EXE
     ? path.resolve(process.env.QS_E2E_EXE)
-    : path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+    : path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const SCRATCH = path.join(__dirname, '.bar-click-data');
 const LOG = path.join(SCRATCH, 'log.txt');
 const RESULT = [];
@@ -230,7 +230,7 @@ function safeJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } ca
 
 function finish(proc) {
     try { proc.kill(); } catch (e) { /* 已经退了 */ }
-    spawnSync('taskkill', ['/IM', 'QuickSearch.exe', '/FI', 'PID eq ' + proc.pid, '/T', '/F'], { encoding: 'utf8' });
+    spawnSync('taskkill', ['/IM', 'QuickAchieve.exe', '/FI', 'PID eq ' + proc.pid, '/T', '/F'], { encoding: 'utf8' });
     fs.writeFileSync(path.join(__dirname, '_bar-click.result.txt'), RESULT.join('\n') + '\n', 'utf8');
     const bad = RESULT.filter((r) => r.startsWith('NO')).length;
     console.log('==== ' + (RESULT.length - bad) + '/' + RESULT.length + ' 通过 ====');

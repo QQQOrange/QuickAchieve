@@ -31,7 +31,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'fav-contrast-filter-probe.txt');
 const PORT = 9341;
 const TAG = '-probe-contrast';
@@ -216,11 +216,11 @@ const SAMPLES = [
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-contrast-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     let alphaPct = 95;
     {
-        const src = path.join(process.env.APPDATA, 'QuickSearch', 'config.json');
+        const src = path.join(process.env.APPDATA, 'QuickAchieve', 'config.json');
         const c = JSON.parse(fs.readFileSync(src, 'utf8'));
         alphaPct = Number(c.alpha) || 95;
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;

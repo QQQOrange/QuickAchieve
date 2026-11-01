@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """OCR 真机端到端：启动 -> 交互 -> 收日志 -> 判结论，全在一个进程里做完。
 
-⚠ 关键教训：QuickSearch.exe 由谁拉起，就得由谁陪着。
+⚠ 关键教训：QuickAchieve.exe 由谁拉起，就得由谁陪着。
    实测父进程一退它就跟着没了（DETACHED_PROCESS 也挡不住），
    所以不能用「先 python 起一下、再 node 去戳」的两段式 ——
    那样 node 动的时候程序早没了，日志里什么都看不到，白忙一场。
@@ -17,9 +17,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, 'tools')
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 NODE = r'C:/Users/64381/.workbuddy/binaries/node/versions/22.22.2-6/node.exe'
-LOG = os.path.join(os.environ.get('APPDATA', ''), 'QuickSearch', 'log.txt')
+LOG = os.path.join(os.environ.get('APPDATA', ''), 'QuickAchieve', 'log.txt')
 TRACE = os.path.join(TOOLS, 'ocr-actions.trace.txt')
 
 
@@ -27,13 +27,13 @@ def kill_all():
     try:
         import psutil
         for p in psutil.process_iter(['name']):
-            if p.info['name'] == 'QuickSearch.exe':
+            if p.info['name'] == 'QuickAchieve.exe':
                 try:
                     p.terminate()
                 except Exception:
                     pass
     except ImportError:
-        subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+        subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
     time.sleep(2)
 
 

@@ -1,4 +1,4 @@
-# Quick Search v1.3.1 发布说明
+# Quick Achieve v1.3.1 发布说明
 
 > 发布日期：2026-10-20
 > 上个版本：v1.3.0
@@ -188,8 +188,8 @@ fail-open：`WindowFromPoint` 拿不到窗口（分层/禁用窗口）也放行�
 
 ## 安装
 
-单文件，无需任何运行时，覆盖旧的 `QuickSearch.exe` 即可。
-配置与图标都在 `%APPDATA%\QuickSearch`，不会丢。
+单文件，无需任何运行时，覆盖旧的 `QuickAchieve.exe` 即可。
+配置与图标都在 `%APPDATA%\QuickAchieve`，不会丢。
 
 > 已在用 v1.3.0 的话：打开软件就会看到更新提示，点一下即可。
 
@@ -199,7 +199,7 @@ fail-open：`WindowFromPoint` 拿不到窗口（分层/禁用窗口）也放行�
 
 模型**不随本版本上传**。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 程序会自己去那里下载（设置 → 通用 → AI 抠图 → 点某个模型的「下载」），
 不需要你手动找。不打开这个功能就一个都不下。
@@ -209,7 +209,7 @@ fail-open：`WindowFromPoint` 拿不到窗口（分层/禁用窗口）也放行�
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.33 MB (12928000 字节)
 MD5:    12409B3AF88F205C953704DB6B083B37
 SHA256: 684DBD46FD775B6DDCB72CD2E7CA5357673F249F59746C2EB538088E406133A4

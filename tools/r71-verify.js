@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r71-verify.txt');
 const PORT = 9419;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -63,10 +63,10 @@ async function connect(sub, ms) {
 }
 
 (async () => {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(900);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r71v-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     // ⚠ Config 的 serde 用 Rust 字段名（snake_case）—— 写 camelCase 会被静默忽略，
     //   img_default_engine 落成空串，def 行就不存在（r70 探针踩过没人发现而已：

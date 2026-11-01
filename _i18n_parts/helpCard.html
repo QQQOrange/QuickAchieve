@@ -18,7 +18,8 @@
                 <li>Select text with the keyboard and press <b>Ctrl+C</b> — the bar appears just the same (the
                     go-to whenever the mouse is awkward).</li>
             </ul>
-            <p>How long it waits after you let go is set by “<b>General → Trigger → Show delay</b>”; 100–200 ms
+            <p><b>Two trigger modes, pick one</b> (<b>General → Trigger → Trigger mode</b>; the change applies immediately): <b>Show on selection</b> = any drag-selection brings the bar up; <b>Only when Ctrl is held</b> = only selections made while holding <b>Ctrl</b> bring it up, and a plain selection does nothing (handy in apps where Ctrl+drag is common, such as spreadsheets and design tools). The two modes are mutually exclusive — exactly one is active at any moment.</p>
+<p>How long it waits after you let go is set by “<b>General → Trigger → Show delay</b>”; 100–200 ms
                avoids the “it pops up while I'm still dragging” feeling.</p>
             <p>If it gets in the way in some apps (games, remote desktop, an editor while you take notes),
                add them to the blocklist under “<b>General → Scope</b>”; if you only want it in a handful of
@@ -132,6 +133,22 @@
     </details>
 
     <details class="help-item">
+<summary>④b Grid page: one tile, one action, summoned by hotkey</summary>
+<div class="help-body">
+<p>Besides the bar there is a <b>grid</b>: press <b>Ctrl+Shift+G</b> (changeable on the “Grid” page) and a whole page of tiles drops down; click whichever one you need. No text selection required — it fits “I want to do a thing” rather than “I want to process this text”.</p>
+<ul>
+<li><b>A tile can be</b>: a built-in action (text recognition / image search / translation / QR decode and generate / wrapping symbols / text cleanup), a specific engine, an app, a URL, or a favorites folder;</li>
+<li><b>Editing needs edit mode</b>: click the ✏️ at the top right before you can add content, remove a tile with ×, or drag it around; in read-only mode a click simply runs the tile, so nothing is changed by accident;</li>
+<li><b>Long-press to drag</b>: even in read-only mode, <b>holding a tile for about 0.4 s</b> switches to edit mode and lifts it up, following the mouse or your finger; the other tiles make room and it lands in the new position when you let go. Touch and mouse behave identically;</li>
+<li><b>An empty slot is “add”</b>: click it to open “Add to this cell”, which offers <b>built-in actions</b>, <b>models</b> (follow the default / pin one / pick several) and <b>engines and apps</b>;</li>
+<li><b>Models can run in parallel</b>: choose “Multiple models (parallel)…” and tick several, and that tile then runs all of them — each result gets its own section (the same for text recognition, image search and translation). “Default (follow settings)” behaves exactly like clicking OCR on the bar;</li>
+<li><b>Several pages</b>: you can create more than one page and switch between them; “Per app” additionally lets you pin one page to one application — press the hotkey inside that app and only that page appears;</li>
+<li><b>Size and style</b>: rows, columns, tile size, corner radius and gap are all adjustable on the “Grid” page, with a <b>live preview</b> on the right that uses the very same stylesheet as the real page.</li>
+</ul>
+</div>
+</details>
+
+<details class="help-item">
         <summary>⑤ Text recognition (OCR): lift text off the screen as copyable text</summary>
         <div class="help-body">
             <p>Press <b>Ctrl+Alt+O</b> (or the OCR tile on the bar) → the screen dims, drag a box around an
@@ -253,7 +270,7 @@
                 <li><b>These shapes are recognized</b>: drive-letter paths
                     (<code>C:\Users\me\a.txt</code>), network shares (<code>\\server\share</code>), relative /
                     absolute paths with forward or back slashes (<code>D:/资料/合同</code>), paths containing
-                    environment variables (<code>%APPDATA%\QuickSearch</code>), and file URLs copied out of a
+                    environment variables (<code>%APPDATA%\QuickAchieve</code>), and file URLs copied out of a
                     browser's address bar (<code>file:///C:/Users/me/a.txt</code>);</li>
                 <li><b>Selecting too much is fine</b>: if your selection drags in a leading quote or a trailing
                     comma (<code>"C:\a\b.docx"，</code> and the like) it still opens — those marks are stripped
@@ -321,7 +338,7 @@
         <div class="help-body">
             <p>One “<b>Back up now</b>” = write a copy into the <b>local backup folder</b>, then upload
                <b>that same file</b> to the cloud — the local file and the cloud file share <b>the same name and
-               the same content</b> (<code>config(full timestamp).QuickSearch</code>), so the cloud accumulates
+               the same content</b> (<code>config(full timestamp).QuickAchieve</code>), so the cloud accumulates
                one per backup and you restore whichever one you want. <b>File names are not your problem</b>:
                whatever it's called locally is what it's called in the cloud.</p>
             <ul>
@@ -352,7 +369,7 @@
         <div class="help-body">
             <p>This is a different thing from ⑧ <b>Backup</b>; don't mix the two up:</p>
             <ul>
-                <li><b>Backup</b> (<code>.QuickSearch</code>) = <b>the whole configuration</b>, encryptable,
+                <li><b>Backup</b> (<code>.QuickAchieve</code>) = <b>the whole configuration</b>, encryptable,
                     restored by <b>overwriting everything</b> — use it for a new computer or a reinstall;</li>
                 <li><b>Plain-text export</b> (<code>.qsconf</code>) = <b>a few chosen items</b>,
                     <b>unencrypted</b>, imported by <b>overwriting only those items and leaving the rest
@@ -395,12 +412,12 @@
         <summary>⑩ Where all my data lives</summary>
         <div class="help-body">
             <ul>
-                <li>Configuration: <code>%APPDATA%\QuickSearch\config.json</code> (the backup folder can be moved
-                    elsewhere);</li>
-                <li>Replaced icons: <code>%APPDATA%\QuickSearch\icons\</code>;</li>
-                <li>Backups: the rolling backup <code>config.auto(timestamp).QuickSearch</code>, the
-                    pre-restore snapshot <code>config.before-webdav(timestamp).QuickSearch</code>, and the one
-                    you drop by clicking “Back up now”, <code>config(timestamp).QuickSearch</code> (same name as
+                <li><b>Portable layout (default)</b>: everything sits next to the executable — <code>Quick Achieve data</code> holds <code>config.json</code>, <code>icons</code> and <code>log.txt</code>, while backups go to <code>Quick Achieve back</code>. Copy that folder and you have moved the whole thing;</li>
+<li><b>When the executable lives somewhere read-only</b> such as Program Files, the app falls back to <code>%APPDATA%\QuickAchieve</code>;</li>
+<li>Directories from before the rename are <b>renamed automatically</b>, so settings, keys, icons and backups all come along — no manual migration;</li>
+<li>Backups: the rolling backup <code>config.auto(timestamp).QuickAchieve</code>, the
+                    pre-restore snapshot <code>config.before-webdav(timestamp).QuickAchieve</code>, and the one
+                    you drop by clicking “Back up now”, <code>config(timestamp).QuickAchieve</code> (same name as
                     in the cloud).</li>
                 <li>The plain-text configuration you export (<code>.qsconf</code>) goes <b>wherever you choose</b>;
                     the app never stuffs it into the data folder — how to export selectively and how to share it

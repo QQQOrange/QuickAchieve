@@ -16,13 +16,13 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = r'D:/Local AI/image/python_embeded/python.exe'   # 这个环境有 psutil / matplotlib
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 
 iters = sys.argv[1] if len(sys.argv) > 1 else '1200'
 secs = sys.argv[2] if len(sys.argv) > 2 else '190'
 
 print('=== 1/3 启动压测（--stress %s）===' % iters)
-subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
 time.sleep(1.5)
 env = dict(os.environ)
 env['QS_DEBUG'] = '1'
@@ -50,7 +50,7 @@ print('=== 3/3 出图 ===')
 r2 = subprocess.run([PY, os.path.join(ROOT, 'tools', 'plot-mem.py'),
                      os.path.join(ROOT, 'tools', 'memtest.csv'),
                      os.path.join(ROOT, 'tools', '_ev-mem.png'),
-                     'QuickSearch 内存泄漏压测（%s 次弹出/关闭）' % iters,
+                     'QuickAchieve 内存泄漏压测（%s 次弹出/关闭）' % iters,
                      '35'],
                     capture_output=True, text=True, encoding='utf-8', errors='replace',
                     cwd=ROOT)
@@ -64,6 +64,6 @@ try:
     proc.wait(timeout=8)
 except Exception:
     proc.kill()
-subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
 print('')
 print('压测进程已结束')

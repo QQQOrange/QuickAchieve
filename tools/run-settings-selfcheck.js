@@ -15,13 +15,13 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 function killOld() {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(900);
 }
 
@@ -38,7 +38,7 @@ function readLog() {
     });
     spawn(EXE, ['--no-elevate', '--settings'],
         { env, cwd: ROOT, detached: true, stdio: 'ignore' }).unref();
-    console.log('已启动 QuickSearch.exe --settings（QS_SELFTEST=1）');
+    console.log('已启动 QuickAchieve.exe --settings（QS_SELFTEST=1）');
 
     // 自检里有一堆 await wait(...)，整段跑完要十几秒；给足时间。
     sleep(30000);

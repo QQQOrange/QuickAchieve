@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r55-help-xref-probe.txt');
 const PORT = 9388;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -95,7 +95,7 @@ const XREF = [
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r55xref-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true }, null, 1), 'utf8');
     const TAG = 'r55xref' + Date.now().toString(36);

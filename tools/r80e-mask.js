@@ -15,7 +15,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const ICONDIR = path.join(ROOT, 'ui', 'data', 'icons');
 const MODELS_SRC = 'D:\\Local AI\\git\\_matting-ref\\rmbg';
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -85,7 +85,7 @@ async function freePort() {
 (async () => {
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80e-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(path.join(qs, 'models'), { recursive: true });
     fs.copyFileSync(path.join(MODELS_SRC, 'u2netp.onnx'), path.join(qs, 'models', 'u2netp.onnx'));
     fs.writeFileSync(path.join(qs, 'config.json'),

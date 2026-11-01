@@ -51,7 +51,7 @@ const CASES = [
     '.\\',
     '.a\\b',
     // ④ 环境变量
-    '%APPDATA%\\QuickSearch',
+    '%APPDATA%\\QuickAchieve',
     '%TEMP%',
     '%APPDATA%',
     '%A%\\b',

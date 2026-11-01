@@ -1,4 +1,4 @@
-# Quick Search v1.3.10 发布说明
+# Quick Achieve v1.3.10 发布说明
 
 > 发布日期：2026-10-22
 > 上个版本：v1.3.8（v1.3.9 只在本地待了几十分钟，没对外发）
@@ -75,15 +75,15 @@ https://www.douyin.com/jingxuan?modal id=76946313 546769009
 - `cargo test --release`（`APPDATA` 指向临时目录）：**294 / 294**
 - `cargo clippy --release`：0 warning
 - 版本号 1.3.9 → 1.3.10（Cargo.toml / tauri.conf.json / package.json / package-lock.json）
-- 交付：`D:\software\myself\QuickSearch.exe`（v1.3.10），旧版备份 `QuickSearch.v1.3.8.bak.exe`
+- 交付：`D:\software\myself\QuickAchieve.exe`（v1.3.10），旧版备份 `QuickAchieve.v1.3.8.bak.exe`
 
 更新包校验（SHA256）：`6BB6B554E92E2890AC73F0B88914A5A207DD09B6D4D43BFD0A0893F9CC9ADAB0`
 （13,018,112 字节。程序「检查更新」时就是从这段说明里抠这串哈希来校验下载包的，
 见 `update::sha_from_notes` —— 所以这行不能删。）
 
-> ⚠ 附件名必须是 **`QuickSearch.exe`**（`update.rs` 里是精确匹配）。
-> v1.3.7 / v1.3.8 那两版传成了 `QuickSearch-v1.3.x.exe`，导致那之后
-> 「检查更新」能查到新版本、却报「这个版本里没有 QuickSearch.exe 更新包」。
+> ⚠ 附件名必须是 **`QuickAchieve.exe`**（`update.rs` 里是精确匹配）。
+> v1.3.7 / v1.3.8 那两版传成了 `QuickAchieve-v1.3.x.exe`，导致那之后
+> 「检查更新」能查到新版本、却报「这个版本里没有 QuickAchieve.exe 更新包」。
 > 这一版起恢复约定名。
 
 **以后跑测试请带上隔离**（虽然已经修了，双保险）：

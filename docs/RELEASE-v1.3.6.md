@@ -1,4 +1,4 @@
-# Quick Search v1.3.6 发布说明
+# Quick Achieve v1.3.6 发布说明
 
 > 发布日期：2026-10-21
 > 上个版本：v1.3.5
@@ -183,7 +183,7 @@ IPv6 直连：        6.0 s 超时（两个地址都超时，包发出去没人�
 
 ## 安装
 
-单文件，无需任何运行时，覆盖旧的 `QuickSearch.exe` 即可。
+单文件，无需任何运行时，覆盖旧的 `QuickAchieve.exe` 即可。
 
 > ⚠ 换上之后**请从托盘完全退出旧实例再打开**。
 
@@ -193,14 +193,14 @@ IPv6 直连：        6.0 s 超时（两个地址都超时，包发出去没人�
 
 模型**不随本版本上传**。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 ---
 
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.39 MB (12988416 字节)
 MD5:    4CEF0C981E1FCFD678F94B1149FF2210
 SHA256: 6577DC767041036847502FE8B2CAB5443DA12C8CC922DD346A7633E122E7CC2C

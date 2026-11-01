@@ -18,7 +18,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round32-probe.txt');
 
 let PORT = 9412;
@@ -128,7 +128,7 @@ const instances = [];
     const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r32-'));
 
     function makeConf(dir) {
-        const qs = path.join(dir, 'QuickSearch');
+        const qs = path.join(dir, 'QuickAchieve');
         fs.mkdirSync(qs, { recursive: true });
         const c = {
             version: '1.0.0',

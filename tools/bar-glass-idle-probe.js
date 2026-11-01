@@ -24,7 +24,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9346;
 const TAG = '-probe-glassidle';
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -60,11 +60,11 @@ const EV = (expr) => `(() => { try { return JSON.stringify(${expr}); } catch(e){
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-gidle-'));
     const appdata = path.join(tmp, 'appdata');
-    fs.mkdirSync(path.join(appdata, 'QuickSearch'), { recursive: true });
-    fs.writeFileSync(path.join(appdata, 'QuickSearch', 'log.on'), '');
+    fs.mkdirSync(path.join(appdata, 'QuickAchieve'), { recursive: true });
+    fs.writeFileSync(path.join(appdata, 'QuickAchieve', 'log.on'), '');
     // 用**用户真实配置**（实时折射开）—— 复现的前提就是它
-    fs.copyFileSync(process.env.QS_PROBE_CFG || path.join(os.homedir(), 'AppData', 'Roaming', 'QuickSearch', 'config.json'),
-        path.join(appdata, 'QuickSearch', 'config.json'));
+    fs.copyFileSync(process.env.QS_PROBE_CFG || path.join(os.homedir(), 'AppData', 'Roaming', 'QuickAchieve', 'config.json'),
+        path.join(appdata, 'QuickAchieve', 'config.json'));
 
     const env = Object.assign({}, process.env, {
         APPDATA: appdata, QS_INSTANCE_TAG: TAG,

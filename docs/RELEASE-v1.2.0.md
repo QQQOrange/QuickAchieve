@@ -1,4 +1,4 @@
-# Quick Search v1.2.0 发布说明
+# Quick Achieve v1.2.0 发布说明
 
 > 发布日期：2026-10-19
 > 上个版本：v1.1.1
@@ -22,7 +22,7 @@
 
 - **下载完自动校验**（SHA256）—— 下到的内容不是我们发的那一份就当失败删掉，绝不把坏程序换上去。
 - **换程序是"先改名、再搬新的"** —— Windows 上正在运行的 exe 删不掉但**可以改名**。
-  所以旧版会被改成 `QuickSearch.exe.old` 留在原地当退路，新版就位；下次启动时自动清掉那个 `.old`。
+  所以旧版会被改成 `QuickAchieve.exe.old` 留在原地当退路，新版就位；下次启动时自动清掉那个 `.old`。
   万一第二步失败，程序会**把旧版改回来**，保证你手上至少还有一个能用的程序。
 
 > **自动更新这个开关的语义**（按你的口径）：它是一个**选项**，打勾才会自动检查。
@@ -32,7 +32,7 @@
 
 ## 二、新增：关于页里的 GitHub 地址
 
-「关于」表格里多了一行**项目地址**：`QQQOrange/QuickSearch ↗`。
+「关于」表格里多了一行**项目地址**：`QQQOrange/QuickAchieve ↗`。
 点一下**用系统默认浏览器**打开仓库主页（不是在软件内部那个 WebView 里跳转）。
 
 ## 三、自定义图标变成内置默认图标
@@ -111,12 +111,12 @@
 
 单文件，无需任何运行时：
 
-1. 下载下面的 `QuickSearch.exe`；
+1. 下载下面的 `QuickAchieve.exe`；
 2. 放到你想放的位置（建议单独一个文件夹，别放系统目录）；
 3. 双击运行。**首次会请求管理员权限** —— 这是必要的（不然 Ctrl+C 送不进同样是管理员的程序）。
 
 > 升级到这一版有两条路：
-> · 直接用新版 exe 覆盖旧的（配置与图标都在 `%APPDATA%\QuickSearch`，不会丢）；
+> · 直接用新版 exe 覆盖旧的（配置与图标都在 `%APPDATA%\QuickAchieve`，不会丢）；
 > · 或者用**这一版之后**的「自动更新」—— 以后就不用自己手动换了。
 
 ## 六、关于「AI 抠图」的模型（重要）
@@ -124,7 +124,7 @@
 **AI 抠图的模型文件不随本版本上传**（一共 300+ MB，每个小版本都重传一遍不划算）。
 它们固定挂在 **v1.1.1** 那个发布页上，程序会自动去那里下：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 里面有：
 
@@ -158,9 +158,9 @@
 
 ```
 update: 检查完成 —— 远端 v9.9.9，当前 1.2.0，有新版=true
-PROGRESS=8192/12868096 … DOWNLOADED=…QuickSearch.exe.new
-OK old=…QuickSearch.exe.old          ← 替换正在运行的 exe 成功
-update: 已清理残留 …QuickSearch.exe.old   ← 下次启动自动清掉
+PROGRESS=8192/12868096 … DOWNLOADED=…QuickAchieve.exe.new
+OK old=…QuickAchieve.exe.old          ← 替换正在运行的 exe 成功
+update: 已清理残留 …QuickAchieve.exe.old   ← 下次启动自动清掉
 ```
 
 SHA256 校验、替换回滚、启动清理都实测过。另外实测了干净环境启动：
@@ -179,7 +179,7 @@ SHA256 校验、替换回滚、启动清理都实测过。另外实测了干净�
 ## 十、校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.28 MB (12,877,312 字节)
 MD5:    F707D0DC775216E53F00626193E03B07
 SHA256: 8591BA9B830DE9BDAEB810202C74E6921DFC78F48B5D88633543AF4D4A6FC05B
@@ -188,7 +188,7 @@ SHA256: 8591BA9B830DE9BDAEB810202C74E6921DFC78F48B5D88633543AF4D4A6FC05B
 核对方式（PowerShell）：
 
 ```powershell
-Get-FileHash .\QuickSearch.exe -Algorithm SHA256
+Get-FileHash .\QuickAchieve.exe -Algorithm SHA256
 ```
 
 > ⚠ 上面那行 **`SHA256:` 就是自动更新用的校验值** —— 程序下载完更新包会拿它比对，

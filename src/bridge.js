@@ -1,4 +1,4 @@
-/* Quick Search 前端垫层：把 window.__TAURI__ 用 IPC 桥接回 Rust。
+/* Quick Achieve 前端垫层：把 window.__TAURI__ 用 IPC 桥接回 Rust。
  *
  * 前端只用到三样东西（已核实）：
  *   · __TAURI__.core.invoke(cmd, args)
@@ -132,7 +132,7 @@
     },
     app: {
       version: function () { return Promise.resolve('2.0.0'); },
-      getName: function () { return Promise.resolve('Quick Search'); },
+      getName: function () { return Promise.resolve('Quick Achieve'); },
     },
   };
 })();

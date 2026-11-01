@@ -18,7 +18,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-OUT = os.path.join(os.path.dirname(ROOT), '_QuickSearch-验证报告.html')
+OUT = os.path.join(os.path.dirname(ROOT), '_QuickAchieve-验证报告.html')
 
 # (标题, 结果文件, 说明)
 FILES = [
@@ -115,7 +115,7 @@ passed = sum(1 for r in rows if r[1]) + sum(1 for i in ITEMS if i[1] == 'PASS')
 
 TPL = """<!DOCTYPE html>
 <meta charset="utf-8">
-<title>Quick Search 桌面版 · 验证报告</title>
+<title>Quick Achieve 桌面版 · 验证报告</title>
 <style>
   :root { color-scheme: light; }
   body { margin:0; padding:40px 28px 72px; background:#f5f6f8; color:#1c1f23;
@@ -147,7 +147,7 @@ TPL = """<!DOCTYPE html>
 </style>
 <div class="wrap">
 <header>
-  <h1>Quick Search 桌面版 · 验证报告</h1>
+  <h1>Quick Achieve 桌面版 · 验证报告</h1>
   <div class="sub">Tauri 2.12.2 / WebView2 · 生成于 @@WHEN@@</div>
   <div class="score">@@PASSED@@ / @@TOTAL@@ 项通过</div>
 </header>

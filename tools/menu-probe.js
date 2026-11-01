@@ -18,7 +18,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'menu-probe.txt');
 const PORT = 9333;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -32,7 +32,7 @@ const ENUMPROC_PTR = koffi.pointer(koffi.proto('int __stdcall ENUMPROC(void *hwn
 const GetWindowTextW = user32.func('int GetWindowTextW(void *h, _Out_ uint16 *b, int n)');
 const GetWindowRect = user32.func('int GetWindowRect(void *h, _Out_ RECT *r)');
 /* ⚠ 必须按 pid 认窗口：用户自己那个正在运行的实例，横条窗口同名
- * （都叫 QuickSearchBar）。EnumWindows 的顺序跟着 Z 序走、不稳定，以前
+ * （都叫 QuickAchieveBar）。EnumWindows 的顺序跟着 Z 序走、不稳定，以前
  * 直接"最后一个同名窗口"—— 有一回拿到的是用户实例停放离屏的那一个
  * （rect=[-32000,-32000,314,50]），格子坐标算出来是负数、被 SendInput
  * 钳到 (0,0)，右键点到了窗口Padding区 → Rust 判"点在横条外面"→ 收起面板，
@@ -75,7 +75,7 @@ function ctrlC() {
     kb(0x11, false); sleep(60); kb(0x43, false); sleep(80);
     kb(0x43, true); sleep(60); kb(0x11, true); sleep(60);
 }
-/** 探针自己那个进程的 QuickSearchBar 窗口矩形（按 pid 过滤，见上面声明处） */
+/** 探针自己那个进程的 QuickAchieveBar 窗口矩形（按 pid 过滤，见上面声明处） */
 function barRect(pid) {
     let out = null;
     const cb = koffi.register((h) => {
@@ -84,7 +84,7 @@ function barRect(pid) {
         if (p[0] !== pid) return 1;
         const t = new Uint16Array(200); const n = GetWindowTextW(h, t, 200);
         let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(t[i]);
-        if (s === 'QuickSearchBar') { const r = {}; GetWindowRect(h, r); out = [r.left, r.top, r.right - r.left, r.bottom - r.top]; }
+        if (s === 'QuickAchieveBar') { const r = {}; GetWindowRect(h, r); out = [r.left, r.top, r.right - r.left, r.bottom - r.top]; }
         return 1;
     }, ENUMPROC_PTR);
     EnumWindows(cb, 0);
@@ -151,17 +151,17 @@ const SNAP = `(function(){
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-menu-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify(c, null, 1), 'utf8');
     }
     const logp = path.join(qs, 'log.txt');
     // ⚠ 两处老基建缺口，都会让这个探针在「用户实例正开着」时起不来：
-    //   ① 原来是 `taskkill /IM QuickSearch.exe /T /F` —— 那会把**用户自己
+    //   ① 原来是 `taskkill /IM QuickAchieve.exe /T /F` —— 那会把**用户自己
     //      正在运行的实例**一起杀掉（项目纪律：绝不强杀用户进程）。单实例判定
     //      是命名互斥体，带上 QS_INSTANCE_TAG 就另有一个名额，不用杀任何东西。
     //   ② 没设 WEBVIEW2_USER_DATA_FOLDER —— 和用户实例共用同一个 WebView2
@@ -193,7 +193,7 @@ const SNAP = `(function(){
     /* 拿不到本进程的窗口就**立刻退**，绝不硬算坐标 —— 负数坐标会被 SendInput
      * 钳成 (0,0)，那一发右键会点在窗口 padding 上，Rust 判"点在横条外面"
      * 直接把面板收掉，然后每一轮都 FAIL，看起来像产品坏了。 */
-    if (!W) { rec('找不到本进程的 QuickSearchBar 窗口（pid=' + proc.pid + '）'); proc.kill(); flush(); process.exit(0); }
+    if (!W) { rec('找不到本进程的 QuickAchieveBar 窗口（pid=' + proc.pid + '）'); proc.kill(); flush(); process.exit(0); }
     // 格子中心 → 屏幕坐标（dpr=2）
     const dpr = 2;
     const cx = W[0] + Math.round((s0.cell[0] + s0.cell[2] / 2) * dpr);

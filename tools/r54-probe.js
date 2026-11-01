@@ -33,7 +33,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r54-probe.txt');
 const PORT = 9354;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -95,12 +95,12 @@ async function connect(sub, ms) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r54-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     // 从真机配置拷一份当底座（否则新装配置里没有引擎历史，横条会是空的），
     // 但把云同步相关的一律清空：探针不碰网盘。
     {
-        const src = path.join(process.env.APPDATA, 'QuickSearch', 'config.json');
+        const src = path.join(process.env.APPDATA, 'QuickAchieve', 'config.json');
         if (fs.existsSync(src)) {
             const c = JSON.parse(fs.readFileSync(src, 'utf8'));
             c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = '';
@@ -347,7 +347,7 @@ async function connect(sub, ms) {
     check('划词是网址 → 路径图标不出现（避免与 🔗 抢）', asUrl === 'hidden', asUrl);
 
     // 2f. 后备路径 %VAR%\name 也认（环境变量形式，本机一定有 APPDATA）
-    await showBar(barWs, '%APPDATA%\\QuickSearch');
+    await showBar(barWs, '%APPDATA%\\QuickAchieve');
     const envForm = await pathBtnState(barWs);
     check('%VAR%\\… 形式也认（展开前先认出它是路径）', envForm === 'visible', envForm);
 

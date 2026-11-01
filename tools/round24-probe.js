@@ -42,7 +42,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round24-probe.txt');
 const TAG = '-probe-r24';
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -153,14 +153,14 @@ async function shot(ws, name) {
     rec('');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r24-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(path.join(qs, 'icons'), { recursive: true });
     rec('隔离实例数据目录：' + qs);
 
     /* ---------- 临时配置：干净起步，触发全关 ---------- */
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.trigger_select = false;
         c.trigger_copy = false;
         c.ocr_enable = false;

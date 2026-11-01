@@ -1,5 +1,5 @@
 /* ============================================================
-   Quick Search 桌面版 —— 设置窗口逻辑
+   Quick Achieve 桌面版 —— 设置窗口逻辑
    ============================================================ */
 
 const invoke = window.__TAURI__.core.invoke;
@@ -3898,7 +3898,7 @@ $('allFilter').addEventListener('input', () => {
 });
 
 $('btnDir').addEventListener('click', () => invoke('open_data_dir'));
-// 「退出 Quick Search」按钮已删：没有账号体系，退出走托盘右键菜单
+// 「退出 Quick Achieve」按钮已删：没有账号体系，退出走托盘右键菜单
 // （quit_app 命令保留，托盘还在用）。
 $('btnExport').addEventListener('click', () => invoke('export_config'));
 $('btnImport').addEventListener('click', () => invoke('import_config'));
@@ -6987,7 +6987,7 @@ function engTag(text, title, warn) {
  *  仅支持直接恢复导出的明文数据，不支持导入加密备份。」
  *
  *  ⚠ 这一栏与「备份」那栏是**两件事**，不是同一个功能的两个入口：
- *    · 备份 = 整份配置（.QuickSearch），按备份密码加密，恢复时全量覆盖；
+ *    · 备份 = 整份配置（.QuickAchieve），按备份密码加密，恢复时全量覆盖；
  *    · 数据 = 挑几项，**明文**（.qsconf），可直接发给别人导入，恢复时只合
  *      并勾过的那几项（同事的收藏夹/快捷键不会被我的文件清空）。
  *    两边文件格式不同（备份是裸 config_view，导出带 kind/items/data），
@@ -7845,7 +7845,7 @@ $('btnWdDown').addEventListener('click', () => {
  *  需求原话是「恢复备份能选择云端哪一份」。所以这里不直接恢复，而是：
  *    点「从云端恢复」→ 列目录 → 用户点某一份 → 二次确认 → 才真恢复。
  *  二次确认不是多余的客套：恢复会覆盖本机配置，点错了得靠
- *  config.before-webdav(时间).QuickSearch 快照手动回滚，很烦。
+ *  config.before-webdav(时间).QuickAchieve 快照手动回滚，很烦。
  *
  *  ⚠ 这里原来还有一个 `showWdList(items)` 包装，实现是
  *  `if (items) box.hidden = false` —— 只有一个调用点，传的却是 null，
@@ -7928,7 +7928,7 @@ function paintWdList() {
             b.title = '恢复「' + it.name + '」';
             b.addEventListener('click', () => {
                 if (!window.confirm('确定用云端的「' + it.name + '」覆盖本机配置吗？\n'
-                                  + '覆盖前会先在本机留一份 config.before-webdav(时间).QuickSearch。')) {
+                                  + '覆盖前会先在本机留一份 config.before-webdav(时间).QuickAchieve。')) {
                     return;
                 }
                 $('wdStatus').textContent = '正在恢复「' + it.name + '」…';
@@ -9222,7 +9222,7 @@ const CHANGELOG = [
         en: 'If the Microsoft Edge WebView2 runtime is missing, the app now says so in plain words and offers a one-click trip to the official Microsoft download page, instead of doing nothing at all when you double-click it.',
         items: [
             '<b>缺运行组件时不再"双击没反应"</b> —— 整个界面是靠 Windows 的 <b>Microsoft Edge WebView2</b> 渲染的。Win11 自带、Win10 多数跟着 Edge 装好了，但 LTSC、精简版系统里被移除是常事。以前那种机器上双击图标，<b>进程起来又立刻退出，一个提示都没有</b>；现在会弹一个明确的说明框，点「是」直接打开<b>微软官方下载页</b>，装完再打开就能用。',
-            '<small>检测刻意做得"宽松"：<b>三处证据</b>（WebView2 自己的接口、注册表登记、磁盘上的 msedgewebview2.exe）<b>任何一处查到就当作已安装</b>。宁可漏判也不误判 —— 把一台本来能用的电脑挡在门外，比漏掉一次提示糟得多。万一真遇到误判，用 <code>QuickSearch.exe --skip-webview2-check</code> 可以强行启动。</small>',
+            '<small>检测刻意做得"宽松"：<b>三处证据</b>（WebView2 自己的接口、注册表登记、磁盘上的 msedgewebview2.exe）<b>任何一处查到就当作已安装</b>。宁可漏判也不误判 —— 把一台本来能用的电脑挡在门外，比漏掉一次提示糟得多。万一真遇到误判，用 <code>QuickAchieve.exe --skip-webview2-check</code> 可以强行启动。</small>',
         ],
     },
     {

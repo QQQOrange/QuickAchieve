@@ -83,7 +83,7 @@ const pump = (ms) => {
     }
 };
 
-const LOG = path.join(process.env.APPDATA, 'QuickSearch', 'log.txt');
+const LOG = path.join(process.env.APPDATA, 'QuickAchieve', 'log.txt');
 let offset = 0;
 try { offset = fs.statSync(LOG).size; } catch (e) { offset = 0; }
 const logTail = () => {
@@ -91,7 +91,7 @@ const logTail = () => {
 };
 const countShowBar = (s) => (s.match(/show_bar:/g) || []).length;
 
-const TEXT = 'Quick Search 选中即弹出横条：这是一段用来验证取词的中文测试文本。';
+const TEXT = 'Quick Achieve 选中即弹出横条：这是一段用来验证取词的中文测试文本。';
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
 const cls = 'QSVerifyPausedWindow';

@@ -27,7 +27,7 @@ const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const EXE = process.env.QS_E2E_EXE
     ? process.env.QS_E2E_EXE
-    : path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+    : path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const CDP_PORT = 9354;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=' + CDP_PORT;
@@ -158,7 +158,7 @@ async function connect(sub, timeoutMs) {
         + PIECES.length + ' 段 ≈ ' + TOTAL_MS + 'ms）');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-transstream-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const conf = {
         trans_enable: true,

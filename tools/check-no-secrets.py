@@ -9,7 +9,7 @@
 
   · 从本机 config.json 读出敏感字段（OCR Key / Secret、WebDAV 账号 / 密码）；
   · 在「会被分享出去的东西」里全文搜索这些值，一个都不许命中：
-      1. 编译产物 QuickSearch.exe（target/release 和桌面各一份）
+      1. 编译产物 QuickAchieve.exe（target/release 和桌面各一份）
       2. 整个源码树（排除 target/、node_modules/、.git/）
       3. 编译产物目录里体积最大的若干文件（保险起见再扫一层）
 
@@ -52,7 +52,7 @@ MAX_FILE = 64 * 1024 * 1024
 
 def load_secrets():
     """从本机配置里取敏感值。没有配置（从没配过）就返回空字典。"""
-    path = os.path.join(os.environ.get("APPDATA", ""), "QuickSearch", "config.json")
+    path = os.path.join(os.environ.get("APPDATA", ""), "QuickAchieve", "config.json")
     if not os.path.isfile(path):
         print("· 本机还没有 config.json（%s），没什么可查的。" % path)
         return {}
@@ -143,7 +143,7 @@ def main():
         extra = [a for a in argv[i + 1:] if not a.startswith("-")]
 
     print("=" * 62)
-    print(" QuickSearch 分享前自检：本机凭据有没有混进软件里")
+    print(" QuickAchieve 分享前自检：本机凭据有没有混进软件里")
     print("=" * 62)
     print("源码树: %s" % root)
 
@@ -160,8 +160,8 @@ def main():
     # ---- 1. 编译产物 ----
     print("\n[1] 编译产物 exe")
     exes = [
-        os.path.join(root, "target", "release", "QuickSearch.exe"),
-        os.path.join(os.environ.get("USERPROFILE", ""), "Desktop", "QuickSearch.exe"),
+        os.path.join(root, "target", "release", "QuickAchieve.exe"),
+        os.path.join(os.environ.get("USERPROFILE", ""), "Desktop", "QuickAchieve.exe"),
     ] + extra
     seen = set()
     for e in exes:
@@ -204,8 +204,8 @@ def main():
         for f in failed:
             print("   · %s" % f)
         return 1
-    print(" 结论：✓ 干净 —— 把 QuickSearch.exe 单独发出去是安全的。")
-    print(" （Key / 密码只在本机 %APPDATA%\\QuickSearch\\config.json 里）")
+    print(" 结论：✓ 干净 —— 把 QuickAchieve.exe 单独发出去是安全的。")
+    print(" （Key / 密码只在本机 %APPDATA%\\QuickAchieve\\config.json 里）")
     return 0
 
 

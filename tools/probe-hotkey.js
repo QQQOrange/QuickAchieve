@@ -26,7 +26,7 @@ function kb(vk, up) {
 
 const VK_CONTROL = 0x11, VK_MENU = 0x12, VK_O = 0x4F;
 
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 const before = fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8') : '';
 
 kb(VK_CONTROL, false); sleep(60);

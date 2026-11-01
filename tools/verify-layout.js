@@ -7,7 +7,7 @@
  *    · 文字贴到屏幕最下方、下面没地方了 → 改放到上面；
  *    · 没选中文字、走 Ctrl+C 触发的 → 跟随**鼠标**。
  *
- *  判定依据 = QuickSearch 日志里的 `place:` 行（由 main.rs 的 layout_bar 落盘），
+ *  判定依据 = QuickAchieve 日志里的 `place:` 行（由 main.rs 的 layout_bar 落盘），
  *  它同时给出：最终选了哪一侧、文字那行的矩形、胶囊落点。
  *  再用 GetWindowRect 把真实窗口位置和日志里的 win=(x,y) 对一遍，
  *  确认「算出来的」和「实际摆的」是同一个地方。
@@ -18,7 +18,7 @@
  *    [C] 文字贴屏幕最上方    -> 上面没地方，改放**下面**
  *    [D] Ctrl+C（未选中）    -> 必须**贴鼠标**（side=mouse）
  *
- *  前置：QuickSearch.exe 带 QS_DEBUG=1 QS_ALLOW_INJECTED=1 --no-elevate 运行
+ *  前置：QuickAchieve.exe 带 QS_DEBUG=1 QS_ALLOW_INJECTED=1 --no-elevate 运行
  *  用法：node verify-layout.js
  * ========================================================================== */
 const koffi = require('koffi');
@@ -111,7 +111,7 @@ const pumpMsg = () => {
 };
 
 /* ------------------------------- 日志 ------------------------------- */
-const LOG = path.join(process.env.APPDATA, 'QuickSearch', 'log.txt');
+const LOG = path.join(process.env.APPDATA, 'QuickAchieve', 'log.txt');
 let offset = 0;
 try { offset = fs.statSync(LOG).size; } catch (e) { offset = 0; }
 const logTail = () => {
@@ -171,7 +171,7 @@ function lastPlace(s, wantMode) {
     return recs.length ? recs[recs.length - 1] : null;
 }
 
-const TEXT = 'Quick Search 选中即弹出横条：这是一段用来验证取词的中文测试文本。';
+const TEXT = 'Quick Achieve 选中即弹出横条：这是一段用来验证取词的中文测试文本。';
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
 const cls = 'QSVerifyLayoutWindow';
@@ -265,7 +265,7 @@ function sendCtrlC() {
     pump(1400);
 }
 function barRect() {
-    const h = FindWindowW(null, 'QuickSearchBar');
+    const h = FindWindowW(null, 'QuickAchieveBar');
     if (!h) return null;
     const r = {};
     GetWindowRect(h, r);

@@ -25,8 +25,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const DATA = path.join(ROOT, 'target', 'release', 'Quick search data');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const DATA = path.join(ROOT, 'target', 'release', 'Quick Achieve data');
 const OUT = path.join(__dirname, 'r156-ctrlc.txt');
 const PORT = 9428;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'

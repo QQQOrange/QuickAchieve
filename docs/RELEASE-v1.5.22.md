@@ -1,4 +1,4 @@
-# Quick Search v1.5.22
+# Quick Achieve v1.5.22
 
 ## 修复：明明选中了文字，横条也不弹
 
@@ -31,7 +31,7 @@
 
 ## 安装
 
-便携版，无需安装。下载 `QuickSearch.exe` 覆盖原位置即可。
+便携版，无需安装。下载 `QuickAchieve.exe` 覆盖原位置即可。
 
 ## 质量指标
 

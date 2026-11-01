@@ -22,7 +22,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const ICONDIR = path.join(ROOT, 'ui', 'data', 'icons');
 const OUTDIR = path.join(ROOT, 'docs', 'evidence');
 const MODELS_SRC = 'D:\\Local AI\\git\\_matting-ref\\rmbg';
@@ -155,7 +155,7 @@ const COMPOSE = (items, bg) => `(function(){
 (async () => {
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80v-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     const modelsDir = path.join(qs, 'models');
     fs.mkdirSync(modelsDir, { recursive: true });
     // 预置已下载的模型（模拟用户下好了 u2netp）

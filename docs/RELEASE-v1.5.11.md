@@ -121,10 +121,10 @@ PASS  备源地址与逃生口
 这次修的是**下载器本身**，而旧版的下载器还是旧的。所以：
 
 > **如果你正卡在 v1.5.3 ~ v1.5.10 上下载不下来，请手动下这一次** ——
-> 打开下面的 Release 页面，下 `QuickSearch.exe` 覆盖安装（配置和收藏都不会动）。
+> 打开下面的 Release 页面，下 `QuickAchieve.exe` 覆盖安装（配置和收藏都不会动）。
 > 装上 v1.5.11 之后，以后再更新就走新的下载器了。
 
-Release 页面：<https://github.com/QQQOrange/QuickSearch/releases/latest>
+Release 页面：<https://github.com/QQQOrange/QuickAchieve/releases/latest>
 
 ## 更新包校验
 
@@ -132,7 +132,7 @@ SHA256: D575FC568D4C878D8EB76F952AB5881573133EDF013DF25594A21022FD80555C
 
 | 文件 | 大小 | 校验值 |
 |---|---|---|
-| `QuickSearch.exe` | 13,427,200 字节 | 同上 |
+| `QuickAchieve.exe` | 13,427,200 字节 | 同上 |
 
 > 上面那一行 `SHA256: <64 位十六进制>` 是**自动更新用的**：程序会从发布说明里
 > 解析它，校验用户下到的更新包是不是我们发的这一份（`update::sha_from_notes`）。

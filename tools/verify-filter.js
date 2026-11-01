@@ -105,14 +105,14 @@ const pump = (ms) => {
     }
 };
 
-const LOG = path.join(process.env.APPDATA, 'QuickSearch', 'log.txt');
+const LOG = path.join(process.env.APPDATA, 'QuickAchieve', 'log.txt');
 let offset = 0;
 try { offset = fs.statSync(LOG).size; } catch (e) { offset = 0; }
 const logTail = () => {
     try { return fs.readFileSync(LOG, 'utf8').slice(offset); } catch (e) { return ''; }
 };
 
-const TEXT = 'Quick Search 黑白名单验证：这是一段用来验证取词的中文测试文本。';
+const TEXT = 'Quick Achieve 黑白名单验证：这是一段用来验证取词的中文测试文本。';
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
 const cls = 'QSVerifyFilterWindow';

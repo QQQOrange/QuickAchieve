@@ -2059,7 +2059,7 @@ async function ocrSelfTest() {
     const copied = [];
     copySink = (t) => { copied.push(t); return Promise.resolve(); };
 
-    ta.value = expect || '示例识别结果 QuickSearch 12345';
+    ta.value = expect || '示例识别结果 QuickAchieve 12345';
     ta.setSelectionRange(0, 0);              // 先确保「没有选中」
     $('btnCopy').click();
     check('没选中时点「复制」递的是全文（' + (copied[0] || '').length + ' 字）',

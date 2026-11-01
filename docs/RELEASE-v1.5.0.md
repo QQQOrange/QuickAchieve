@@ -1,4 +1,4 @@
-# Quick Search v1.5.0
+# Quick Achieve v1.5.0
 
 **横条不再乱弹了，而且它学会了自己收起来；设置页也重新分了栏。**
 
@@ -52,7 +52,7 @@
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,300,736 字节 | `C3DAB6CCF79BA2E26C3C629087B24578E748B8387A0FCB77B79F4208BB42A815` |
+| `QuickAchieve.exe` | 13,300,736 字节 | `C3DAB6CCF79BA2E26C3C629087B24578E748B8387A0FCB77B79F4208BB42A815` |
 
 ---
 

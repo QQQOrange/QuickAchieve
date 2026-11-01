@@ -75,7 +75,7 @@ const KEEP_MS = Number(process.argv[4] || 16000);
 // COLORREF 是 0x00BBGGRR
 const BG = MODE === 'dark' ? 0x00201E1C : 0x00FAFAF8;
 
-const TEXT = 'Quick Search 选中即弹出搜索横条：这是一段用于验证取词与自动取色的中文测试文本。';
+const TEXT = 'Quick Achieve 选中即弹出搜索横条：这是一段用于验证取词与自动取色的中文测试文本。';
 
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
@@ -105,7 +105,7 @@ const FindWindowW = user32.func('void *FindWindowW(str16 cls, str16 name)');
 const IsWindowVisible = user32.func('int IsWindowVisible(void *h)');
 /** 横条窗口的实际矩形 + 是否可见 —— 直接量出来，截图就不用猜坐标了 */
 function barRect() {
-    const h = FindWindowW(null, 'QuickSearchBar');
+    const h = FindWindowW(null, 'QuickAchieveBar');
     if (!h) return null;
     const r = {};
     GetWindowRect(h, r);

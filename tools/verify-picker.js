@@ -16,9 +16,9 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const CFG = path.join(process.env.APPDATA || '', 'QuickSearch', 'config.json');
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const CFG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'config.json');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 
 const user32 = koffi.load('user32.dll');
 try { user32.func('int SetProcessDpiAwarenessContext(intptr ctx)')(-4); } catch (e) { }
@@ -62,12 +62,12 @@ function done() {
         + `\n\n${pass}/${results.length} passed\n`;
     fs.writeFileSync(path.join(__dirname, 'verify-picker.result.txt'), out, 'utf8');
     console.log(`\n${pass}/${results.length} passed`);
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     process.exit(pass === results.length ? 0 : 1);
 }
 
 function main() {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1800);
 
     // 清空名单，方便断言；并备份原值，跑完还原
@@ -82,7 +82,7 @@ function main() {
     // 必须同时开设置窗口：拾取到程序名之后，是「设置窗口」收到 qs://picked-app
     // 事件才把它并进 filter_list 的。只开拾取器、不开设置窗口，等于没人接这一棒。
     spawn(EXE, ['--no-elevate', '--settings', '--pick-app'], { env, cwd: ROOT, detached: true, stdio: 'ignore' }).unref();
-    console.log('已启动 QuickSearch.exe --settings --pick-app');
+    console.log('已启动 QuickAchieve.exe --settings --pick-app');
     sleep(9000);
 
     const got = waitFor(() => has('QS-Picker'), 8000);
@@ -92,7 +92,7 @@ function main() {
     // 找一个「真程序」窗口来点：优先记事本/资源管理器这类系统自带窗口，
     // 避开我们自己的窗口和桌面。
     const cands = windows().filter((w) => w.vis
-        && w.t && !/QS-|QuickSearchBar|Quick Search|识别结果|Program Manager|^$/.test(w.t)
+        && w.t && !/QS-|QuickAchieveBar|Quick Achieve|识别结果|Program Manager|^$/.test(w.t)
         && (w.r - w.l) > 200 && (w.b - w.tp) > 120);
     console.log('候选窗口:', cands.slice(0, 8).map((w) => w.t.slice(0, 24)));
 
@@ -112,7 +112,7 @@ function main() {
             if (!has('QS-Picker')) {
                 // 用设置窗口的按钮不现实，这里直接用另一个实例入口：重启带 --pick-app
                 console.log('（覆盖层已关闭，重新拉起以便继续试下一个候选）');
-                try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+                try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
                 sleep(1200);
                 spawn(EXE, ['--no-elevate', '--pick-app'], { env, cwd: ROOT, detached: true, stdio: 'ignore' }).unref();
                 sleep(7000);

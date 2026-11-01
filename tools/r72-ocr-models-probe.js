@@ -25,11 +25,11 @@ const http = require('http');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const TAG = 'r72ocr' + Date.now().toString(36);   // 每轮唯一：tag 相同会撞单实例互斥体
 const DIR = path.join(os.tmpdir(), 'qs-r72-' + process.pid);
 fs.rmSync(DIR, { recursive: true, force: true });
-const QS = path.join(DIR, 'QuickSearch');
+const QS = path.join(DIR, 'QuickAchieve');
 fs.mkdirSync(QS, { recursive: true });
 const CFG = path.join(QS, 'config.json');
 

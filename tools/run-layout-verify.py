@@ -19,11 +19,11 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 TOOLS = os.path.join(ROOT, 'tools')
 NODE = r'C:/Users/64381/.workbuddy/binaries/node/versions/22.22.2-6/node.exe'
-CFG = os.path.join(os.environ['APPDATA'], 'QuickSearch', 'config.json')
-LOG = os.path.join(os.environ['APPDATA'], 'QuickSearch', 'log.txt')
+CFG = os.path.join(os.environ['APPDATA'], 'QuickAchieve', 'config.json')
+LOG = os.path.join(os.environ['APPDATA'], 'QuickAchieve', 'log.txt')
 
 
 def set_cfg(key, value):
@@ -47,7 +47,7 @@ def set_cfg(key, value):
 
 
 def restart():
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'],
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'],
                    capture_output=True)
     time.sleep(1.5)
     env = dict(os.environ)

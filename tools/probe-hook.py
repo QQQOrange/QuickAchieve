@@ -15,9 +15,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, 'tools')
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 NODE = r'C:/Users/64381/.workbuddy/binaries/node/versions/22.22.2-6/node.exe'
-LOG = os.path.join(os.environ.get('APPDATA', ''), 'QuickSearch', 'log.txt')
+LOG = os.path.join(os.environ.get('APPDATA', ''), 'QuickAchieve', 'log.txt')
 
 JS = r'''
 const koffi = require('koffi');
@@ -83,16 +83,16 @@ const cb = koffi.register(h => {
     return 1;
 }, ENUMPROC);
 EnumWindows(cb, 0); koffi.unregister(cb);
-console.log('--- 窗口:', JSON.stringify(out.filter(t => /QS-|QuickSearch|识别/.test(t))));
+console.log('--- 窗口:', JSON.stringify(out.filter(t => /QS-|QuickAchieve|识别/.test(t))));
 '''
 
 try:
     import psutil
     for p in psutil.process_iter(['name']):
-        if p.info['name'] == 'QuickSearch.exe':
+        if p.info['name'] == 'QuickAchieve.exe':
             p.terminate()
 except Exception:
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
 time.sleep(2)
 
 mark = len(io.open(LOG, encoding='utf-8', errors='replace').read()) if os.path.exists(LOG) else 0

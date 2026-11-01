@@ -1,4 +1,4 @@
-# Quick Search v1.4.4
+# Quick Achieve v1.4.4
 
 **「更多引擎」的二级目录也改成胶囊了 —— 三层目录，一个口味。**
 
@@ -56,7 +56,7 @@
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,280,256 字节 | `59BAC8069E0FF3FFBB2273E7ED61E236524A4784EB6C53405E2AE007B02B5EB4` |
+| `QuickAchieve.exe` | 13,280,256 字节 | `59BAC8069E0FF3FFBB2273E7ED61E236524A4784EB6C53405E2AE007B02B5EB4` |
 
 ---
 

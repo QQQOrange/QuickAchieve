@@ -171,7 +171,7 @@ fn log_flush_loop(rx: std::sync::mpsc::Receiver<String>) {
 ///
 ///   · 环境变量 `QS_DEBUG=1` —— 开发 / 自动化脚本用；
 ///   · 环境变量 `QS_LOG=1`；
-///   · 数据目录（`%APPDATA%\QuickSearch`）下存在标记文件 `log.on`。
+///   · 数据目录（`%APPDATA%\QuickAchieve`）下存在标记文件 `log.on`。
 ///
 /// 加第三条是因为真实教训：用户双击 exe 启动时**根本没机会带环境变量**，
 /// 而"让用户改快捷方式/敲命令"这种事在排查里成功率极低 —— 结果就是
@@ -659,7 +659,7 @@ pub fn already_running() -> bool {
         } else {
             tag
         };
-        let name = wide(&format!("Local\\QuickSearch-8F42A1C6-SingleInstance{tag}"));
+        let name = wide(&format!("Local\\QuickAchieve-8F42A1C6-SingleInstance{tag}"));
         let takeover = std::env::var("QS_TAKEOVER").map(|v| v == "1").unwrap_or(false);
 
         /* 交班模式：老进程正在退出，等它把互斥体让出来。
@@ -2544,7 +2544,7 @@ mod tests {
         assert!(!uia_exe_is_browser("notepad.exe"));
         assert!(!uia_exe_is_browser("WeChat.exe"));
         assert!(!uia_exe_is_browser("WINWORD.EXE"));
-        assert!(!uia_exe_is_browser("QuickSearch.exe"));
+        assert!(!uia_exe_is_browser("QuickAchieve.exe"));
         // WebView2 / Electron 应用走可执行名判据，不能被浏览器名误伤：
         // 它们的窗口类名是 Chrome_WidgetWin_*，exe 名五花八门，天然不命中
         assert!(!uia_exe_is_browser("code.exe"));
@@ -3106,7 +3106,13 @@ pub fn apps_use_light_theme() -> Option<bool> {
 /* ------------------------------------------------------------------ */
 
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const RUN_VALUE: &str = "QuickSearch";
+const RUN_VALUE: &str = "QuickAchieve";
+/// 更名前的自启项名（v2.15.0 之前叫 QuickSearch）。
+///
+/// 改名后 exe 文件名也变了，老自启项会指向一个**已经不存在的 exe** ——
+/// 开机时 Windows 找不到文件，用户只会看到"开机没启动"，
+/// 而且多一条永远删不掉的僵尸项。所以每次写/删自启时顺手把它清掉。
+const RUN_VALUE_LEGACY: &str = "QuickSearch";
 
 pub fn set_autostart(enable: bool) -> bool {
     unsafe {
@@ -3123,6 +3129,9 @@ pub fn set_autostart(enable: bool) -> bool {
             return false;
         }
         let name = wide(RUN_VALUE);
+        /* 更名前的僵尸项：不管这次是开还是关，都删一次（不存在也无所谓）。 */
+        let legacy = wide(RUN_VALUE_LEGACY);
+        let _ = RegDeleteValueW(hkey, PCWSTR(legacy.as_ptr()));
         let ok = if enable {
             let exe = match std::env::current_exe() {
                 Ok(p) => p,
@@ -3292,7 +3301,7 @@ pub fn process_exe_path(pid: u32) -> Option<String> {
 ///
 /// ⚠ 调用方必须**先把自己的全屏遮罩关掉**再来问：遮罩是 topmost 且铺满整屏，
 ///   它还在的时候 `WindowFromPoint` 永远返回遮罩自己，问出来就是本进程 ——
-///   用户点了记事本却拿到 QuickSearch.exe。这个坑很隐蔽（界面上"看起来成功了"）。
+///   用户点了记事本却拿到 QuickAchieve.exe。这个坑很隐蔽（界面上"看起来成功了"）。
 pub fn window_at_point(x: i32, y: i32) -> Option<HWND> {
     let p = POINT { x, y };
     let h = unsafe { WindowFromPoint(p) };

@@ -11,7 +11,7 @@
  *    C 识别失败        -> 不能静默，用户得看到一句人话（顺带验 ocr_say 的兜底）
  *
  *  用法：
- *    node verify-ocr-e2e.js          # 自己拉起 target/release/QuickSearch.exe
+ *    node verify-ocr-e2e.js          # 自己拉起 target/release/QuickAchieve.exe
  *  依赖：koffi（仓库自带），不需要注入 DLL。
  * ========================================================================== */
 const koffi = require('koffi');
@@ -20,8 +20,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 
 const user32 = koffi.load('user32.dll');
 try { user32.func('int SetProcessDpiAwarenessContext(intptr ctx)')(-4); } catch (e) { }
@@ -121,14 +121,14 @@ const ok = (name, cond, extra) => {
 /* ------------------------------------------------------------------ */
 
 function startApp(extraArgs) {
-    try { require('child_process').execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { require('child_process').execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1500);
     // QS_ALLOW_INJECTED：本程序自己装了低级键盘钩子，默认挡掉「注入」输入
     // （不然别的自动化工具一动鼠标就会误弹）。测试必须显式放开，
     // 否则注入的 Ctrl+Alt+O / Esc 到不了程序里。
     const env = Object.assign({}, process.env, { QS_DEBUG: '1', QS_ALLOW_INJECTED: '1' });
     spawn(EXE, ['--no-elevate'].concat(extraArgs || []), { env, cwd: ROOT, detached: true, stdio: 'ignore' }).unref();
-    console.log('已启动 QuickSearch.exe（--no-elevate，日志开'
+    console.log('已启动 QuickAchieve.exe（--no-elevate，日志开'
         + (extraArgs && extraArgs.length ? '，' + extraArgs.join(' ') : '') + '）');
     sleep(9000);
 }

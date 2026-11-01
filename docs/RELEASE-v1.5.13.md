@@ -155,7 +155,7 @@ SHA256: FDC49FA10110DA6BCBD98468DE594E74943B7DA84295E9D40E6260E19E2FAFB9
 
 | 文件 | 大小 | 校验值 |
 |---|---|---|
-| `QuickSearch.exe` | 13,636,096 字节 | 同上（MD5 `8CA3638B28FCB356A75A5EDCB3057F52`） |
+| `QuickAchieve.exe` | 13,636,096 字节 | 同上（MD5 `8CA3638B28FCB356A75A5EDCB3057F52`） |
 
 > 上面那一行 `SHA256: <64 位十六进制>` 是**自动更新用的**：程序会从发布说明里
 > 解析它，校验用户下到的更新包是不是我们发的这一份（`update::sha_from_notes`）。
@@ -165,7 +165,7 @@ SHA256: FDC49FA10110DA6BCBD98468DE594E74943B7DA84295E9D40E6260E19E2FAFB9
 
 ## 装机
 
-覆盖 `QuickSearch.exe` 即可，配置、收藏夹、图标都不动。
+覆盖 `QuickAchieve.exe` 即可，配置、收藏夹、图标都不动。
 
 > 配置结构是**新增字段**（`uiLang` 默认 `zh`、`startupPasswordHash` 默认空），
 > 老配置读进来会被 `sanitize()` 补齐，从任何旧版本直升都不需要迁移，

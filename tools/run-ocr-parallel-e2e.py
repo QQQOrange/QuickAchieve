@@ -16,7 +16,7 @@
       抽 store_engine_result 之后，非并行路径没被改坏；
       段控该正常显示（非并行模式切换引擎还要用）。
 
-为什么走 CDP 而不是 UIA：QuickSearch 的窗口是 WebView2（Chromium），
+为什么走 CDP 而不是 UIA：QuickAchieve 的窗口是 WebView2（Chromium），
 启动时带 QS_T_WV_ARGS="… --remote-debugging-port=9333"（e2e 专用），
 于是可以用 DevTools 协议直读页面 DOM / 点按钮 ——
 比按坐标点按钮确定得多，比 UIA 可靠（WebView2 无障碍树个别环境不开）。
@@ -40,13 +40,13 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 NODE = r'C:/Users/64381/.workbuddy/binaries/node/versions/22.22.2-6/node.exe'
 CDP = os.path.join(HERE, 'ocr-cdp-check.js')
 ACTIONS = os.path.join(HERE, 'ocr-parallel-actions.js')
 TRACE = os.path.join(HERE, 'ocr-parallel.trace.txt')
 RESULT = os.path.join(HERE, 'ocr-parallel-e2e.result.txt')
-REAL_CONFIG = os.path.join(os.environ.get('APPDATA', ''), 'QuickSearch', 'config.json')
+REAL_CONFIG = os.path.join(os.environ.get('APPDATA', ''), 'QuickAchieve', 'config.json')
 # e2e 专用的 WebView2 参数：必须是 DEFAULT_WV_ARGS 原样 + 远程调试端口
 # （wry 的 additional_browser_args 会整体替换默认值，少一个特性窗口就可能起不来）
 WV_ARGS = ('--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -78,9 +78,9 @@ def free_debug_port(port=9333):
 
 
 def kill_all():
-    # /T 连 WebView2 子进程一起收（QuickSearch 的窗口都跑在 msedgewebview2 里，
+    # /T 连 WebView2 子进程一起收（QuickAchieve 的窗口都跑在 msedgewebview2 里，
     # 只杀主进程的话调试端口会被子进程继续占着）
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/T', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/T', '/F'], capture_output=True)
     subprocess.run(['taskkill', '/IM', 'mspaint.exe', '/F'], capture_output=True)
     time.sleep(1)
     free_debug_port(9333)
@@ -216,7 +216,7 @@ def parse_out(text):
 
 def seed_config(tmp, patch):
     """复制真实配置到临时 APPDATA，再按场景打补丁。"""
-    qs = os.path.join(tmp, 'QuickSearch')
+    qs = os.path.join(tmp, 'QuickAchieve')
     os.makedirs(qs, exist_ok=True)
     with io.open(REAL_CONFIG, encoding='utf-8') as f:
         c = json.load(f)

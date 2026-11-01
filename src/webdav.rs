@@ -10,7 +10,7 @@ use std::time::Duration;
 /// 连接参数（从 Config 里摘出来，免得这个模块依赖主程序）。
 #[derive(Clone, Debug)]
 pub struct Opts {
-    /// 服务器地址，目录形式，例如 https://dav.jianguoyun.com/dav/QuickSearch/
+    /// 服务器地址，目录形式，例如 https://dav.jianguoyun.com/dav/QuickAchieve/
     pub url: String,
     pub user: String,
     pub pass: String,
@@ -22,9 +22,9 @@ pub struct Opts {
 /// 老版本的固定备份文件名。
 ///
 /// ⚠ **只用于"服务器列不出目录"时的兜底探测**，再也不参与任何上传命名。
-/// 现在一次备份就是一个 `config(时间).QuickSearch` 新文件（见 `config::backup_name`），
+/// 现在一次备份就是一个 `config(时间).QuickAchieve` 新文件（见 `config::backup_name`），
 /// 云端文件名跟本地完全一致 —— 用户明确要求「直接把本地的拉上去就可以了」。
-pub const LEGACY_FILE: &str = "quicksearch-backup.json";
+pub const LEGACY_FILE: &str = "quickachieve-backup.json";
 
 impl Opts {
     pub fn ready(&self) -> bool {
@@ -45,12 +45,12 @@ impl Opts {
 }
 
 /// 软件默认在坚果云那类网盘下使用的子目录名。
-pub const DEFAULT_SUBDIR: &str = "QuickSearch";
+pub const DEFAULT_SUBDIR: &str = "QuickAchieve";
 
 /// 已知的网盘「根地址」，用来判断用户填的是不是只给了半截。
 ///
 /// 坚果云的 WebDAV 根就是 `https://dav.jianguoyun.com/dav/`，用户按惯例
-/// 只填这一段，剩下的目录（`QuickSearch/`）本该由软件补齐 —— 让人自己去
+/// 只填这一段，剩下的目录（`QuickAchieve/`）本该由软件补齐 —— 让人自己去
 /// 网页版建文件夹再建应用密码，是这个功能最容易卡住的一步。
 const KNOWN_ROOTS: &[&str] = &[
     "https://dav.jianguoyun.com/dav/",
@@ -64,7 +64,7 @@ const KNOWN_ROOTS: &[&str] = &[
 ///   2. 末尾补 `/` —— 后面还要往上拼文件名，不带斜杠会拼出 `...dav/xxjson`。
 ///
 /// 另外做一件**兼容老配置**的事：早期版本会把软件自己的子目录一起写进配置，
-/// 于是输入框里显示成 `https://dav.jianguoyun.com/dav/QuickSearch/`，
+/// 于是输入框里显示成 `https://dav.jianguoyun.com/dav/QuickAchieve/`，
 /// 用户看到会以为"这一段也得我手填"。这里把这种形态还原成纯根地址 ——
 /// 子目录在真正使用的时候由 `normalize_base` 自动补回来，最终地址完全一样，
 /// 只是配置里和界面上不再出现那一段（用户明确要求）。
@@ -98,7 +98,7 @@ pub fn normalize_input(raw: &str) -> String {
 /// 把地址整理成「一定是目录、且带软件子目录」的形态 —— **真正发请求时用它**。
 ///
 /// 在 `normalize_input` 的基础上多干一件事：只填了已知网盘根地址时，
-/// 补上软件自己的子目录（`QuickSearch/`）。这样用户只要填
+/// 补上软件自己的子目录（`QuickAchieve/`）。这样用户只要填
 /// `https://dav.jianguoyun.com/dav/`，剩下的目录名和文件夹创建都由软件负责。
 ///
 /// 保留用户已经填好的任意层级路径：`https://dav.jianguoyun.com/dav/我的备份/`
@@ -345,7 +345,7 @@ fn percent_decode(s: &str) -> String {
 ///   于是**所有条目都是 0 分**，顺序完全由平手规则决定。如果平手按名字**升序**，
 ///   「保留最新 10 份」就会留下最旧的那 10 份、把用户**最新的备份删掉** ——
 ///   实测踩过一次（轮 20 探针里 12 → 10 删掉的正是 11、12 两份最新的）。
-///   我们的备份名 `config(YYYY-MM-DD HH-MM-SS).QuickSearch` 是**零填充**的，
+///   我们的备份名 `config(YYYY-MM-DD HH-MM-SS).QuickAchieve` 是**零填充**的，
 ///   字典序 == 时间序，所以名字降序正好就是"新的在前"。
 fn sort_newest_first(v: &mut [Backup]) {
     v.sort_by(|a, b| b.mtime.cmp(&a.mtime).then_with(|| b.name.cmp(&a.name)));
@@ -386,10 +386,10 @@ fn list_by_get(a: &ureq::Agent, o: &Opts, dir: &str) -> Result<Vec<Backup>, Stri
         // 只收看起来像文件的：带扩展名。
         //
         // ⚠ 上限写 6 的时候，**我们自己的备份名根本过不了这一关**：
-        //   后缀是 `.QuickSearch`（11 个字符）。也就是说凡是"PROPFIND 用不了、
+        //   后缀是 `.QuickAchieve`（11 个字符）。也就是说凡是"PROPFIND 用不了、
         //   只能靠解析 HTML 目录页"的服务器，备份列表永远是空的 ——
         //   界面上就是"云端一份备份都没有"，而文件明明躺在网盘里。
-        //   放宽到 16（足够覆盖 .QuickSearch / .json / .backup），
+        //   放宽到 16（足够覆盖 .QuickAchieve / .json / .backup），
         //   真正该排的是超长后缀那种明显不是备份的东西。
         let looks_file = name
             .rsplit_once('.')
@@ -525,13 +525,13 @@ fn agent(o: &Opts) -> ureq::Agent {
         //
         // 实测（轮 20）：两次云操作之间歇了 40 秒，PROPFIND 必失败 →
         // `list()` 静默退化到"解析 HTML 目录页" → 那一路拿不到 mtime、
-        // 还因为后缀长度限制认不出 `.QuickSearch`，结果就是**云端列表凭空空了**，
+        // 还因为后缀长度限制认不出 `.QuickAchieve`，结果就是**云端列表凭空空了**，
         // 而文件明明都在网盘里。表面症状和"网盘不支持列目录"一模一样，极难查。
         //
         // 我们的请求本来就零星（一次备份 = MKCOL + PUT 两个），
         // 为省这点握手开销去踩一个静默失败的坑完全不值。
         .max_idle_connections(0)
-        .user_agent("QuickSearch/1.0 (Windows)")
+        .user_agent("QuickAchieve/1.0 (Windows)")
         .build()
 }
 
@@ -864,7 +864,7 @@ mod tests {
         // URL 路径是大小写敏感的，擅自把 DAV 改成 dav 反而会打到不存在的路径上。
         assert_eq!(
             normalize_base("https://dav.jianguoyun.com/DAV/"),
-            "https://dav.jianguoyun.com/DAV/QuickSearch/"
+            "https://dav.jianguoyun.com/DAV/QuickAchieve/"
         );
     }
 
@@ -876,8 +876,8 @@ mod tests {
             "https://dav.jianguoyun.com/dav/我的备份/"
         );
         assert_eq!(
-            normalize_base("https://dav.jianguoyun.com/dav/QuickSearch"),
-            "https://dav.jianguoyun.com/dav/QuickSearch/"
+            normalize_base("https://dav.jianguoyun.com/dav/QuickAchieve"),
+            "https://dav.jianguoyun.com/dav/QuickAchieve/"
         );
         assert_eq!(
             normalize_base("https://dav.jianguoyun.com/dav/a/b/c"),
@@ -888,7 +888,7 @@ mod tests {
     /// 没写协议时按 https 补 —— WebDAV 地址漏掉协议头是最常见的输入错误。
     #[test]
     fn missing_scheme_defaults_to_https() {
-        assert_eq!(normalize_base("dav.jianguoyun.com/dav/"), "https://dav.jianguoyun.com/dav/QuickSearch/");
+        assert_eq!(normalize_base("dav.jianguoyun.com/dav/"), "https://dav.jianguoyun.com/dav/QuickAchieve/");
         assert_eq!(normalize_base("nextcloud.example.com/webdav"), "https://nextcloud.example.com/webdav/");
         // 已经写了 http 的尊重用户，不擅自升级
         assert_eq!(normalize_base("http://x.com/dav/"), "http://x.com/dav/");
@@ -915,24 +915,24 @@ mod tests {
         assert_eq!(normalize_input(""), "");
     }
 
-    /// 兼容老配置：早期版本会把 `QuickSearch/` 一起写进 config，
+    /// 兼容老配置：早期版本会把 `QuickAchieve/` 一起写进 config，
     /// 读进来要还原成纯根地址 —— 否则设置页的输入框里会显示那一段，
     /// 用户以为必须手填（这正是用户反馈的问题）。
     #[test]
     fn legacy_baked_in_subdir_is_stripped_from_input() {
         assert_eq!(
-            normalize_input("https://dav.jianguoyun.com/dav/QuickSearch/"),
+            normalize_input("https://dav.jianguoyun.com/dav/QuickAchieve/"),
             "https://dav.jianguoyun.com/dav/"
         );
         // 剥掉之后，真正用的时候会再补回来 —— 最终地址一字不差
         assert_eq!(
-            normalize_base("https://dav.jianguoyun.com/dav/QuickSearch/"),
-            "https://dav.jianguoyun.com/dav/QuickSearch/"
+            normalize_base("https://dav.jianguoyun.com/dav/QuickAchieve/"),
+            "https://dav.jianguoyun.com/dav/QuickAchieve/"
         );
         // 同名目录但前面不是已知根地址 → 那是用户自己的路径，不许动
         assert_eq!(
-            normalize_input("https://my.server/dav/QuickSearch/"),
-            "https://my.server/dav/QuickSearch/"
+            normalize_input("https://my.server/dav/QuickAchieve/"),
+            "https://my.server/dav/QuickAchieve/"
         );
     }
 
@@ -941,7 +941,7 @@ mod tests {
     fn input_then_base_round_trips() {
         for raw in [
             "dav.jianguoyun.com/dav/",
-            "https://dav.jianguoyun.com/dav/QuickSearch/",
+            "https://dav.jianguoyun.com/dav/QuickAchieve/",
             "https://dav.jianguoyun.com/dav/我的备份/",
             "nextcloud.example.com/webdav",
         ] {
@@ -965,7 +965,7 @@ mod tests {
         };
         assert_eq!(
             o.target(),
-            "https://dav.jianguoyun.com/dav/QuickSearch/quicksearch-backup.json"
+            "https://dav.jianguoyun.com/dav/QuickAchieve/quickachieve-backup.json"
         );
     }
 
@@ -986,12 +986,12 @@ mod tests {
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
 <D:multistatus xmlns:D="DAV:">
   <D:response>
-    <D:href>/dav/QuickSearch/</D:href>
+    <D:href>/dav/QuickAchieve/</D:href>
     <D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop>
     <D:status>HTTP/1.1 200 OK</D:status></D:propstat>
   </D:response>
   <D:response>
-    <D:href>/dav/QuickSearch/quicksearch-backup.json</D:href>
+    <D:href>/dav/QuickAchieve/quickachieve-backup.json</D:href>
     <D:propstat><D:prop>
       <D:resourcetype/>
       <D:getcontentlength>2048</D:getcontentlength>
@@ -999,19 +999,19 @@ mod tests {
     </D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>
   </D:response>
   <D:response>
-    <D:href>/dav/QuickSearch/%E6%97%A7%E5%A4%87%E4%BB%BD.json</D:href>
+    <D:href>/dav/QuickAchieve/%E6%97%A7%E5%A4%87%E4%BB%BD.json</D:href>
     <D:propstat><D:prop><D:resourcetype/><D:getcontentlength>512</D:getcontentlength>
     <D:getlastmodified>Mon, 07 Nov 1994 08:49:37 GMT</D:getlastmodified>
     </D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>
   </D:response>
 </D:multistatus>"#;
-        let v = parse_multistatus(xml, "https://dav.jianguoyun.com/dav/QuickSearch/")
+        let v = parse_multistatus(xml, "https://dav.jianguoyun.com/dav/QuickAchieve/")
             .expect("207 应该能解析");
         assert_eq!(v.len(), 2, "目录自身不该出现在列表里：{v:?}");
         // 新的排前面
         assert_eq!(v[0].name, "旧备份.json", "中文名要 URL 解码：{:?}", v[0].name);
         assert_eq!(v[0].size, 512);
-        assert_eq!(v[1].name, "quicksearch-backup.json");
+        assert_eq!(v[1].name, "quickachieve-backup.json");
         assert_eq!(v[1].size, 2048);
         assert_eq!(v[1].mtime, 784111777);
     }
@@ -1033,7 +1033,7 @@ mod tests {
     #[test]
     fn download_named_refuses_path_traversal() {
         let o = Opts {
-            url: "https://dav.jianguoyun.com/dav/QuickSearch/".into(),
+            url: "https://dav.jianguoyun.com/dav/QuickAchieve/".into(),
             user: String::new(),
             pass: String::new(),
             timeout_secs: 5,
@@ -1057,16 +1057,16 @@ mod tests {
     fn newest_first_falls_back_to_name_desc_when_mtime_missing() {
         let mk = |n: &str| Backup { name: n.to_string(), size: 0, mtime: 0 };
         let mut v = vec![
-            mk("config(2026-10-12 10-00-01).QuickSearch"),
-            mk("config(2026-10-12 10-00-12).QuickSearch"),
-            mk("config(2026-10-12 10-00-05).QuickSearch"),
+            mk("config(2026-10-12 10-00-01).QuickAchieve"),
+            mk("config(2026-10-12 10-00-12).QuickAchieve"),
+            mk("config(2026-10-12 10-00-05).QuickAchieve"),
         ];
         sort_newest_first(&mut v);
         assert_eq!(
-            v[0].name, "config(2026-10-12 10-00-12).QuickSearch",
+            v[0].name, "config(2026-10-12 10-00-12).QuickAchieve",
             "没给时间时，名字最大的（= 最新的）必须排最前"
         );
-        assert_eq!(v[2].name, "config(2026-10-12 10-00-01).QuickSearch");
+        assert_eq!(v[2].name, "config(2026-10-12 10-00-01).QuickAchieve");
 
         // 有时间时一律以时间为准，名字不参与
         let mut w = vec![

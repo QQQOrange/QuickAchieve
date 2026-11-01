@@ -21,7 +21,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round29-probe.txt');
 
 const user32 = koffi.load('user32.dll');
@@ -72,7 +72,7 @@ function wins() {
     koffi.unregister(cb);
     return out;
 }
-const barRect = () => { const w = wins().find((x) => x.title === 'QuickSearchBar'); return w ? w.rect : null; };
+const barRect = () => { const w = wins().find((x) => x.title === 'QuickAchieveBar'); return w ? w.rect : null; };
 const waitBar = (ms) => {
     const t0 = Date.now();
     while (Date.now() - t0 < (ms || 10000)) { const r = barRect(); if (r && r[2] > 0) return r; sleep(120); }
@@ -192,7 +192,7 @@ const instances = [];
 
     /* ---------- 实例工厂（同轮 28：APPDATA 必须是配置目录本身） ---------- */
     function makeConf(dir, extra) {
-        const qs = path.join(dir, 'QuickSearch');
+        const qs = path.join(dir, 'QuickAchieve');
         fs.mkdirSync(qs, { recursive: true });
         const c = Object.assign({
             trigger_copy: false, trigger_select: false, ocr_enable: false,

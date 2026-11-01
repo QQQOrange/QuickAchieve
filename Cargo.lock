@@ -2253,8 +2253,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
-name = "qs-hw"
-version = "2.14.1"
+name = "qa-macros"
+version = "2.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "quick-achieve"
+version = "2.15.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2268,7 +2277,7 @@ dependencies = [
  "open",
  "ort",
  "pollster 0.3.0",
- "qs-macros",
+ "qa-macros",
  "rand",
  "raw-window-handle",
  "rfd",
@@ -2282,15 +2291,6 @@ dependencies = [
  "windows-core",
  "windows-future",
  "wry",
-]
-
-[[package]]
-name = "qs-macros"
-version = "2.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]

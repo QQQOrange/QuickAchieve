@@ -27,7 +27,7 @@
  *      全关，免得这个实例对用户正在敲的键鼠有反应。
  *    · 唯一用到的全局输入是 **Ctrl+Alt+F**（收藏夹全局快捷键）——
  *      它是"弹横条"唯一的外部入口（show_bar 不是 Tauri 命令）。
- *      取证前已确认本机没有别的 QuickSearch.exe 在跑，不会有第二个实例跟着响应。
+ *      取证前已确认本机没有别的 QuickAchieve.exe 在跑，不会有第二个实例跟着响应。
  *    · ⑦ 的"视频画面"用 msedge --app 加载一张 **整幅无主色** 的噪声页代替：
  *      页面自己算好「平均色 + 5bit 量化主色占比」POST 回探针，作为对照基准。
  *
@@ -42,7 +42,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'fav-round18-probe.txt');
 const PORT = 9342;
 const STATS_PORT = 9360;
@@ -273,7 +273,7 @@ async function forceFocus(ws) {
 /* ============================================================================ */
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r18-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const mkItem = (id, t, r) => ({ id, kind: 'text', text: t, html: '', image: '', remark: r });
     const sub = (id, name, n) => ({
@@ -283,7 +283,7 @@ async function forceFocus(ws) {
     });
     const INJECT_TEXT = '轮18注入用例-ABC123';
     {
-        const c = JSON.parse(fs.readFileSync(path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+        const c = JSON.parse(fs.readFileSync(path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         c.trigger_select = false; c.trigger_copy = false; c.ocr_enable = false;
         c.auto_start = false;

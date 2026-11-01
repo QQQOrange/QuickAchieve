@@ -12,7 +12,7 @@
  *    于是屏幕中间一大片区域被它「隔着」判成"在 OCR 窗里划选"，
  *    哪怕它已经被别的窗口盖住 / 已经最小化 —— 横条一律不弹。
  *
- *  判据：QuickSearch 自己的日志
+ *  判据：QuickAchieve 自己的日志
  *    · trySelect=true  + start_capture: 编辑控件 通道拿到 N chars
  *    · after-show: visible=true
  *
@@ -25,7 +25,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'select-bar-probe.txt');
 
 const user32 = koffi.load('user32.dll');
@@ -125,7 +125,7 @@ function chk(name, cond, detail) {
 const info = (n, d) => rec('  INFO  ' + n + (d ? '   [' + d + ']' : ''));
 
 /* ------------------------------ 目标软件窗口 ------------------------------ */
-const EDIT_TEXT = 'Quick Search 选中即弹出横条：这是一段用来验证取词稳定性的中文测试文本。';
+const EDIT_TEXT = 'Quick Achieve 选中即弹出横条：这是一段用来验证取词稳定性的中文测试文本。';
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
 const CLS = 'QSSelectBarTarget';
@@ -186,7 +186,7 @@ function dragSelect(hwnd, y, ax, bx) {
 
 /* ------------------------------ 隔离实例 ------------------------------ */
 const SANDBOX = path.join(os.tmpdir(), 'qs-selectbar-' + process.pid);
-const QS = path.join(SANDBOX, 'QuickSearch');
+const QS = path.join(SANDBOX, 'QuickAchieve');
 const LOG = path.join(QS, 'log.txt');
 
 let child = null;

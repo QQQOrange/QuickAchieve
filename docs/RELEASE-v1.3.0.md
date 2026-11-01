@@ -1,4 +1,4 @@
-# Quick Search v1.3.0 发布说明
+# Quick Achieve v1.3.0 发布说明
 
 > 发布日期：2026-10-20
 > 上个版本：v1.2.2
@@ -158,8 +158,8 @@ v1.2.2 为了把空闲 CPU 从 27% 压下去，我把**实时抓屏**这一路�
 
 ## 安装
 
-单文件，无需任何运行时，覆盖旧的 `QuickSearch.exe` 即可。
-配置与图标都在 `%APPDATA%\QuickSearch`，不会丢。
+单文件，无需任何运行时，覆盖旧的 `QuickAchieve.exe` 即可。
+配置与图标都在 `%APPDATA%\QuickAchieve`，不会丢。
 
 > 已在用 v1.2.x 的话：打开软件就会看到更新提示（自动更新是 v1.2.0 起的功能），
 > 点一下即可。**如果你正用 v1.2.2 且觉得滚动时玻璃卡顿，这一版就是为你修的。**
@@ -170,7 +170,7 @@ v1.2.2 为了把空闲 CPU 从 27% 压下去，我把**实时抓屏**这一路�
 
 模型**不随本版本上传**。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 程序会自己去那里下载（设置 → 通用 → AI 抠图 → 点某个模型的「下载」），
 不需要你手动找。不打开这个功能就一个都不下。
@@ -180,7 +180,7 @@ v1.2.2 为了把空闲 CPU 从 27% 压下去，我把**实时抓屏**这一路�
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.32 MB (12917760 字节)
 MD5:    05CA063E8A2220E84CCBE1E8E13D7A0D
 SHA256: 990A88FFF7696AD83EE67C39D477B910565505135E816FCFB2F1CC3B939C69F9

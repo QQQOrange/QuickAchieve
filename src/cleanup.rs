@@ -46,13 +46,13 @@ pub fn substance_digest_of_text(text: &str) -> Option<u64> {
         .map(|v| substance_digest(&v))
 }
 
-/// 新式的「恢复前快照」：`config.before-webdav(时间).QuickSearch`
-/// 和 v1.4.1 起的 `config.before-restore(时间).QuickSearch`。
+/// 新式的「恢复前快照」：`config.before-webdav(时间).QuickAchieve`
+/// 和 v1.4.1 起的 `config.before-restore(时间).QuickAchieve`。
 ///
 /// ⚠ 必须认全 `config.before-` 前缀：只认 webdav 的话，用户每次点备份清单
 /// 恢复一次就多一个 `before-restore` 文件，永远不参与"只留最近 N 份"的裁剪。
 fn is_new_snapshot(name: &str) -> bool {
-    name.starts_with("config.before-") && name.ends_with(").QuickSearch")
+    name.starts_with("config.before-") && crate::config::backup_name_has_ext(name)
 }
 
 /// 老版本留下的、现在没人管的名字。
@@ -64,7 +64,7 @@ fn is_legacy_file(name: &str) -> bool {
         // 老快照固定名 / 老式带序号快照
         || (name.starts_with("config.before-webdav") && !is_new_snapshot(name))
         // 统一命名之前的固定云端文件名
-        || (name.starts_with("quicksearch-backup") && name.ends_with(".json"))
+        || (name.starts_with("quickachieve-backup") && name.ends_with(".json"))
 }
 
 /// 损坏留档：`preserve_broken` 写出来的 `config.json.bad-0` … `.bad-8`。
@@ -445,31 +445,31 @@ mod tests {
         for n in ["config.json", "last-backup.txt", "log.txt"] {
             assert!(is_protected(n), "{n} 必须在保护名单里");
         }
-        assert!(!is_protected("config(2026-10-13 09-55-03).QuickSearch"));
+        assert!(!is_protected("config(2026-10-13 09-55-03).QuickAchieve"));
     }
 
     #[test]
     fn legacy_detection_does_not_swallow_new_names() {
         // 新名字是「恢复前快照」，归 ② 管，不能被当成遗留垃圾删掉
-        assert!(!is_legacy_file("config.before-webdav(2026-10-13 10-57-15).QuickSearch"));
+        assert!(!is_legacy_file("config.before-webdav(2026-10-13 10-57-15).QuickAchieve"));
         // 老名字要认出来
         assert!(is_legacy_file("config.before-webdav-3.json"));
         assert!(is_legacy_file("config.json.bak"));
-        assert!(is_legacy_file("quicksearch-backup(2026-10-12 10-00-00).json"));
+        assert!(is_legacy_file("quickachieve-backup(2026-10-12 10-00-00).json"));
         // 正常的备份不是遗留
-        assert!(!is_legacy_file("config(2026-10-13 09-55-03).QuickSearch"));
-        assert!(!is_legacy_file("config.auto(2026-10-13 11-36-42).QuickSearch"));
+        assert!(!is_legacy_file("config(2026-10-13 09-55-03).QuickAchieve"));
+        assert!(!is_legacy_file("config.auto(2026-10-13 11-36-42).QuickAchieve"));
     }
 
     #[test]
     fn broken_only_catches_unreadable_backups() {
         let dir = std::env::temp_dir().join("qs_cleanup_test_broken");
         let _ = std::fs::create_dir_all(&dir);
-        let ok = dir.join("config(2026-10-13 09-00-00).QuickSearch");
+        let ok = dir.join("config(2026-10-13 09-00-00).QuickAchieve");
         std::fs::write(&ok, r#"{"bar_list":["百度"]}"#).unwrap();
-        let empty = dir.join("config(2026-10-13 09-00-01).QuickSearch");
+        let empty = dir.join("config(2026-10-13 09-00-01).QuickAchieve");
         std::fs::write(&empty, "").unwrap();
-        let junk = dir.join("config(2026-10-13 09-00-02).QuickSearch");
+        let junk = dir.join("config(2026-10-13 09-00-02).QuickAchieve");
         std::fs::write(&junk, "这不是配置也不是加密体").unwrap();
 
         let rep = scan(std::slice::from_ref(&dir), "", &HashSet::new());
@@ -489,7 +489,7 @@ mod tests {
         for (i, size) in [(1, 10), (2, 20), (3, 30)] {
             let body = format!(r#"{{"barList":["百度"],"favPanelSizes":{{"a":{size}}}}}"#);
             std::fs::write(
-                dir.join(format!("config(2026-10-13 09-00-0{i}).QuickSearch")),
+                dir.join(format!("config(2026-10-13 09-00-0{i}).QuickAchieve")),
                 body,
             )
             .unwrap();
@@ -516,7 +516,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         for i in 1..=6 {
             std::fs::write(
-                dir.join(format!("config.before-webdav(2026-10-13 1{i}-00-00).QuickSearch")),
+                dir.join(format!("config.before-webdav(2026-10-13 1{i}-00-00).QuickAchieve")),
                 "{}",
             )
             .unwrap();

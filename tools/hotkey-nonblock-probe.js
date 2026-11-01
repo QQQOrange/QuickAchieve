@@ -9,7 +9,7 @@
  *  修法：整段搬进 `fire_hotkey_engine`，命令只负责 spawn。
  *
  *  这里用**隔离实例自己**当那个「绑定应用」（不牵扯任何外部软件）：
- *    · `app_running(QuickSearch.exe)` = true（就是自己），不会真的再拉一个；
+ *    · `app_running(QuickAchieve.exe)` = true（就是自己），不会真的再拉一个；
  *    · 但 `app_bring_front: true` 会让它走**抢焦点重试**那条路（最多 1.2 秒）——
  *      正是我们要量的那段。
  *
@@ -25,7 +25,7 @@ const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const EXE = process.env.QS_E2E_EXE
     ? process.env.QS_E2E_EXE
-    : path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+    : path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const CDP_PORT = 9355;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=' + CDP_PORT;
@@ -86,7 +86,7 @@ async function connect(sub, timeoutMs) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-hotkey-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
 
     const conf = {

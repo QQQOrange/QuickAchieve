@@ -1,4 +1,4 @@
-# Quick Search v1.4.0 发布说明
+# Quick Achieve v1.4.0 发布说明
 
 > 发布日期：2026-10-22
 > 上个版本：v1.3.10
@@ -10,17 +10,17 @@
 
 ```text
 D:\software\myself\
-├─ QuickSearch.exe
-├─ Quick search data\        ← 配置 / 图标 / 日志 / AI 模型
-└─ QuickSearch back\         ← 所有备份（滚动 + 立即备份 + 同步前快照）
+├─ QuickAchieve.exe
+├─ Quick Achieve data\        ← 配置 / 图标 / 日志 / AI 模型
+└─ Quick Achieve back\         ← 所有备份（滚动 + 立即备份 + 同步前快照）
 ```
 
-原话：「这个软件的所有数据都要保存在软件所在的文件夹当中，命名为 Quick search data，
-所有备份的文件也要备份在这个文件夹里面，文件夹的名字叫做 quicksearch back」。
+原话：「这个软件的所有数据都要保存在软件所在的文件夹当中，命名为 Quick Achieve data，
+所有备份的文件也要备份在这个文件夹里面，文件夹的名字叫做 quickachieve back」。
 
 - **便携**：整个文件夹拷到别的电脑（同一盘符/路径）就能接着用，不再往 `%APPDATA%` 写东西。
 - **兜底**：如果 exe 放在 `Program Files` 这类没有写权限的位置，会自动退回
-  `%APPDATA%\QuickSearch` 并在日志里说明 —— 不会因为"写不进去"直接罢工。
+  `%APPDATA%\QuickAchieve` 并在日志里说明 —— 不会因为"写不进去"直接罢工。
 - 想自己指定数据目录：设环境变量 `QS_DATA_DIR=<路径>`。
 
 ### 老用户的数据怎么过来的
@@ -30,9 +30,9 @@ D:\software\myself\
 1. 用老目录自己的钥匙读出老配置（明文 / 密码信封 / DPAPI 信封都认）；
 2. 写进新目录（顺手把主文件、`backup.key`、每一份备份都换成加密形态）；
 3. 图标目录、模型目录整目录搬（同盘是 rename，瞬时）；
-4. 33 份历史备份逐个重新封装后放进 `QuickSearch back`（明文备份不会原样搬）；
+4. 33 份历史备份逐个重新封装后放进 `Quick Achieve back`（明文备份不会原样搬）；
 5. **回读校验**：新目录读回来的配置和老配置逐字段比一次；
-6. 只有第 5 步通过，才删掉 `%APPDATA%\QuickSearch`。
+6. 只有第 5 步通过，才删掉 `%APPDATA%\QuickAchieve`。
 
 任何一步失败都**不删旧目录**，日志里会写清差异字段（只写字段名，不写值）。
 本次实测：`备份搬了 33 份、跳过 0 份；旧目录已删除`。
@@ -47,12 +47,12 @@ D:\software\myself\
 
 | 文件 | 加密方式 | 说明 |
 |---|---|---|
-| `Quick search data\config.json` | 备份密码（AES-256-GCM + Argon2id） | 主配置。以前是明文 |
-| `QuickSearch back\config(...).QuickSearch` | 备份密码 | 立即备份 |
-| `QuickSearch back\config.auto(...).QuickSearch` | 备份密码 | 滚动备份。以前没密码时是明文 |
-| `QuickSearch back\config.before-webdav(...)` | 备份密码 | 同步前快照。以前是明文 |
+| `Quick Achieve data\config.json` | 备份密码（AES-256-GCM + Argon2id） | 主配置。以前是明文 |
+| `Quick Achieve back\config(...).QuickAchieve` | 备份密码 | 立即备份 |
+| `Quick Achieve back\config.auto(...).QuickAchieve` | 备份密码 | 滚动备份。以前没密码时是明文 |
+| `Quick Achieve back\config.before-webdav(...)` | 备份密码 | 同步前快照。以前是明文 |
 | `config.json.bad-N`（坏文件留档） | 备份密码 | 以前是明文 |
-| `Quick search data\backup.key` | **DPAPI** | 密码的存档。以前是一行明文密码 |
+| `Quick Achieve data\backup.key` | **DPAPI** | 密码的存档。以前是一行明文密码 |
 | WebDAV 云端 / 手动导出 | 备份密码 | 以前没密码时会明文上传 |
 | `log.txt` | 不加密，但**不含用户数据** | 见下 |
 
@@ -74,9 +74,9 @@ D:\software\myself\
 
 ### 例外（说清楚，不藏）
 
-1. **自定义图标**（`Quick search data\icons\*.png`）按你的选择保持图片文件。
+1. **自定义图标**（`Quick Achieve data\icons\*.png`）按你的选择保持图片文件。
    PNG 是图片不是明文文本，但**文件名**（比如 `微信截图.png`）能看出你换过哪些图标。
-2. **识图结果页**（`%TEMP%\QuickSearch\img\*.html`）和临时截图是**必须明文**的
+2. **识图结果页**（`%TEMP%\QuickAchieve\img\*.html`）和临时截图是**必须明文**的
    —— 要交给浏览器打开。它们在系统临时目录，用完即清（截图不落盘）。
 3. 设置页那个「导出为明文（可分享）」是**你主动点的**导出，目标位置由你选，
    不属于"程序自己存的数据"。
@@ -92,8 +92,8 @@ D:\software\myself\
     两家 OCR 的 key）在新目录 + 备份目录里做**明文检索：0 命中**
   - 启动后 `bar=7`（你的横条排列 7 项）、引擎 770 条 —— 配置完整
 - 版本号 1.3.10 → 1.4.0（Cargo.toml / tauri.conf.json / package.json / package-lock.json）
-- 交付：`D:\software\myself\QuickSearch.exe`（13,049,344 字节），
-  旧版备份 `QuickSearch.v1.3.8.bak.exe`
+- 交付：`D:\software\myself\QuickAchieve.exe`（13,049,344 字节），
+  旧版备份 `QuickAchieve.v1.3.8.bak.exe`
 
 更新包校验（SHA256）：`0A96730EB91756C14AB7426CC36A54EB3AF91B8E3CEBD59043E6F814B5F16FEA`
 

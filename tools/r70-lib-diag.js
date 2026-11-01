@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9414;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=' + PORT;
@@ -52,10 +52,10 @@ async function connect(sub, ms) {
 }
 
 (async () => {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(900);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r70-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, bar_list: ['百度', 'Google'],

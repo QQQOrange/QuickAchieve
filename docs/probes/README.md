@@ -1,6 +1,6 @@
 # 探针（真机验证脚本）
 
-本目录的脚本用来在**真实的 Windows 环境**里验证 QuickSearch 的行为。它们不是单元
+本目录的脚本用来在**真实的 Windows 环境**里验证 QuickAchieve 的行为。它们不是单元
 测试的替代品，而是补单元测试测不到的那一层：真实 WebView2 渲染、真实窗口焦点、
 真实的系统钩子与剪贴板。
 
@@ -58,12 +58,12 @@
 - 探针日志落在 `tools/probe-out/`，截图证据在 `docs/evidence/`。
 - **这两个目录不入版本控制**（`.gitignore` 已排除）：它们体积 38MB，且重跑探针
   就能再生成。需要追溯历史实测结果时，去
-  `D:\Local AI\git\QuickSearch-evidence-archive`（r1 ~ r78 的归档）。
+  `D:\Local AI\git\QuickAchieve-evidence-archive`（r1 ~ r78 的归档）。
 - 探针每次运行都会**重建**这两个目录，所以本地随时可以清空。
 
 ## 运行前提
 
-- 已 `cargo build --release`（探针跑 `target/release/QuickSearch.exe`）。
+- 已 `cargo build --release`（探针跑 `target/release/QuickAchieve.exe`）。
 - Node 18+（用到 `fetch`、`WebSocket` 全局）。
 - PowerShell 5.1 存在（部分脚本用它做进程树统计）。
 

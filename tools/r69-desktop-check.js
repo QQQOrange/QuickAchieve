@@ -1,13 +1,13 @@
 /* 决定性验证：跑**桌面上那个 exe**（不是 target/release 那个），看 UI 到底是新是旧。
- * 之前所有探针都跑 target/release/QuickSearch.exe —— 如果那份和桌面那份不是同一份
+ * 之前所有探针都跑 target/release/QuickAchieve.exe —— 如果那份和桌面那份不是同一份
  * （或嵌入的 UI 资源没跟着刷新），我验的就不是你看到的东西。 */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const DESKTOP = path.join(process.env.USERPROFILE || 'C:\\Users\\64381', 'Desktop', 'QuickSearch.exe');
-const EXE = fs.existsSync(DESKTOP) ? DESKTOP : path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const DESKTOP = path.join(process.env.USERPROFILE || 'C:\\Users\\64381', 'Desktop', 'QuickAchieve.exe');
+const EXE = fs.existsSync(DESKTOP) ? DESKTOP : path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r69-desktop-check.txt');
 const PORT = 9415;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -62,7 +62,7 @@ async function connect(sub, ms) {
     rec('桌面文件 MD5：' + (fs.existsSync(DESKTOP) ? require('crypto').createHash('md5').update(fs.readFileSync(DESKTOP)).digest('hex').toUpperCase() : '(不在)'));
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-dt-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, bar_list: ['百度'],

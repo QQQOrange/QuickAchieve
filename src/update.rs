@@ -33,7 +33,7 @@
 //! 之外的更实用的一招：**先把自己改名、再把新的放进来**。
 //!
 //! 具体步骤（`apply_update`）：
-//!   1. 新 exe 先下到 `<旧 exe 同目录>/QuickSearch.exe.new`（**必须同目录**，
+//!   1. 新 exe 先下到 `<旧 exe 同目录>/QuickAchieve.exe.new`（**必须同目录**，
 //!      跨盘 rename 会失败）；
 //!   2. 校验 SHA256（对不上就当失败删掉，绝不放一个坏程序上去）；
 //!   3. `MoveFileExW(当前exe → 当前exe.old)` —— 运行中的 exe **允许被改名**
@@ -48,13 +48,13 @@
 use std::path::{Path, PathBuf};
 
 /// 本项目的 GitHub 仓库（`owner/repo`）—— 查更新与「关于」页链接共用。
-pub const REPO: &str = "QQQOrange/QuickSearch";
+pub const REPO: &str = "QQQOrange/QuickAchieve";
 
 /// 仓库主页（「关于」页那颗按钮点开的地址）。
-pub const REPO_URL: &str = "https://github.com/QQQOrange/QuickSearch";
+pub const REPO_URL: &str = "https://github.com/QQQOrange/QuickAchieve";
 
 /// Releases 页（版本说明里告诉用户"模型在哪下"用的地址）。
-pub const RELEASES_URL: &str = "https://github.com/QQQOrange/QuickSearch/releases";
+pub const RELEASES_URL: &str = "https://github.com/QQQOrange/QuickAchieve/releases";
 
 /// 备用下载源：`api.github.com` 上的资产入口。
 ///
@@ -210,7 +210,7 @@ fn agent() -> ureq::Agent {
         .resolver(crate::net::ipv4_first)
         .timeout(std::time::Duration::from_secs(TIMEOUT_SECS))
         // GitHub API 对没有 UA 的请求会拒（403）。这个 UA 是"我们是谁"的最小声明。
-        .user_agent(concat!("QuickSearch/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("QuickAchieve/", env!("CARGO_PKG_VERSION")))
         .build()
 }
 
@@ -381,7 +381,7 @@ fn latest_tag() -> Result<String, String> {
         //   不挂它就要先白等一次 IPv6 超时，用户看到的是"检查更新半天没反应"。
         .resolver(crate::net::ipv4_first)
         .timeout(std::time::Duration::from_secs(TIMEOUT_SECS))
-        .user_agent(concat!("QuickSearch/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("QuickAchieve/", env!("CARGO_PKG_VERSION")))
         // 不跟随重定向：我们要的就是那个 Location
         .redirects(0)
         .build();
@@ -797,7 +797,7 @@ fn info_from_api(
         .unwrap_or(RELEASES_URL)
         .to_string();
 
-    /* 挑更新包：资产名**恒为 QuickSearch.exe**（见 PUSH-GUIDE 的上传步骤）。
+    /* 挑更新包：资产名**恒为 QuickAchieve.exe**（见 PUSH-GUIDE 的上传步骤）。
      * 有新版却挑不到就报错 —— 不能给用户一个"有新版但没有下载地址"的状态
      * （没新版时 url 空着是正常的，界面根本不会展示下载入口）。 */
     let mut url = String::new();
@@ -806,7 +806,7 @@ fn info_from_api(
     if let Some(assets) = v.get("assets").and_then(|x| x.as_array()) {
         for a in assets {
             let name = a.get("name").and_then(|x| x.as_str()).unwrap_or("");
-            if name.eq_ignore_ascii_case("QuickSearch.exe") {
+            if name.eq_ignore_ascii_case("QuickAchieve.exe") {
                 url = a
                     .get("browser_download_url")
                     .and_then(|x| x.as_str())
@@ -819,7 +819,7 @@ fn info_from_api(
         }
     }
     if newer && url.is_empty() {
-        return Err(format!("{tag} 这个版本里没有 QuickSearch.exe 更新包"));
+        return Err(format!("{tag} 这个版本里没有 QuickAchieve.exe 更新包"));
     }
     /* 备用源：拿得到 id 才拼得出来。假服务 / 很老的响应可能没有 id，
      * 那就只有主源一条路（`download()` 照常工作，只是少了保险）。 */
@@ -919,7 +919,7 @@ fn download_agent() -> ureq::Agent {
         .timeout_connect(std::time::Duration::from_secs(8))
         .timeout_read(std::time::Duration::from_secs(60))
         .timeout_write(std::time::Duration::from_secs(60))
-        .user_agent(concat!("QuickSearch/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("QuickAchieve/", env!("CARGO_PKG_VERSION")))
         .build()
 }
 
@@ -1148,7 +1148,7 @@ fn fetch_into(
     verify_file(path, info).map_err(DlFail::Drop)
 }
 
-/// 下载更新包到 `<exe 同目录>/QuickSearch.exe.new`，返回落地路径。
+/// 下载更新包到 `<exe 同目录>/QuickAchieve.exe.new`，返回落地路径。
 ///
 /// `progress(已下, 总)`：给前端画进度条用（和模型下载同一个套路）。
 ///
@@ -1178,7 +1178,7 @@ pub fn download(
         .parent()
         .ok_or_else(|| "程序路径没有父目录？".to_string())?
         .to_path_buf();
-    let new_path = dir.join("QuickSearch.exe.new");
+    let new_path = dir.join("QuickAchieve.exe.new");
 
     let srcs = sources(info);
     if srcs.is_empty() {
@@ -1243,11 +1243,11 @@ pub fn apply_update() -> Result<PathBuf, String> {
         .parent()
         .ok_or_else(|| "程序路径没有父目录？".to_string())?
         .to_path_buf();
-    let new_path = dir.join("QuickSearch.exe.new");
+    let new_path = dir.join("QuickAchieve.exe.new");
     if !new_path.exists() {
         return Err("还没有下载好更新包".to_string());
     }
-    let old_path = dir.join("QuickSearch.exe.old");
+    let old_path = dir.join("QuickAchieve.exe.old");
     // 上一轮如果留下过 .old（更新过两次），先尽力清掉；清不掉也无妨
     let _ = std::fs::remove_file(&old_path);
 
@@ -1307,7 +1307,7 @@ pub fn apply_update() -> Result<PathBuf, String> {
     Ok(old_path)
 }
 
-/// 清理上次更新留下的 `QuickSearch.exe.old`（**启动时**调）。
+/// 清理上次更新留下的 `QuickAchieve.exe.old`（**启动时**调）。
 ///
 /// 为什么放到启动时：替换那一刻旧 exe 还被本进程占着，删不掉；
 /// 下次启动时它已经不被占用了，才能删掉。删不掉也只是留一个文件，
@@ -1327,8 +1327,8 @@ pub fn sweep_leftovers() -> usize {
                 continue;
             };
             // 只认我们自己的两个残留名，别误删用户目录里的别的东西
-            let is_ours = name.eq_ignore_ascii_case("QuickSearch.exe.old")
-                || name.eq_ignore_ascii_case("QuickSearch.exe.new");
+            let is_ours = name.eq_ignore_ascii_case("QuickAchieve.exe.old")
+                || name.eq_ignore_ascii_case("QuickAchieve.exe.new");
             if is_ours && std::fs::remove_file(&p).is_ok() {
                 n += 1;
                 crate::win::log(&format!("update: 已清理残留 {}", p.display()));
@@ -1397,7 +1397,7 @@ mod tests {
     #[test]
     fn 下载源主备顺序() {
         let mut i = dl_info();
-        i.url = "https://github.com/o/r/releases/download/v1/QuickSearch.exe".into();
+        i.url = "https://github.com/o/r/releases/download/v1/QuickAchieve.exe".into();
         i.asset_api_url = "https://api.github.com/repos/o/r/releases/assets/42".into();
         let s = sources(&i);
         assert_eq!(s.len(), 2, "两条路都要留着");
@@ -1447,7 +1447,7 @@ mod tests {
         std::env::remove_var("QS_GITHUB_ASSET_API");
     }
 
-    /// 两个下载测试都会写 `<exe 同目录>/QuickSearch.exe.new`，
+    /// 两个下载测试都会写 `<exe 同目录>/QuickAchieve.exe.new`，
     /// 并行跑会互相覆盖 —— 用一把锁串起来。
     static DL_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -1534,7 +1534,7 @@ mod tests {
         let (port, hits) = spawn_flaky_server(body.clone(), cut);
 
         let mut info = dl_info();
-        info.url = format!("http://127.0.0.1:{port}/QuickSearch.exe");
+        info.url = format!("http://127.0.0.1:{port}/QuickAchieve.exe");
         info.size = body.len() as u64;
         info.sha256 = want_sha;
 
@@ -1563,11 +1563,11 @@ mod tests {
         info.sha256 = format!("{:X}", sha2::Sha256::digest(&body));
 
         let exe = std::env::current_exe().unwrap();
-        let p = exe.parent().unwrap().join("QuickSearch.exe.new");
+        let p = exe.parent().unwrap().join("QuickAchieve.exe.new");
         std::fs::write(&p, &body).unwrap();
 
         // 一个**必然连不上**的地址：如果它还去下载，就会失败
-        info.url = "http://127.0.0.1:1/QuickSearch.exe".into();
+        info.url = "http://127.0.0.1:1/QuickAchieve.exe".into();
         let got = download(&info, &mut |_, _| {});
         assert!(got.is_ok(), "断点已经完整时应当直接通过，不该真的去下载");
         assert_eq!(std::fs::read(&p).unwrap(), body);
@@ -1598,7 +1598,7 @@ mod tests {
          * 这正是「能检测到新版、却下载不下来」的机械原因。 */
         info.asset_api_url = asset_api(673_052_494);
         info.url =
-            "https://github.com/QQQOrange/QuickSearch/releases/download/v1.5.10/QuickSearch.exe"
+            "https://github.com/QQQOrange/QuickAchieve/releases/download/v1.5.10/QuickAchieve.exe"
                 .into();
         info.size = 13_415_936;
         info.sha256 = "8723CDCFE6F00DFEDC744ADE15973D03FE1D0BA998B883C7FBBA1232F452AF35".into();
@@ -1629,13 +1629,13 @@ mod tests {
         let _g = DL_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         let exe = std::env::current_exe().unwrap();
-        let p = exe.parent().unwrap().join("QuickSearch.exe.new");
+        let p = exe.parent().unwrap().join("QuickAchieve.exe.new");
         std::fs::write(&p, Vec::<u8>::new()).unwrap();
 
         // 造一个"已经下了 5MB"的断点（内容用 Range 从真服务取，保证前缀正确）
         let a = download_agent();
         let url =
-            "https://github.com/QQQOrange/QuickSearch/releases/download/v1.5.10/QuickSearch.exe";
+            "https://github.com/QQQOrange/QuickAchieve/releases/download/v1.5.10/QuickAchieve.exe";
         let mut r = a
             .get(url)
             .set("Range", "bytes=0-5242879")
@@ -1745,10 +1745,10 @@ mod tests {
         let v = serde_json::json!({
             "tag_name": "v9.9.9",
             "body": format!("修复若干\nSHA256: {sha}"),
-            "html_url": "https://github.com/QQQOrange/QuickSearch/releases/tag/v9.9.9",
+            "html_url": "https://github.com/QQQOrange/QuickAchieve/releases/tag/v9.9.9",
             "assets": [
                 { "name": "other.zip", "size": 9, "browser_download_url": "https://x/other.zip" },
-                { "name": "QuickSearch.exe", "size": 123, "browser_download_url": "https://x/QuickSearch.exe" }
+                { "name": "QuickAchieve.exe", "size": 123, "browser_download_url": "https://x/QuickAchieve.exe" }
             ]
         });
         let info = info_from_api(&v, "1.0.0", true).expect("应当能拼出来");
@@ -1756,7 +1756,7 @@ mod tests {
         assert_eq!(info.tag, "v9.9.9");
         assert!(info.newer);
         assert!(info.authed, "令牌状态要传给前端");
-        assert_eq!(info.url, "https://x/QuickSearch.exe", "只认 exe 资产");
+        assert_eq!(info.url, "https://x/QuickAchieve.exe", "只认 exe 资产");
         assert_eq!(info.size, 123);
         assert_eq!(info.sha256, sha);
         assert!(info.auth_warning.is_none());

@@ -21,7 +21,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -102,8 +102,8 @@ async function freePort() {
     /* ══ 2. 缺 dll 能启动（load-dynamic）══ */
     rec('══ 2. 没有 dll 也能正常启动（load-dynamic 生效）══');
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80g-'));
-    fs.copyFileSync(EXE, path.join(tmp, 'QuickSearch.exe'));
-    const qs = path.join(tmp, 'QuickSearch');
+    fs.copyFileSync(EXE, path.join(tmp, 'QuickAchieve.exe'));
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true }, null, 1), 'utf8');
     check('2a 拷贝到干净目录后没有 dll', !fs.existsSync(path.join(tmp, 'onnxruntime.dll')));
@@ -119,7 +119,7 @@ async function freePort() {
             WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2'),
             QS_T_WV_ARGS: WV_BASE + (await freePort()),
         });
-        proc = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
+        proc = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
         await sleep(12000);
         const alive = proc.exitCode === null;
         check('2b 没有 dll 时进程仍然存活', alive, 'exitCode=' + proc.exitCode);
@@ -144,7 +144,7 @@ async function freePort() {
         WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2b'),
         QS_T_WV_ARGS: WV_BASE + PORT,
     });
-    let proc2 = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env: env2, cwd: tmp, stdio: 'ignore' });
+    let proc2 = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env: env2, cwd: tmp, stdio: 'ignore' });
     try {
         const sw = await connect('settings.html');
         check('3a 设置页起来了', !!sw);
@@ -191,7 +191,7 @@ async function freePort() {
             WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2c'),
             QS_T_WV_ARGS: WV_BASE + PORT,
         });
-        const proc3 = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env: env3, cwd: tmp, stdio: 'ignore' });
+        const proc3 = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env: env3, cwd: tmp, stdio: 'ignore' });
         try {
             const sw = await connect('settings.html');
             if (sw) {

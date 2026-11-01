@@ -1,7 +1,7 @@
 /* ============================================================================
  *  r75：内存 A/B 探针（同一台机器、同一套口径，对比两个 exe）
  *
- *  为什么要 A/B：QuickSearch 是 Tauri（Rust 主进程 + 一窝 WebView2 子进程），
+ *  为什么要 A/B：QuickAchieve 是 Tauri（Rust 主进程 + 一窝 WebView2 子进程），
  *  「设置页把 407 张引擎图标全解码」这件事吃的是**渲染进程**的内存，只有把
  *  整棵进程树加起来才看得见。
  *
@@ -18,8 +18,8 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const A = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickSearch.exe';
-const B = process.argv[3] || path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const A = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickAchieve.exe';
+const B = process.argv[3] || path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r75-mem-ab.txt');
 
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -110,7 +110,7 @@ async function measure(label, exe) {
     rec('exe: ' + exe + '  (' + (fs.statSync(exe).size / 1048576).toFixed(2) + ' MB)');
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-mem-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true, theme: 'light' }, null, 1), 'utf8');
 

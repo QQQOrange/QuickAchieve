@@ -1,4 +1,4 @@
-/* 诊断：QuickSearchBar 窗口到底处于什么状态。
+/* 诊断：QuickAchieveBar 窗口到底处于什么状态。
    重点看 DWM cloaking —— ctx 被隐藏时 GetWindowRect / IsWindowVisible 依然"正常"。 */
 const koffi = require('koffi');
 const user32 = koffi.load('user32.dll');
@@ -23,7 +23,7 @@ const DwmGetWindowAttribute = dwmapi.func('long DwmGetWindowAttribute(void *h, u
 const GWL_STYLE = -16, GWL_EXSTYLE = -20;
 const DWMWA_CLOAKED = 14;
 
-const h = FindWindowW(null, 'QuickSearchBar');
+const h = FindWindowW(null, 'QuickAchieveBar');
 if (!h) { console.log('not found'); process.exit(2); }
 
 const style = GetWindowLongPtrW(h, GWL_STYLE);

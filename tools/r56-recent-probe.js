@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r56-recent-probe.txt');
 const PORT = 9398;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -81,7 +81,7 @@ async function connect(sub, ms) {
 const KNOWN = ['百度', 'Google', '必应', '搜狗'];
 async function boot(recent, recentMax) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r56rc-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true,

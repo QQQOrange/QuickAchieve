@@ -33,8 +33,8 @@
 | 载体 | 文件 | 谁写的 | 加密 |
 |---|---|---|---|
 | 主配置 | `config.json` | `config::save_to` | **总是加密** |
-| 滚动备份 | `config(时间).QuickSearch` | 同上（每次保存留一份，只留最新 1 份） | **总是加密** |
-| 云端 / 手动备份 | `config(时间).QuickSearch`（云端按时间戳累积） | `backup_payload` | **总是加密** |
+| 滚动备份 | `config(时间).QuickAchieve` | 同上（每次保存留一份，只留最新 1 份） | **总是加密** |
+| 云端 / 手动备份 | `config(时间).QuickAchieve`（云端按时间戳累积） | `backup_payload` | **总是加密** |
 | 快照 | `config.before-webdav(...)` `config.before-restore(...)` | 直接复制主文件 | 跟着主文件（密文） |
 | 明文导出 | `config(时间).qsconf` | `export::write_plain` | **默认明文**；含令牌时强制加密 |
 
@@ -253,7 +253,7 @@ v1.5.9 起按原因分三种说法（`unseal_hint`）：
 
 ### 6.3 恢复别人的备份 = 接受别人的凭据
 
-一份 `.QuickSearch` 或 `.qsconf` 里的凭据是**文件里的值**，不是你的。
+一份 `.QuickAchieve` 或 `.qsconf` 里的凭据是**文件里的值**，不是你的。
 恶意文件可以塞一个攻击者的令牌进来 —— 之后你的 GitHub 请求都走他的账号
 （他能看到你查了哪些仓库）。缓解措施是提示（见 5.3），不是拦截：
 拦截会让"我真的想换令牌"做不到。

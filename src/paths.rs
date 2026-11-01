@@ -14,7 +14,7 @@
 //!   · `\\server\share\a.txt`           —— UNC 网络路径
 //!   · `C:/Users/me/a.txt`              —— 盘符 + 正斜杠（浏览器/代码里常这么写）
 //!   · `.\bin\tool.exe` / `..\a\b.txt`  —— 相对路径（以 `.\` `..\` `./` `../` 开头）
-//!   · `%APPDATA%\QuickSearch`          —— 含环境变量的路径
+//!   · `%APPDATA%\QuickAchieve`          —— 含环境变量的路径
 //!   · 纯路径段 `bin\tool.exe`          —— 像路径（带目录分隔符 + 有扩展名，
 //!                                        且不是网址）—— 单独出现时**不算**，
 //!                                        见下面 ⚠
@@ -426,7 +426,7 @@ mod tests {
         assert_eq!(looks_like_path(r"\\server\share\a.txt"), Some(r"\\server\share\a.txt"));
         assert_eq!(looks_like_path(r".\bin\tool.exe"), Some(r".\bin\tool.exe"));
         assert_eq!(looks_like_path(r"..\a\b.txt"), Some(r"..\a\b.txt"));
-        assert_eq!(looks_like_path("%APPDATA%\\QuickSearch"), Some("%APPDATA%\\QuickSearch"));
+        assert_eq!(looks_like_path("%APPDATA%\\QuickAchieve"), Some("%APPDATA%\\QuickAchieve"));
     }
 
     #[test]
@@ -564,7 +564,7 @@ mod tests {
     ///   `open::that` 这条路本身，而它正是这个功能的全部。
     #[test]
     fn open_file_用默认程序打开真实文件() {
-        let (f, _keep) = tmp_file_with("real", "QuickSearch r97 探针");
+        let (f, _keep) = tmp_file_with("real", "QuickAchieve r97 探针");
         let msg = open_file(&f);
         // 返回值是人话，含文件名（不含整条路径 —— 会撑爆横条）
         assert!(msg.contains("探针文件.txt"), "提示里该有文件名：{msg}");

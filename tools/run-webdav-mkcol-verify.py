@@ -35,16 +35,16 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 APPDATA = os.environ['APPDATA']
-CFG = os.path.join(APPDATA, 'QuickSearch', 'config.json')
-LOG = os.path.join(APPDATA, 'QuickSearch', 'log.txt')
-SRVROOT = os.path.join(APPDATA, 'QuickSearch', '_wdmkcol')
+CFG = os.path.join(APPDATA, 'QuickAchieve', 'config.json')
+LOG = os.path.join(APPDATA, 'QuickAchieve', 'log.txt')
+SRVROOT = os.path.join(APPDATA, 'QuickAchieve', '_wdmkcol')
 
 USER, PASS = 'qsuser', 'qspass'
 PORT = 18091
 BASE = 'http://127.0.0.1:%d/dav/' % PORT
-FILE = 'quicksearch-backup.json'
+FILE = 'quickachieve-backup.json'
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -59,9 +59,9 @@ class Handler(BaseHTTPRequestHandler):
         p = p[len('/dav'):] if p.startswith('/dav') else p
         p = urllib.parse.unquote(p)
         # ⚠ 必须去掉尾斜杠再拼。MKCOL 的路径天生以 '/' 结尾，直接拼会得到
-        # `...\QuickSearch\`，而 os.path.dirname('...\QuickSearch\') 返回的是
+        # `...\QuickAchieve\`，而 os.path.dirname('...\QuickAchieve\') 返回的是
         # **上一级**（`...\_wdmkcol`）。于是「父目录在不在」的判断整个错位：
-        # MKCOL /dav/QuickSearch/ 被判成「父目录不存在」回 409，PUT 再判一次
+        # MKCOL /dav/QuickAchieve/ 被判成「父目录不存在」回 409，PUT 再判一次
         # 409 —— 服务端把每一层都拒了，而程序明明已经正确地逐级发了 MKCOL。
         # 症状极具误导性：日志里 MKCOL 一条不少，测试却报「一个都没建出来」。
         return os.path.join(SRVROOT, p.strip('/').replace('/', os.sep))
@@ -217,7 +217,7 @@ def write_cfg(c):
 def clear_log():
     """每轮前清空日志。
 
-    靠字节偏移读增量有个坑：程序把日志按自己的方式落盘，而 QuickSearch
+    靠字节偏移读增量有个坑：程序把日志按自己的方式落盘，而 QuickAchieve
     默认会自提权 —— 权限不同的进程往同一个文件写，偏移和读到的内容都对不上。
     直接清空最省心，也不会把上一轮的结果误当成本轮的。
     """
@@ -303,7 +303,7 @@ def main():
         print('\n1 未知的自定义主机 → 不会被擅自加子目录（该由用户自己定目录）')
         wipe_dir()
         c = read_cfg()
-        c['webdav_url'] = BASE + 'QuickSearch/'    # 自带子目录
+        c['webdav_url'] = BASE + 'QuickAchieve/'    # 自带子目录
         c['webdav_user'] = USER
         c['webdav_pass'] = PASS
         c['webdav_file'] = FILE
@@ -316,7 +316,7 @@ def main():
         run_exe_until([], lambda: bool(srv.puts), settle=3.0)
         got = read_cfg()['webdav_url']
         check('用户填的路径原样保留（没多套一层）',
-              got.rstrip('/').endswith('/dav/QuickSearch'), '实际存的是 %s' % got)
+              got.rstrip('/').endswith('/dav/QuickAchieve'), '实际存的是 %s' % got)
 
         # ---------------------------------------------------------- 2
         print('\n2 目录不存在时上传成功，且是程序自己 MKCOL 建出来的（服务端拒绝代劳）')
@@ -333,11 +333,11 @@ def main():
         check('程序主动发了 MKCOL（不是服务端代劳）', len(mkcols) > 0,
               'MKCOL: %s' % (mkcols or '（一个都没有）'))
         check('MKCOL 打在正确的目录上',
-              any('/dav/QuickSearch/' in p for p in mkcols),
+              any('/dav/QuickAchieve/' in p for p in mkcols),
               '目标 %s' % (mkcols or '无'))
-        on_disk = os.path.isfile(os.path.join(SRVROOT, 'QuickSearch', FILE))
+        on_disk = os.path.isfile(os.path.join(SRVROOT, 'QuickAchieve', FILE))
         check('备份文件真的在云端目录里', on_disk,
-              '磁盘上找不到 %s' % os.path.join(SRVROOT, 'QuickSearch', FILE))
+              '磁盘上找不到 %s' % os.path.join(SRVROOT, 'QuickAchieve', FILE))
 
         # ---------------------------------------------------------- 3
         print('\n3 云端目录整个删掉 → 重新上传会自动重建')
@@ -377,12 +377,12 @@ def main():
         # ---------------------------------------------------------- 5
         print('\n5 云端有多份备份 → 能列出并选中指定的一份（PROPFIND）')
         wipe_dir()
-        d = os.path.join(SRVROOT, 'QuickSearch')
+        d = os.path.join(SRVROOT, 'QuickAchieve')
         os.makedirs(d, exist_ok=True)
         # 造三份备份（名字/大小/时间都不同），其中一份用中文名，
         # 顺便验 URL 编码解码
         import time as _t
-        names = ['quicksearch-backup.json', 'backup-2024.json', '\u65e7\u5907\u4efd.json']
+        names = ['quickachieve-backup.json', 'backup-2024.json', '\u65e7\u5907\u4efd.json']
         for i, nm in enumerate(names):
             with open(os.path.join(d, nm), 'wb') as f:
                 f.write(b'{"delay_ms": %d}' % (1000 + i))
@@ -392,7 +392,7 @@ def main():
         srv.methods.clear()
         srv.puts.clear()
 
-        out = rust_list_probe(BASE + 'QuickSearch/', names)
+        out = rust_list_probe(BASE + 'QuickAchieve/', names)
         check('PROPFIND 真的发出去了',
               any(m == 'PROPFIND' for m, _p, _c in srv.methods),
               'methods=%s' % [m for m, _p, _c in srv.methods])
@@ -403,7 +403,7 @@ def main():
               '\u65e7\u5907\u4efd.json' in out,
               '输出：%s' % out.strip()[:300])
         # 排序：新的在前 —— 备份-2024.json 的 mtime 最早，应排在最后
-        idx_new = out.find('quicksearch-backup.json')
+        idx_new = out.find('quickachieve-backup.json')
         idx_old = out.find('backup-2024.json')
         check('按时间新的在前排序', 0 <= idx_new < idx_old,
               '新的在下标 %d、旧的在 %d' % (idx_new, idx_old))

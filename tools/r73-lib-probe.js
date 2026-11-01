@@ -21,7 +21,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r73-lib-probe.txt');
 let PORT = 0;
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -99,7 +99,7 @@ async function until(ws, expr, ms) {
     PORT = await freePort();
     WV = WV_BASE + PORT;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r73-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const CFG = path.join(qs, 'config.json');
     fs.writeFileSync(CFG, JSON.stringify({ debug: true, theme: 'light' }, null, 1), 'utf8');

@@ -19,7 +19,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'tray-probe.txt');
 
 const user32 = koffi.load('user32.dll');
@@ -127,15 +127,15 @@ function popupMenu(pid) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-tray-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify(c, null, 1), 'utf8');
     }
-    try { execSync('taskkill /IM QuickSearch.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1000);
     const env = Object.assign({}, process.env, { APPDATA: tmp, QS_DEBUG: '1' });
     const proc = spawn(EXE, ['--no-elevate'], { env, cwd: ROOT, detached: false, stdio: 'ignore' });

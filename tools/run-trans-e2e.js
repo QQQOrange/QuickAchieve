@@ -31,7 +31,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const EXE = process.env.QS_E2E_EXE
     ? path.resolve(process.env.QS_E2E_EXE)
-    : path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+    : path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const MOCK = path.join(__dirname, 'trans-e2e-mock.js');
 const PORT = 8788;
 const BASE = `http://127.0.0.1:${PORT}/v1`;
@@ -39,7 +39,7 @@ const MOCK_LOG = path.join(__dirname, '_trans-e2e.mock.jsonl');
 const RESULT = path.join(__dirname, '_trans-e2e.result.txt');
 const SCRATCH = path.join(__dirname, '.trans-e2e-data');
 
-const TEXT = 'Hello from QuickSearch e2e. 这是翻译联调文字。';
+const TEXT = 'Hello from QuickAchieve e2e. 这是翻译联调文字。';
 
 /* WebView2 额外参数：默认那一串（--disable-gpu-sandbox 是必须的，见 main.rs
  * 的 DEFAULT_WV_ARGS）+ e2e 专用的远程调试端口。⚠ additional_browser_args 是
@@ -66,7 +66,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** 场景配置：两家引擎都指向本地 mock（base 覆盖注册表预置值）。
  *
  * ⚠ `backup_dir` 必须显式指到 scratch 里：备份目录的默认值是
- * **exe 旁边**的 `QuickSearch back\`（见 config.rs 的 default_backup_dir），
+ * **exe 旁边**的 `Quick Achieve back\`（见 config.rs 的 default_backup_dir），
  * 它**不认** QS_DATA_DIR。拿部署版 exe 跑联调时，不设这一条就会把测试用的
  * 残缺配置备份写进用户真实的备份目录，还会把保留名额挤掉。 */
 function conf(over) {
@@ -94,7 +94,7 @@ async function runOnce(cfg, shotPath, waitMs) {
     /* 安全网：备份目录的默认值在 exe 旁边且不认 QS_DATA_DIR（见 conf() 的注释）。
      * 跑之前先把那里的文件清单拍下来，跑完再比一次 —— 真漏了要当场报出来，
      * 而不是等用户在备份列表里看见一堆测试残留。 */
-    const exeBackupDir = path.join(path.dirname(EXE), 'QuickSearch back');
+    const exeBackupDir = path.join(path.dirname(EXE), 'Quick Achieve back');
     const before = new Set(fs.existsSync(exeBackupDir)
         ? fs.readdirSync(exeBackupDir) : []);
 
@@ -233,7 +233,7 @@ function resetMockLog() { try { fs.unlinkSync(MOCK_LOG); } catch (e) { /* 头一
     ok(sys.indexOf('English') >= 0 && sys.indexOf('只输出译文') >= 0,
         '系统提示词带目标语言（English）+ 「别加前言」约束', sys.slice(0, 120));
     const users = reqs.map((r) => (r.messages || []).filter((m) => m.role === 'user').map((m) => m.content).join(''));
-    ok(users.every((u) => u.indexOf('QuickSearch e2e') >= 0),
+    ok(users.every((u) => u.indexOf('QuickAchieve e2e') >= 0),
         '原文原样进了请求体（横条/OCR 带过来的那段文字）', users.join(' || '));
     ok(r1.log.indexOf('trans win: built') >= 0, '翻译窗真的建起来了（日志有据）',
         r1.log.split('\n').filter((l) => l.indexOf('trans') >= 0).slice(-3).join(' / ') || '（日志里没有 trans 字样）');
@@ -257,14 +257,14 @@ function resetMockLog() { try { fs.unlinkSync(MOCK_LOG); } catch (e) { /* 头一
     ok((p1.st || '').indexOf('已完成') >= 0 && (p2.st || '').indexOf('已完成') >= 0,
         '两家状态都是「已完成」', (p1.st || '?') + ' / ' + (p2.st || '?'));
     ok((p1.ta || '').indexOf('【mock·mock-deepseek】') >= 0
-        && (p1.ta || '').indexOf('QuickSearch e2e') >= 0,
+        && (p1.ta || '').indexOf('QuickAchieve e2e') >= 0,
         'DeepSeek 的译文落进了它自己的框', p1.ta);
     ok((p2.ta || '').indexOf('【mock·mock-sf】') >= 0
-        && (p2.ta || '').indexOf('QuickSearch e2e') >= 0,
+        && (p2.ta || '').indexOf('QuickAchieve e2e') >= 0,
         '硅基流动的译文落进了它自己的框（没被别家覆盖）', p2.ta);
     ok((p1.ta || '').indexOf('mock-sf') < 0 && (p2.ta || '').indexOf('mock-deepseek') < 0,
         '两框内容没有互相串门');
-    ok((d1.SRC || '').indexOf('QuickSearch e2e') >= 0, '原文框里是带过来的那段文字', d1.SRC);
+    ok((d1.SRC || '').indexOf('QuickAchieve e2e') >= 0, '原文框里是带过来的那段文字', d1.SRC);
     ok(d1.TARGET === 'en', '目标语言下拉是配置里的默认值 en', d1.TARGET);
     ok((d1.ENGCAP || '').indexOf('2') >= 0, '顶部摘要标出参与几家', d1.ENGCAP);
     ok(d1.NOTE_HIDDEN === '1' || !(d1.NOTE_TEXT || '').trim(),
@@ -310,7 +310,7 @@ function resetMockLog() { try { fs.unlinkSync(MOCK_LOG); } catch (e) { /* 头一
 
     /* ---------- 收尾 ---------- */
     try { mock.kill(); } catch (e) { /* 已经没了 */ }
-    spawnSync('taskkill', ['/IM', 'QuickSearch.exe', '/FI', 'PID eq ' + r1.pid, '/T', '/F'], { encoding: 'utf8' });
+    spawnSync('taskkill', ['/IM', 'QuickAchieve.exe', '/FI', 'PID eq ' + r1.pid, '/T', '/F'], { encoding: 'utf8' });
     fs.rmSync(SCRATCH, { recursive: true, force: true });
 
     say('');

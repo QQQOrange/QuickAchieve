@@ -1,4 +1,4 @@
-# Quick Search v1.1.0
+# Quick Achieve v1.1.0
 
 在 v1.0.0 基础上的一轮大改：**把图标抠图换成 AI**，并修掉一批实际使用中冒出来的 bug。
 
@@ -43,7 +43,7 @@
 - **不需要重启程序**（见下方"两个坑"）
 
 ```
-QuickSearch.exe
+QuickAchieve.exe
 抠图模型/
 ├── onnxruntime.dll      11.84 MB（官方 69MB zip 解出来的）
 └── u2netp.onnx           4.4 MB
@@ -112,7 +112,7 @@ QuickSearch.exe
 >   它在弹框等用户点"确定"）
 > - "是硬依赖" ← 被**单例检查**骗了（日志 `another instance is running, exit`，退出码 0）
 >
-> 第三次才可信：进程存活 + 主窗口 `QuickSearchBar` + **WebView2 子进程 +2**。
+> 第三次才可信：进程存活 + 主窗口 `QuickAchieveBar` + **WebView2 子进程 +2**。
 > 教训：判断"程序起没起来"要看**有没有真的建出界面**。
 
 **(b) `ORT_DYLIB_PATH` 的缓存会被"冻住"**
@@ -128,7 +128,7 @@ QuickSearch.exe
 
 ## 安装
 
-1. 下载 `QuickSearch.exe`
+1. 下载 `QuickAchieve.exe`
 2. 放到任意目录，双击运行（无需安装）
 3. 首次运行会请求管理员权限 —— **这是必需的**：只有管理员进程才能把 Ctrl+C
    送进同样是管理员的程序（任务管理器、各类编辑器）。可在设置里关闭自动提权
@@ -164,7 +164,7 @@ QuickSearch.exe
 ## 校验
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.04 MB (12,627,456 字节)
 MD5:    A9300DD914F27EC1AADB3D532CE2E6EC
 SHA256: 98C4A841AD571635EA253B4978124F756B980AC442343FA2341100C5E78A682A
@@ -173,7 +173,7 @@ SHA256: 98C4A841AD571635EA253B4978124F756B980AC442343FA2341100C5E78A682A
 核对方式：
 
 ```powershell
-Get-FileHash .\QuickSearch.exe -Algorithm SHA256
+Get-FileHash .\QuickAchieve.exe -Algorithm SHA256
 # 应与上面的 SHA256 一致
 ```
 

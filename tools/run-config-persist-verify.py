@@ -25,10 +25,10 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 TOOLS = os.path.join(ROOT, 'tools')
 APPDATA = os.environ['APPDATA']
-CFG = os.path.join(APPDATA, 'QuickSearch', 'config.json')
+CFG = os.path.join(APPDATA, 'QuickAchieve', 'config.json')
 
 # 用这两个字段做标记：都是纯数值，改了不影响其它功能，且一眼能认出来
 MARK_DELAY = 1234

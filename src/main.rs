@@ -1771,7 +1771,7 @@ fn capture_without_clipboard(drag: (i32, i32, i32, i32)) -> Option<(String, &'st
     let pt_start = windows::Win32::Foundation::POINT { x: drag.0, y: drag.1 };
     /* ⓿ 选区落地稳定期：快速划选（dt<30ms）时 mouseup 刚到目标窗口的消息
      *    队列，此时查 EM_GETSEL 读到的是**旧选区**（快速划选取词实测 A1/A2
-     *    因此落到 OCR，把「QuickSearch」认成「search」丢了开头）。
+     *    因此落到 OCR，把「QuickAchieve」认成「search」丢了开头）。
      *    与 Ctrl+C 链同口径（见 main.rs:1223 的稳定期常量），60ms 对弹条
      *    总耗时（几百毫秒）无感。 */
     std::thread::sleep(Duration::from_millis(60));
@@ -3353,7 +3353,7 @@ fn app_content_resolve(app: String) -> Result<Value, String> {
 /// **最近一个"外部"前台窗口**（别的进程的窗口）。
 ///
 /// 为什么要单独记：设置页那颗「取当前应用」被点下去的那一刻，前台是**我们自己的
-/// 设置窗口** —— 直接读 `GetForegroundWindow()` 永远只会得到 `QuickSearch.exe`，
+/// 设置窗口** —— 直接读 `GetForegroundWindow()` 永远只会得到 `QuickAchieve.exe`，
 /// 按钮等于没用。所以后台每 700ms 采一次样，只记别人家的窗口，点按钮时读它。
 static LAST_FOREIGN_FG: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
@@ -3435,7 +3435,7 @@ fn last_use_app() -> String {
 /// 那两个动作只是"唤出面板"，换个应用就弹一次，实际变成"我在哪儿打字"的播报。
 ///
 /// ## 展示内容
-/// 标题固定 `Quick Search`，正文 = `已使用：<功能名>`（拿得到当前软件时追加
+/// 标题固定 `Quick Achieve`，正文 = `已使用：<功能名>`（拿得到当前软件时追加
 /// ` · <软件名>`）。包裹符号这种"功能 + 参数"的，功能名里带上那一组符号
 /// （`包裹符号 · 书名号`），让用户一眼看出刚才干了什么。
 ///
@@ -5801,7 +5801,7 @@ fn spawn_detector() {
                                 }
                                 /* ⚠ 前台是我们**自己的窗口**（设置页 / 识别结果页）时，
                                  * 不能再按"当前程序"去查黑白名单 —— 那时查到的进程名是
-                                 * `QuickSearch.exe` 自己：
+                                 * `QuickAchieve.exe` 自己：
                                  *   · 白名单模式（只在你列出的软件里弹）里它当然不在名单，
                                  *     于是"在设置页按 Ctrl+C 唤不出网格页"（用户报的）；
                                  *   · 黑名单模式同理可能被误伤。
@@ -5878,7 +5878,7 @@ fn config_view() -> Value {
         }
     }
     // #138：icons 目录里「文件名 = 引擎名」的默认图标（用户原话：读取
-    // AppData\Roaming\QuickSearch\icons 里的自定义图标，设为对应引擎的默认图标）。
+    // AppData\Roaming\QuickAchieve\icons 里的自定义图标，设为对应引擎的默认图标）。
     // 优先级：overrideIcons（图库显式挑的）> 这里的 dirIcons > 引擎自带
     // iconFile > 字母徽标。已被 overrides 引用的文件跳过（它已经在 ov 里，
     // 再进 dirIcons 只会让同一份图在两条通道里各出现一次）。
@@ -7232,7 +7232,7 @@ fn open_lock_window(a: &AppHandle) {
                 return;
             }
             let mut b = WebviewWindowBuilder::new(&a3, "lock", WebviewUrl::App("lock.html".into()))
-            .title("Quick Search")
+            .title("Quick Achieve")
             .inner_size(420.0, 268.0)
             .resizable(false)
             .maximizable(false)
@@ -7425,7 +7425,7 @@ fn export_groups_list() -> Value {
 /// 「导出的配置数据不加密，可直接被他人导入恢复；备份功能单独存在且支持加密」。
 /// 所以这里：
 ///   * **不加密**（备份那边按备份密码 AES-GCM，这边一个字都不碰）；
-///   * 文件名后缀用 `.qsconf`（明文导出）而不是 `.QuickSearch`（备份）——
+///   * 文件名后缀用 `.qsconf`（明文导出）而不是 `.QuickAchieve`（备份）——
 ///     资源管理器里就能看出哪份是能直接给人家的明文，哪份是加密备份；
 ///   * 内容是 `{kind, items, at, data}`，`data` 只含勾中组的键。
 ///
@@ -7444,9 +7444,9 @@ fn export_items(app: AppHandle, items: Vec<String>, encrypt: Option<bool>) {
     }
     let _ = app.run_on_main_thread(move || {
         let mut dlg = rfd::FileDialog::new()
-            .set_title("导出 Quick Search 配置（明文）")
+            .set_title("导出 Quick Achieve 配置（明文）")
             .set_file_name(format!("config({}).qsconf", config::backup_stamp()))
-            .add_filter("QuickSearch 明文配置", &["qsconf"])
+            .add_filter("QuickAchieve 明文配置", &["qsconf"])
             .add_filter("JSON", &["json"]);
         let bdir = cfg_with(config::backup_dir_of);
         if bdir.is_dir() {
@@ -7608,8 +7608,8 @@ fn import_items(app: AppHandle) {
     }
     let _ = app.run_on_main_thread(move || {
         let Some(p) = rfd::FileDialog::new()
-            .set_title("导入 Quick Search 配置")
-            .add_filter("QuickSearch 配置", &["qsconf", "json"])
+            .set_title("导入 Quick Achieve 配置")
+            .add_filter("QuickAchieve 配置", &["qsconf", "json"])
             .pick_file()
         else {
             win::log("import_items: cancelled");
@@ -7719,12 +7719,12 @@ fn export_config(app: AppHandle) {
     win::log("export_config");
     let _ = app.run_on_main_thread(move || {
         // 默认文件名跟用户要求的备份命名口径一致：
-        // 「文件名(详细时间).QuickSearch」—— 后缀用软件名，资源管理器里
+        // 「文件名(详细时间).QuickAchieve」—— 后缀用软件名，资源管理器里
         // 不会一眼看成普通 json（用户原话：「也算是一定程度的加密」）。
         let mut dlg = rfd::FileDialog::new()
-            .set_title("导出 Quick Search 配置")
-            .set_file_name(format!("config({}).QuickSearch", config::backup_stamp()))
-            .add_filter("QuickSearch 备份", &["QuickSearch"]);
+            .set_title("导出 Quick Achieve 配置")
+            .set_file_name(format!("config({}).QuickAchieve", config::backup_stamp()))
+            .add_filter("QuickAchieve 备份", &["QuickAchieve"]);
         // 默认就落在用户的备份目录里（没设过就是数据目录）
         let bdir = cfg_with(config::backup_dir_of);
         if bdir.is_dir() {
@@ -7880,10 +7880,10 @@ fn stash_local_config() {
     //   覆盖第一次的快照 —— 于是"从云端恢复错了想退回上一份本机配置"这条兜底
     //   只能用一次。现在每次各留一份，并只保留最近 5 份。
     //   命名跟滚动备份同一套用户要求的口径：
-    //   `config.before-webdav(YYYY-MM-DD HH-MM-SS).QuickSearch`。
+    //   `config.before-webdav(YYYY-MM-DD HH-MM-SS).QuickAchieve`。
     let stamp = config::backup_stamp();
     let dir = cfg_with(config::backup_dir_of);
-    let dst = dir.join(format!("config.before-webdav({stamp}).QuickSearch"));
+    let dst = dir.join(format!("config.before-webdav({stamp}).QuickAchieve"));
     if std::fs::copy(&src, &dst).is_ok() {
         win::log(&format!("webdav: 已留本地副本 {}", dst.display()));
     }
@@ -7921,7 +7921,7 @@ const KEEP_SNAPSHOTS: usize = 5;
 /// | `Config` | snake_case（就是 `config.json` 本身） | 滚动备份 `config.auto(...)` | 小、快、和主文件同构 |
 ///
 /// ⚠ v1.4.1 修的真 bug：`restore_from_text` 以前只认 `View`，于是用户点
-///   「导入配置」选一份**自动备份**会得到「这份文件不像 Quick Search 的
+///   「导入配置」选一份**自动备份**会得到「这份文件不像 Quick Achieve 的
 ///   配置备份」，而选**手动备份**却成功 —— 这就是「只能恢复手动备份的文件」。
 #[derive(Debug, PartialEq, Eq)]
 enum BackupFormat {
@@ -8014,7 +8014,7 @@ fn restore_from_text(text: &str) -> Result<String, String> {
                 "这是「明文导出」的设置文件，请用下面的「导入明文配置」按钮".into(),
             );
         }
-        return Err("这份文件不像 Quick Search 的配置备份，已放弃恢复".into());
+        return Err("这份文件不像 Quick Achieve 的配置备份，已放弃恢复".into());
     };
     {
         let mut cfg = st().cfg.lock().map_err(|_| "配置正忙，稍后再试".to_string())?;
@@ -8127,7 +8127,7 @@ fn restore_note(before: &str, after: &str, kept: bool) -> String {
     String::new()
 }
 
-/// 恢复之前把**当前**配置留一份：`config.before-restore(时间).QuickSearch`。
+/// 恢复之前把**当前**配置留一份：`config.before-restore(时间).QuickAchieve`。
 ///
 /// 用户手动恢复是破坏性操作（整份覆盖）。万一挑错了备份，他得有条退路 ——
 /// 这和「恢复云端之前先留本机副本」（`stash_local_config`）是同一个道理，
@@ -8140,7 +8140,7 @@ fn stash_before_restore(why: &str) {
     let dir = cfg_with(config::backup_dir_of);
     let _ = std::fs::create_dir_all(&dir);
     let stamp = config::backup_stamp();
-    let dst = dir.join(format!("config.before-restore({stamp}).QuickSearch"));
+    let dst = dir.join(format!("config.before-restore({stamp}).QuickAchieve"));
     if std::fs::copy(&src, &dst).is_ok() {
         win::log(&format!(
             "restore: 恢复前已留本机副本（{why}）{}",
@@ -8306,7 +8306,7 @@ struct BackupOutcome {
 /// 用户要求原话：「备份的逻辑应该是先本地备份一次，然后把这一个备份上传到云端」；
 /// 同时点名「当前上传到云端的文件和备份到本地的文件不是同一个文件」。
 /// 轮 20 又把最后一点不合的口径也拉平了 —— 用户看到本地是
-/// `config(2026-10-12 23-06-22).QuickSearch`、云端却是 `quicksearch-backup.json`，
+/// `config(2026-10-12 23-06-22).QuickAchieve`、云端却是 `quickachieve-backup.json`，
 /// 明确要求「备份到云端的文件名完全没有必要自定义，直接把本地的拉上去就可以了」。
 ///
 /// 所以这里守三条：
@@ -8821,7 +8821,7 @@ async fn cleanup_data(apply: bool) -> serde_json::Value {
 
 /// 从云端恢复**指定的那一份**备份。
 ///
-/// 恢复前照旧先在本地留一份 `config.before-webdav(时间).QuickSearch` 快照 ——
+/// 恢复前照旧先在本地留一份 `config.before-webdav(时间).QuickAchieve` 快照 ——
 /// 选错一份就得有办法退回去，这一步不能因为「多了一个选择项」就被省掉。
 /// （快照带时间戳、只留最近 5 份，见 `stash_local_config`。）
 #[crate::t::command]
@@ -8935,7 +8935,7 @@ fn exit_sync_if_needed() {
 /// 更新互斥：同一时刻只允许一个"查 / 下 / 装"在跑。
 ///
 /// 同 `SYNC_BUSY` 的理由与写法：用户连点「检查更新」、或者一边下着一边又点，
-/// 两个线程同时写同一个 `QuickSearch.exe.new` 会互相踩。
+/// 两个线程同时写同一个 `QuickAchieve.exe.new` 会互相踩。
 struct UpdateGuard;
 
 static UPDATE_BUSY: AtomicBool = AtomicBool::new(false);
@@ -9046,9 +9046,9 @@ fn show_update_window(a: &AppHandle) {
             }
             let mut b = WebviewWindowBuilder::new(&a3, "update", WebviewUrl::App("update.html".into()))
             .title(if cfg_with(|c| c.ui_lang == "en") {
-                "Quick Search Update"
+                "Quick Achieve Update"
             } else {
-                "Quick Search 更新"
+                "Quick Achieve 更新"
             })
             .inner_size(520.0, 400.0)
             .min_inner_size(460.0, 340.0)
@@ -9081,7 +9081,7 @@ fn show_update_window(a: &AppHandle) {
 /// 「取消下载」按钮。
 ///
 /// 只置一个标志，真正的收尾在下载线程里（见 `update::request_cancel`）——
-/// 这里如果直接杀线程，`QuickSearch.exe.new` 会停在半截且文件句柄没释放，
+/// 这里如果直接杀线程，`QuickAchieve.exe.new` 会停在半截且文件句柄没释放，
 /// 下一次续传反而更容易写坏。
 #[crate::t::command]
 fn update_cancel() {
@@ -9472,9 +9472,9 @@ fn import_config(app: AppHandle) {
     win::log("import_config");
     let _ = app.run_on_main_thread(move || {
         let picked = rfd::FileDialog::new()
-            .set_title("载入 Quick Search 配置")
-            // 新格式导出是 .QuickSearch（见 export_config），老的 .json 也得能选
-            .add_filter("QuickSearch 备份", &["QuickSearch", "json"])
+            .set_title("载入 Quick Achieve 配置")
+            // 新格式导出是 .QuickAchieve（见 export_config），老的 .json 也得能选
+            .add_filter("QuickAchieve 备份", &["QuickAchieve", "json"])
             .pick_file();
         let Some(p) = picked else {
             win::log("import_config: cancelled");
@@ -10306,7 +10306,7 @@ fn open_trans_window(text: String, target: String) {
                 return;
             }
             let mut b = WebviewWindowBuilder::new(&a3, "trans", WebviewUrl::App("trans.html".into()))
-            .title("翻译 —— Quick Search")
+            .title("翻译 —— Quick Achieve")
             // v1.5.16 第二轮：多家引擎并排之后默认尺寸放宽一点（760 摆两家刚好、
             // 摆三家就得换行，行高被压一半）。最小尺寸不变。
             .inner_size(860.0, 600.0)
@@ -10840,7 +10840,7 @@ fn open_ocr_window(text: String) {
             // 兜底：万一 ready 信号没来（脚本异常），2.5 秒后强制显示，不能让用户
             // 以为程序卡死了什么都不弹。
             let mut b = WebviewWindowBuilder::new(&a4, "ocr", WebviewUrl::App("ocr.html".into()))
-                .title("识别结果 —— Quick Search")
+                .title("识别结果 —— Quick Achieve")
                 // 尺寸记忆：用户上次拖成多大，这次就开多大（没拖过用默认 760×620）。
                 .inner_size(ocr_w, ocr_h)
                 .min_inner_size(560.0, 380.0)
@@ -11544,7 +11544,7 @@ fn img_upload(e: &imgsearch::Engine, jpeg: &[u8]) -> Result<String, String> {
             /* SauceNAO 的响应体**就是结果页本身**（实测 21910 字节、含 similarity）。
              * 它没有可重开的 GET 地址，所以把这份 HTML 存下来再交给浏览器。
              *
-             * ⚠ 存进 %TEMP%\QuickSearch\img（和临时图同一个目录，文件名每次
+             * ⚠ 存进 %TEMP%\QuickAchieve\img（和临时图同一个目录，文件名每次
              *   独有，见 result_page_path），由 img_temp_cleanup 统一清理 ——
              *   不新增一个"没人管"的目录。 */
             // 粗判是否真的是结果页：出错页通常很短，且没有这些标记。
@@ -11628,7 +11628,7 @@ fn fmt_ts(sec: f64) -> String {
 ///   页面；外链只放行 https:// 开头（anilist / myanimelist / trace.moe 的
 ///   预览图与视频），其余一律降级成纯文本 —— 防数据里夹带 javascript: 之类。
 ///
-/// 落点：`%TEMP%\QuickSearch\img\tracemoe-result-<pid>-<n>.html`（和 SauceNAO
+/// 落点：`%TEMP%\QuickAchieve\img\tracemoe-result-<pid>-<n>.html`（和 SauceNAO
 /// 结果页、临时截图同一个目录，文件名每次独有，见 `result_page_path`），由
 /// `img_temp_cleanup` 统一清理，不新增目录。
 fn tracemoe_result_page(text: &str) -> Result<String, String> {
@@ -11749,7 +11749,7 @@ h1{{font-size:18px;margin:0 0 4px}} .sub{{color:#9aa3b2;font-size:12px;margin-bo
 .meta{{color:#c8cfdb;font-size:13px;margin-top:6px}} .links{{font-size:13px;margin-top:6px}}\
 .links a{{color:#6cb6ff}} .r18{{background:#c0392b;color:#fff;font-size:11px;border-radius:3px;padding:1px 5px;vertical-align:middle}}\
 </style></head><body><h1>识图结果 · trace.moe</h1>\
-<div class=\"sub\">动漫场景反查（本页由 QuickSearch 用 trace.moe 接口结果生成，关闭即失效）</div>\
+<div class=\"sub\">动漫场景反查（本页由 QuickAchieve 用 trace.moe 接口结果生成，关闭即失效）</div>\
 {cards}</body></html>"
     );
     let f = result_page_path("tracemoe-result")?;
@@ -11775,7 +11775,7 @@ h1{{font-size:18px;margin:0 0 4px}} .sub{{color:#9aa3b2;font-size:12px;margin-bo
 /// r72：必应 / 搜狗 / 360 出册后，需要这张临时图的只剩 AI 六家
 /// （`imgsearch::needs_file_pick`）。
 ///
-/// 位置：`%TEMP%\QuickSearch\img\shot.jpg` —— **固定一个名字**。
+/// 位置：`%TEMP%\QuickAchieve\img\shot.jpg` —— **固定一个名字**。
 /// 这一点是刻意的：固定名字 = 磁盘上最多只有一张、每轮自动覆盖，
 /// 不会攒出 `shot-1.jpg`…`shot-99.jpg` 那种垃圾堆。
 ///
@@ -11785,7 +11785,7 @@ h1{{font-size:18px;margin:0 0 4px}} .sub{{color:#9aa3b2;font-size:12px;margin-bo
 ///
 /// 写失败不算致命：那几家的用户就退化成"自己再截一次"，其余引擎照常能用。
 fn img_temp_file(jpeg: &[u8]) -> Option<std::path::PathBuf> {
-    let dir = std::env::temp_dir().join("QuickSearch").join("img");
+    let dir = std::env::temp_dir().join("QuickAchieve").join("img");
     if std::fs::create_dir_all(&dir).is_err() {
         win::log("img: 建临时目录失败，这轮不留临时图");
         return None;
@@ -11803,7 +11803,7 @@ fn img_temp_file(jpeg: &[u8]) -> Option<std::path::PathBuf> {
 /// 顺手把整个 `img` 目录删掉（它是我们独占的，删空目录没风险）；目录里
 /// 万一有历史版本留下的别的文件，也一并清 —— 反正它只该装"当前这一张"。
 fn img_temp_cleanup() {
-    let dir = std::env::temp_dir().join("QuickSearch").join("img");
+    let dir = std::env::temp_dir().join("QuickAchieve").join("img");
     if !dir.exists() {
         return;
     }
@@ -11821,7 +11821,7 @@ fn img_temp_cleanup() {
     }
 }
 
-/// r71：给「自己渲染的结果页」在 `%TEMP%\QuickSearch\img` 下取一个**每次独有**的文件名。
+/// r71：给「自己渲染的结果页」在 `%TEMP%\QuickAchieve\img` 下取一个**每次独有**的文件名。
 ///
 /// 为什么不能像原来那样固定一个名字：一轮识图里多家上传是**并行**的
 /// （见 img_search：谁先回来先开哪个标签页），两家同时回结果页，固定名
@@ -11834,7 +11834,7 @@ fn result_page_path(tag: &str) -> Result<std::path::PathBuf, String> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let n = SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join("QuickSearch").join("img");
+    let dir = std::env::temp_dir().join("QuickAchieve").join("img");
     if let Err(err) = std::fs::create_dir_all(&dir) {
         return Err(format!("建临时目录失败：{err}"));
     }
@@ -12234,7 +12234,7 @@ fn img_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
          *
          * ⚠ r70：**这一轮没有"要选文件"的引擎就整个不写**。
          *   以前无条件写盘 —— 只勾了真上传两家的用户，截图也会在
-         *   `%TEMP%\QuickSearch\img\shot.jpg` 落一次脚。它下一轮会被覆盖、
+         *   `%TEMP%\QuickAchieve\img\shot.jpg` 落一次脚。它下一轮会被覆盖、
          *   退出也会删，但"截图不该落在硬盘上"是用户点名过的要求
          *   （「这种只是暂时的图片，不能永久的存在电脑里面」），能一次不落
          *   就不落。清理同样只在真写过之后才需要（见 img_temp_cleanup 的调用点）。
@@ -12637,7 +12637,7 @@ fn open_qr_window() {
         let a4 = a2.clone();
         let _ = a2.run_on_main_thread(move || {
             let mut b = WebviewWindowBuilder::new(&a4, "qr", WebviewUrl::App("qr.html".into()))
-                .title("二维码解析 —— Quick Search")
+                .title("二维码解析 —— Quick Achieve")
                 .inner_size(760.0, 600.0)
                 .min_inner_size(560.0, 420.0)
                 .resizable(true)
@@ -12822,7 +12822,7 @@ fn open_qrgen_window() {
         let a4 = a2.clone();
         let _ = a2.run_on_main_thread(move || {
             let mut b = WebviewWindowBuilder::new(&a4, "qrgen", WebviewUrl::App("qrgen.html".into()))
-                .title("二维码生成 —— Quick Search")
+                .title("二维码生成 —— Quick Achieve")
                 // 小窗：一枚码 + 一行内容 + 两个按钮，440×560 刚好，不占半屏
                 .inner_size(440.0, 560.0)
                 .min_inner_size(380.0, 500.0)
@@ -15394,7 +15394,7 @@ fn open_icon_edit_win(key: &str, src: String, vector: bool) -> bool {
     // 走兜底（直接落库）的场景，所以把结果如实报回去。
     a.run_on_main_thread(move || {
         let mut b = WebviewWindowBuilder::new(&a2, "iconedit", WebviewUrl::App("iconedit.html".into()))
-            .title("编辑图标 —— Quick Search")
+            .title("编辑图标 —— Quick Achieve")
             .inner_size(760.0, 600.0)
             .min_inner_size(560.0, 460.0)
             .resizable(true)
@@ -17530,13 +17530,13 @@ fn go_http_get(url: &str) -> Option<String> {
     /* ⚠ User-Agent / Accept 里**绝对不能有中文**。
      *
      * 这是「添加网址后不抓标题」的真正根因：老代码的 UA 结尾写的是
-     * `QuickSearch/直达` —— HTTP 头只允许 ASCII，ureq 于是在**发请求之前**
+     * `QuickAchieve/直达` —— HTTP 头只允许 ASCII，ureq 于是在**发请求之前**
      * 就报 "invalid header value"，被 `.ok()?` 一吞，表现就是
      * "每次都抓不到、备注永远退回域名"，而日志里一个字都没有。
      * 现在:纯 ASCII 的 UA + 错误写进日志（别再静默失败）。 */
     let ua = concat!(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ",
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 QuickSearch/2.6"
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 QuickAchieve/2.6"
     );
     let resp = match agent
         .get(url)
@@ -18059,7 +18059,7 @@ fn shortcut_set_icon(id: String, spec: String) -> Result<String, String> {
             .build();
         let resp = agent
             .get(&spec)
-            .set("User-Agent", "Mozilla/5.0 QuickSearch")
+            .set("User-Agent", "Mozilla/5.0 QuickAchieve")
             .call()
             .map_err(|e| format!("下载这个图片失败：{e}"))?;
         let ctype = resp.header("content-type").unwrap_or("").to_ascii_lowercase();
@@ -19001,7 +19001,7 @@ fn open_settings_win(focus: Option<String>, tab: Option<String>) {
     let t2 = tab.clone();
     let _ = a.run_on_main_thread(move || {
         let mut sb = WebviewWindowBuilder::new(&a2, "settings", WebviewUrl::App("settings.html".into()))
-            .title("Quick Search 设置")
+            .title("Quick Achieve 设置")
             .inner_size(780.0, 660.0)
             .min_inner_size(600.0, 460.0)
             .resizable(true)
@@ -19098,16 +19098,16 @@ fn open_data_dir() {
 /// 是不是备份文件（设置页「备份」页列清单用）。
 ///
 /// 认这些：
-///   · `config.auto(时间).QuickSearch` —— 滚动备份（每次改设置自动留，只留 1 份）；
-///   · `config(时间).QuickSearch` —— 「立即备份」落下的那一份（与云端同名同内容）；
-///   · `config.before-webdav(时间).QuickSearch` —— 云端恢复前的本机快照；
-///   · 老名字：`config.json.bak`、`config.before-webdav-*.json`、旧的 quicksearch json。
+///   · `config.auto(时间).QuickAchieve` —— 滚动备份（每次改设置自动留，只留 1 份）；
+///   · `config(时间).QuickAchieve` —— 「立即备份」落下的那一份（与云端同名同内容）；
+///   · `config.before-webdav(时间).QuickAchieve` —— 云端恢复前的本机快照；
+///   · 老名字：`config.json.bak`、`config.before-webdav-*.json`、旧的 quickachieve json。
 fn is_backup_file(name: &str) -> bool {
     name == "config.json.bak"
         || config::is_rolling_backup(std::path::Path::new(name))
         || config::is_manual_backup(name)
         || config::is_snapshot(name)
-        || (name.ends_with(".json") && name.contains("quicksearch"))
+        || (name.ends_with(".json") && name.contains("quickachieve"))
 }
 
 /// 「仅保留最近 N 份」清理的范围 = **用户主动做的备份**。
@@ -19117,7 +19117,7 @@ fn is_backup_file(name: &str) -> bool {
 /// 被这个按钮顺手清掉只会让"配置损坏自救"和"恢复前留一手"这两条退路消失。
 fn is_prunable_backup(name: &str) -> bool {
     config::is_manual_backup(name)
-        || (name.ends_with(".json") && name.contains("quicksearch"))
+        || (name.ends_with(".json") && name.contains("quickachieve"))
 }
 
 /// 本地备份目录 + 备份文件清单（设置页「备份」页显示用）。
@@ -19314,7 +19314,7 @@ fn tray_menu(a: &AppHandle) -> crate::t::Result<crate::t::menu::Menu<crate::t::W
     .build(a)?;
     let sync_item = MenuItemBuilder::with_id("sync", "立即同步到云端").build(a)?;
     let dir_item = MenuItemBuilder::with_id("dir", "打开配置目录").build(a)?;
-    let quit_item = MenuItemBuilder::with_id("quit", "退出 Quick Search").build(a)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "退出 Quick Achieve").build(a)?;
     MenuBuilder::new(a)
         // 暂停项紧跟在「设置」后面：它是仅次于"打开设置"的高频操作
         .items(&[
@@ -19339,9 +19339,9 @@ fn refresh_tray(a: &AppHandle) {
         let _ = tray.set_menu(Some(menu));
     }
     let _ = tray.set_tooltip(Some(if paused {
-        "Quick Search —— 已暂停（选中文字不会弹条）"
+        "Quick Achieve —— 已暂停（选中文字不会弹条）"
     } else {
-        "Quick Search —— 选中文字即可搜索"
+        "Quick Achieve —— 选中文字即可搜索"
     }));
     let bytes: &[u8] = if paused { TRAY_ICON_PAUSED } else { TRAY_ICON };
     if let Ok(icon) = crate::t::image::Image::from_bytes(bytes) {
@@ -19438,7 +19438,7 @@ fn build_tray(a: &AppHandle) -> crate::t::Result<()> {
 
     TrayIconBuilder::with_id("qs-tray")
         .icon(icon)
-        .tooltip("Quick Search —— 选中文字即可搜索（双击图标＝设置，右键＝菜单）")
+        .tooltip("Quick Achieve —— 选中文字即可搜索（双击图标＝设置，右键＝菜单）")
         .menu(&menu)
         .show_menu_on_left_click(false)
         /* 双击图标 = 打开设置窗口（2026-10-23 用户要求）。
@@ -19602,7 +19602,7 @@ fn build_bar_window(app: &crate::t::App) -> crate::t::Result<()> {
     let wv_args = wv_args();
 
     let mut b = WebviewWindowBuilder::new(app, "bar", WebviewUrl::App("index.html".into()))
-        .title("QuickSearchBar")
+        .title("QuickAchieveBar")
         .inner_size(520.0, 60.0)
         .position(px as f64, py as f64)
         .resizable(false)
@@ -19699,8 +19699,8 @@ fn main() {
     start_foreground_sampler();
 
     let no_elevate = flag("--no-elevate") || env_on("QS_NO_ELEVATE");
-    /* v1.4.0：老用户的数据从 `%APPDATA%\QuickSearch` 迁到 **exe 旁边的
-     * `Quick search data`**（备份进 `QuickSearch back`）。
+    /* v1.4.0：老用户的数据从 `%APPDATA%\QuickAchieve` 迁到 **exe 旁边的
+     * `Quick Achieve data`**（备份进 `Quick Achieve back`）。
      *
      * 位置：**所有 `config::load()` / `data_dir()` 之前** —— 下面那串探针命令
      * （`--touch-config` 之类）第一句就读配置，晚一步就会在旧目录里读/写一遍，
@@ -19725,7 +19725,7 @@ fn main() {
         win::log(&format!("icons: {msg}"));
     }
     // --settings：启动后直接打开设置面板（也给用户留个快捷入口：
-    //             QuickSearch.exe --settings）
+    //             QuickAchieve.exe --settings）
     let open_settings_at_start = flag("--settings");
     // --bar：启动后直接摆出横条（**仅测试用**，配合 QS_INSTANCE_TAG 用，见 setup 里的注释）
     let bar_at_start = flag("--bar");
@@ -19854,7 +19854,7 @@ fn main() {
     // 「IPv4 优先到底快了多少」可以量化，而不是靠感觉说"好像快了点"。
     //
     // 用法（不进界面、不写配置）：
-    //   QuickSearch.exe --img-upload-probe baidu "%TEMP%\QuickSearch\img\shot.jpg"
+    //   QuickAchieve.exe --img-upload-probe baidu "%TEMP%\QuickAchieve\img\shot.jpg"
     if let Some(i) = args.iter().position(|a| a == "--img-upload-probe") {
         let id = args.get(i + 1).cloned().unwrap_or_else(|| "baidu".into());
         let path = args.get(i + 2).cloned().unwrap_or_default();
@@ -19890,7 +19890,7 @@ fn main() {
     // 与「我们的代码有坑（→ 修代码即可）」。run-and-exit，不进界面。
     //
     // 用法：拖选出一段文字后立刻跑
-    //   QuickSearch.exe --uia-probe
+    //   QuickAchieve.exe --uia-probe
     // 可选 QS_UIA_PROBE_PT=x,y 指定要探的点（默认只探前台窗口）。
     if flag("--uia-probe") {
         let pt = std::env::var("QS_UIA_PROBE_PT").ok().and_then(|s| {
@@ -20022,8 +20022,8 @@ fn main() {
          * 给一句人话，用户就知道等一秒再开。 */
         if msg.contains("failed to create webview") {
             win::message_box(
-                "Quick Search 没能启动",
-                "创建界面组件失败 —— 通常是上一个 Quick Search 刚被强制结束，\
+                "Quick Achieve 没能启动",
+                "创建界面组件失败 —— 通常是上一个 Quick Achieve 刚被强制结束，\
                  它占用的目录还没释放。\n\n请等一两秒再双击一次。\n\n\
                  （若反复出现，注销或重启一次即可。）",
             );
@@ -20068,19 +20068,19 @@ fn main() {
                 let en = config::load().ui_lang == "en";
                 let (title, text) = if en {
                     (
-                        "Quick Search is missing a runtime component",
+                        "Quick Achieve is missing a runtime component",
                         "Microsoft Edge WebView2 Runtime is not installed on this PC.\n\n\
-                         Quick Search renders its whole interface with it, so it cannot start \
+                         Quick Achieve renders its whole interface with it, so it cannot start \
                          without it.\n\n\
                          Click “Yes” to open the official Microsoft download page \
-                         (a ~2 MB installer), then start Quick Search again.\n\
+                         (a ~2 MB installer), then start Quick Achieve again.\n\
                          Click “No” to quit.",
                     )
                 } else {
                     (
-                        "Quick Search 缺少运行组件",
+                        "Quick Achieve 缺少运行组件",
                         "这台电脑上没有 Microsoft Edge WebView2 运行时。\n\n\
-                         Quick Search 的界面完全由它渲染，缺了它程序起不来。\n\n\
+                         Quick Achieve 的界面完全由它渲染，缺了它程序起不来。\n\n\
                          点「是」打开微软官方下载页（约 2 MB 的安装包），\
                          装好后重新打开本程序；点「否」退出。",
                     )
@@ -20150,7 +20150,7 @@ fn main() {
      * 弹一次系统消息框，比写在日志里（没人看）有意义得多。 */
     if config::is_locked() {
         win::message_box(
-            "Quick Search：本地配置解不开",
+            "Quick Achieve：本地配置解不开",
             &format!(
                 "这次没能解开本地配置（通常是换了 Windows 用户或换了电脑）。\n\n\
                  程序先按默认设置运行，**你的原配置没有被删除、也没有被覆盖**，\
@@ -20557,7 +20557,7 @@ fn main() {
                     std::thread::sleep(Duration::from_millis(1500));
                     // 默认带链接，好让自检能验证「有链接时按钮出现」这条路径
                     let text = std::env::var("QS_T_OCR_TEXT").unwrap_or_else(|_| {
-                        "示例识别结果 QuickSearch 12345\n\
+                        "示例识别结果 QuickAchieve 12345\n\
                          官网 https://example.com/docs 和 www.test.org/b 都可打开"
                             .to_string()
                     });
@@ -20800,7 +20800,7 @@ fn main() {
             }
         })
         .run(())
-        .expect("QuickSearch 启动失败");
+        .expect("QuickAchieve 启动失败");
 }
 
 /* ================================================================== */
@@ -20978,7 +20978,7 @@ mod tests {
             newer: true,
             current: "1.5.7".into(),
             notes: "说明".into(),
-            url: "https://example.com/QuickSearch.exe".into(),
+            url: "https://example.com/QuickAchieve.exe".into(),
             asset_api_url: String::new(),
             size: 123,
             sha256: "A".repeat(64),
@@ -20993,7 +20993,7 @@ mod tests {
         assert_eq!(a["authed"], serde_json::json!(true), "authed 仍如实反映那次检查");
         assert_eq!(
             a["url"].as_str().unwrap_or(""),
-            "https://example.com/QuickSearch.exe",
+            "https://example.com/QuickAchieve.exe",
             "不给下载按钮，就必须把网址交出来，否则用户没有出路"
         );
 
@@ -23373,7 +23373,7 @@ mod tests {
              * 会往 exe 旁边（target\release\deps\）写东西。两个都设上，
              * 老代码路径（直接读 APPDATA 的地方）也一并隔离。 */
             let old_qs = std::env::var("QS_DATA_DIR").ok();
-            std::env::set_var("QS_DATA_DIR", dir.join("QuickSearch"));
+            std::env::set_var("QS_DATA_DIR", dir.join("QuickAchieve"));
             Self { old, old_qs, dir }
         }
     }
@@ -23459,7 +23459,7 @@ mod tests {
     /// 真因：`restore_from_text` 只认视图格式（`barList` / `version`），
     /// 而滚动备份 `config.auto(...)` 是 `save_to` 写的**配置格式**
     /// （snake_case、`bar_list`）—— 于是点「导入配置」选自动备份永远得到
-    /// 「这份文件不像 Quick Search 的配置备份」，选手动备份却成功。
+    /// 「这份文件不像 Quick Achieve 的配置备份」，选手动备份却成功。
     #[test]
     fn restore_accepts_both_backup_formats() {
         let _serial = disk_lock();
@@ -23753,7 +23753,7 @@ mod tests {
         let _state_lock = STATE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _appdata = AppDataTemp::new();
 
-        // ⚠ 数据目录（%APPDATA%\QuickSearch）在真机上一定存在，但临时 APPDATA 下
+        // ⚠ 数据目录（%APPDATA%\QuickAchieve）在真机上一定存在，但临时 APPDATA 下
         // 没有 —— `mark_backup_done` 用的是 `fs::write`（不建父目录），少了这一行
         // 它会**静默失败**（`let _ =` 吞掉），测试就会看到"记号没写下来"。
         std::fs::create_dir_all(config::data_dir()).expect("临时数据目录建不出来");

@@ -1,5 +1,5 @@
 {
-  "Quick Search 设置": "Quick Search Settings",
+  "Quick Achieve 设置": "Quick Achieve Settings",
   "桌面版": "Desktop",
   "通用": "General",
   "外观": "Appearance",
@@ -17,7 +17,7 @@
 
   "触发": "Triggers",
   "选中文字就弹出横条": "Show the bar when text is selected",
-  "在任意软件里用鼠标拖选一段文字，松开即弹（内部会等选区落地、失败自动重试，快速划选也稳）": "Drag-select text in any app and release: the bar appears. Quick Search waits for the selection to settle and retries automatically, so fast selections work too.",
+  "在任意软件里用鼠标拖选一段文字，松开即弹（内部会等选区落地、失败自动重试，快速划选也稳）": "Drag-select text in any app and release: the bar appears. Quick Achieve waits for the selection to settle and retries automatically, so fast selections work too.",
   "按 Ctrl+C 也弹出横条": "Also show the bar on Ctrl+C",
   "键盘选中后复制，同样弹出来": "Copy with the keyboard and the bar appears as well",
   "出现延迟": "Show delay",
@@ -38,7 +38,7 @@
   "默认以管理员身份运行": "Always run as administrator",
   "只有管理员进程才能把 Ctrl+C 送进同样是管理员的软件（任务管理器、部分编辑器）。改完下次启动生效": "Only an elevated process can send Ctrl+C into apps that also run elevated (Task Manager, some editors). Takes effect on the next launch.",
   "启动密码": "Startup password",
-  "开启后启动软件必须先输入密码才能使用 · 与备份密码互不影响（两个密码可以不同，改一个不会动另一个）· 下次启动生效": "When enabled, Quick Search asks for this password at startup · completely independent of the backup password (they can differ; changing one never touches the other) · takes effect on the next launch",
+  "开启后启动软件必须先输入密码才能使用 · 与备份密码互不影响（两个密码可以不同，改一个不会动另一个）· 下次启动生效": "When enabled, Quick Achieve asks for this password at startup · completely independent of the backup password (they can differ; changing one never touches the other) · takes effect on the next launch",
   "设置启动密码": "Set startup password",
   "Argon2id 哈希": "Argon2id hash",
   "只在本机加密配置里存 Argon2id 哈希，不存原文 · 两次输入必须一致 · 想关掉就把上面的开关关掉": "Only an Argon2id hash is stored in the encrypted local config, never the password itself · both entries must match · flip the switch above to turn it off",

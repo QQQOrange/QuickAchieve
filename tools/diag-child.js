@@ -1,4 +1,4 @@
-/* 全面体检 QuickSearchBar：
+/* 全面体检 QuickAchieveBar：
    - 自身 / 子窗口（WebView2 宿主）的尺寸、可见性、透明度
    - GetWindowDisplayAffinity（是否被排除在截屏之外）
    - PrintWindow 逐个抓，看谁画了东西
@@ -101,7 +101,7 @@ function stats(h, tag, saveAs) {
     return out;
 }
 
-const BAR = FindWindowW(null, 'QuickSearchBar');
+const BAR = FindWindowW(null, 'QuickAchieveBar');
 if (!BAR) { console.log(JSON.stringify({ found: false })); process.exit(2); }
 
 console.log(JSON.stringify(stats(BAR, 'bar', path.resolve('../_pw-bar.bmp')), null, 2));

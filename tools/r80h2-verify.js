@@ -15,7 +15,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const DLL_SRC = path.join(ROOT, 'vendor', 'ort', 'lib', 'onnxruntime.dll');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
@@ -90,8 +90,8 @@ async function freePort() {
     }
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80h2-'));
-    fs.copyFileSync(EXE, path.join(tmp, 'QuickSearch.exe'));
-    const qs = path.join(tmp, 'QuickSearch');
+    fs.copyFileSync(EXE, path.join(tmp, 'QuickAchieve.exe'));
+    const qs = path.join(tmp, 'QuickAchieve');
     const models = path.join(tmp, '抠图模型');
     fs.mkdirSync(qs, { recursive: true });
     fs.mkdirSync(models, { recursive: true });
@@ -106,7 +106,7 @@ async function freePort() {
         WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2'),
         QS_T_WV_ARGS: WV_BASE + PORT,
     });
-    const proc = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
+    const proc = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
     try {
         const sw = await connect('settings.html');
         if (!sw) { rec('  连不上设置页'); return; }

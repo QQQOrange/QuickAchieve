@@ -21,7 +21,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r72-bar-img-probe.txt');
 let PORT = 0;
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -120,7 +120,7 @@ async function waitBar(cfg, pred, ms) {
     PORT = await freePort();
     WV = WV_BASE + PORT;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r72c-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const CFG = path.join(qs, 'config.json');
     /* 老配置的样子：bar_list 里**没有** @img（升级上来的那批用户）。

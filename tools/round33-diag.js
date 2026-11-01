@@ -1,5 +1,5 @@
 /* ============================================================================
- *  轮 33 诊断：A 段 changed=false 根因隔离（不启动 QuickSearch）
+ *  轮 33 诊断：A 段 changed=false 根因隔离（不启动 QuickAchieve）
  *
  *  现象：round33-probe A 段里，同一坐标同一手法的 flick 划选，A3a 成功
  *        （changed=true / 24 chars），A1/A2/A3b/B0 三次 round 全部
@@ -16,11 +16,11 @@
  *       （验证「内容相同序号不变」这个假设）
  *
  *  判读：
- *    - 选区稳定有值 + 焦点在 EDIT + 序号随复制变化  → QuickSearch 侧问题
+ *    - 选区稳定有值 + 焦点在 EDIT + 序号随复制变化  → QuickAchieve 侧问题
  *    - 选区时有时无                          → 探针划选本身不稳（环境/注入）
  *    - 选区稳定但序号不变                    → EDIT 没焦点或复制目标错窗口
  *
- *  用法：node tools/round33-diag.js   （确认 QuickSearch 已退出）
+ *  用法：node tools/round33-diag.js   （确认 QuickAchieve 已退出）
  * ========================================================================== */
 const koffi = require('koffi');
 const fs = require('fs');
@@ -111,7 +111,7 @@ const clsOf = (h) => {
     return s || '(null)';
 };
 
-/* ---- 键盘注入（复刻 QuickSearch send_ctrl_c 的节奏） ---- */
+/* ---- 键盘注入（复刻 QuickAchieve send_ctrl_c 的节奏） ---- */
 const KEYUP = 0x0002;
 function kbRaw(vk, up) {
     const b = Buffer.alloc(40);
@@ -148,7 +148,7 @@ function getSel(edit) {
 const seq = () => GetClipboardSequenceNumber();
 
 /* ------------------------------ 目标软件窗口 ------------------------------ */
-const EDIT_TEXT = 'Quick Search 选中即弹出横条：这是一段用来验证取词稳定性的中文测试文本。';
+const EDIT_TEXT = 'Quick Achieve 选中即弹出横条：这是一段用来验证取词稳定性的中文测试文本。';
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
 const clsName = 'QSR33Diag';
@@ -210,10 +210,10 @@ const WITH_QS = process.argv.includes('--with-qs');
 const SELPROBE = process.argv.includes('--selprobe');
 const ISTAG = '-diag-r33';
 const exeDir = path.join(__dirname, '..');
-const EXE = path.join(exeDir, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(exeDir, 'target', 'release', 'QuickAchieve.exe');
 const tempBase = path.join(os.tmpdir(), 'qs-diag');
 fs.rmSync(tempBase, { recursive: true, force: true });
-const qs = path.join(tempBase, 'QuickSearch');
+const qs = path.join(tempBase, 'QuickAchieve');
 fs.mkdirSync(qs, { recursive: true });
 fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
     trigger_copy: false, trigger_select: true, ocr_enable: false,
@@ -223,7 +223,7 @@ fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
 }, null, 1), 'utf8');
 const LOG = path.join(qs, 'log.txt');
 
-rec('=== 轮33 A段 changed=false 根因诊断' + (WITH_QS ? '（带 QuickSearch）' : (SELPROBE ? '（选区派发时序）' : '（无 QuickSearch）')) + ' ===');
+rec('=== 轮33 A段 changed=false 根因诊断' + (WITH_QS ? '（带 QuickAchieve）' : (SELPROBE ? '（选区派发时序）' : '（无 QuickAchieve）')) + ' ===');
 rec('虚拟屏 ' + SW + 'x' + SH + '（SM_CXSCREEN/SM_CYSCREEN，主屏=全虚拟屏则 ABS 归一化无缩放）');
 rec('目标窗 ' + clsOf(parent) + ' rect(' + PX + ',' + PY + ')  EDIT 屏幕点 a=(' + EP.a.x + ',' + EP.a.y + ') b=(' + EP.b.x + ',' + EP.b.y + ')');
 rec('');
@@ -323,7 +323,7 @@ for (let i = 1; i <= N; i++) {
     const tDrag = Date.now();
     const dt = dragFlick(EP.a, EP.b);
     pumpMsg();
-    /* 拖完立刻量：此刻 QuickSearch 还没到 40ms 稳定期终点 */
+    /* 拖完立刻量：此刻 QuickAchieve 还没到 40ms 稳定期终点 */
     const sNow = getSel(edit);
     const seqNow = seq();
     if (WITH_QS) {

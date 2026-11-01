@@ -1,4 +1,4 @@
-# Quick Search v1.0.0
+# Quick Achieve v1.0.0
 
 首个正式版本。Windows 10/11 划词搜索工具，**单 exe、免安装、无需运行库**。
 
@@ -74,7 +74,7 @@
 
 ## 安装
 
-1. 下载 `QuickSearch.exe`
+1. 下载 `QuickAchieve.exe`
 2. 放到任意目录，双击运行（无需安装）
 3. 首次运行会请求管理员权限 —— **这是必需的**：只有管理员进程才能把 Ctrl+C
    送进同样是管理员的程序（任务管理器、各类编辑器）。可在设置里关闭自动提权。
@@ -107,7 +107,7 @@
 ## 校验
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   11.77 MB (12,338,688 字节)
 MD5:    2481FD706745E4A818655C192197A589
 SHA256: 79AE0BE97630DBE76135244915F85E0AD228BEDA51FB741A9CA6D83A512A4F6E
@@ -116,7 +116,7 @@ SHA256: 79AE0BE97630DBE76135244915F85E0AD228BEDA51FB741A9CA6D83A512A4F6E
 核对方式：
 
 ```powershell
-Get-FileHash .\QuickSearch.exe -Algorithm SHA256
+Get-FileHash .\QuickAchieve.exe -Algorithm SHA256
 # 应与上面的 SHA256 一致
 ```
 

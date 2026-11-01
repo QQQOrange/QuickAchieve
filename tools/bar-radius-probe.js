@@ -26,7 +26,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9342;
 const TAG = '-probe-radiusn';
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -97,8 +97,8 @@ const MEASURE = (r, pad) => `(() => {
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-radn-'));
     const appdata = path.join(tmp, 'appdata');
-    fs.mkdirSync(path.join(appdata, 'QuickSearch'), { recursive: true });
-    fs.writeFileSync(path.join(appdata, 'QuickSearch', 'log.on'), '');
+    fs.mkdirSync(path.join(appdata, 'QuickAchieve'), { recursive: true });
+    fs.writeFileSync(path.join(appdata, 'QuickAchieve', 'log.on'), '');
 
     const env = Object.assign({}, process.env, {
         APPDATA: appdata,

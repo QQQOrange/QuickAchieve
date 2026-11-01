@@ -408,7 +408,7 @@ pub fn test_engine(
     crate::trans_vendor::translate(
         info,
         creds,
-        "Hello, world! 这是来自 Quick Search 的连接测试。",
+        "Hello, world! 这是来自 Quick Achieve 的连接测试。",
         target,
     )
 }

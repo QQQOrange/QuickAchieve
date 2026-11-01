@@ -28,7 +28,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r74-panel-shift-probe.txt');
 const PORT = 9471;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -78,7 +78,7 @@ function wins() {
     return out;
 }
 const find = (title) => wins().find((w) => w.title === title) || null;
-const barRect = () => { const w = find('QuickSearchBar'); return w ? w.rect : null; };
+const barRect = () => { const w = find('QuickAchieveBar'); return w ? w.rect : null; };
 const fmt = (r) => r ? `x=${r[0]} y=${r[1]} w=${r[2]} h=${r[3]}` : 'NONE';
 
 /* ------------------------------ CDP ------------------------------ */
@@ -168,11 +168,11 @@ const SNAP = `(function(){
 })()`;
 
 (async () => {
-    try { execSync('taskkill /IM QuickSearch.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1000);
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r74p-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, theme: 'light', bar_list: ['百度', 'Google'],

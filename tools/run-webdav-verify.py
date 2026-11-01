@@ -34,17 +34,17 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 TOOLS = os.path.join(ROOT, 'tools')
 APPDATA = os.environ['APPDATA']
-CFG = os.path.join(APPDATA, 'QuickSearch', 'config.json')
-LOG = os.path.join(APPDATA, 'QuickSearch', 'log.txt')
-SRVROOT = os.path.join(APPDATA, 'QuickSearch', '_wdsrv')
+CFG = os.path.join(APPDATA, 'QuickAchieve', 'config.json')
+LOG = os.path.join(APPDATA, 'QuickAchieve', 'log.txt')
+SRVROOT = os.path.join(APPDATA, 'QuickAchieve', '_wdsrv')
 
 USER, PASS = 'qsuser', 'qspass'
 PORT = 18080
 BASE = 'http://127.0.0.1:%d/dav/' % PORT
-FILE = 'quicksearch-backup.json'
+FILE = 'quickachieve-backup.json'
 
 # ---------------------------------------------------------------- 服务
 
@@ -173,7 +173,7 @@ def write_cfg(d):
 
 
 def restart():
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
     time.sleep(1.5)
     env = dict(os.environ)
     env['QS_DEBUG'] = '1'
@@ -295,7 +295,7 @@ try:
         json.dumps(remote, ensure_ascii=False))
     future = time.time() + 3600
     os.utime(srv_file(), (future, future))
-    stash = os.path.join(APPDATA, 'QuickSearch', 'config.before-webdav.json')
+    stash = os.path.join(APPDATA, 'QuickAchieve', 'config.before-webdav.json')
     if os.path.exists(stash):
         os.remove(stash)
     write_cfg(base_cfg())
@@ -390,7 +390,7 @@ finally:
     if orig_delay is not None:
         d['delay_ms'] = orig_delay
     write_cfg(d)
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
     srv.shutdown()
     shutil.rmtree(SRVROOT, ignore_errors=True)
     # 收尾自查：横条要是没还原回去，就大声报出来，不能悄悄把用户配置改了就跑。

@@ -1,7 +1,7 @@
 /* ============================================================================
  *  r75：交付前冒烟 —— 用**桌面上那个 exe** 真启动一次，验它能起来、页面能跑
  *
- *  与 tools/smoke-exe.py 的区别：那个脚本会 taskkill 掉所有 QuickSearch.exe，
+ *  与 tools/smoke-exe.py 的区别：那个脚本会 taskkill 掉所有 QuickAchieve.exe，
  *  在「用户自己的实例正开着（管理员权限、脚本关不掉）」时必然失败。这里用
  *  QS_INSTANCE_TAG 另起一份隔离实例，再用 CDP 连进去看设置页是否真的跑起来了
  *  （JS 无异常、关键控件在），所以任何时刻都能跑。
@@ -13,7 +13,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 
-const EXE = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickSearch.exe';
+const EXE = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickAchieve.exe';
 const ROOT = path.join(__dirname, '..');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
@@ -55,7 +55,7 @@ async function freePort() {
 (async () => {
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-smoke-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true, theme: 'light' }, null, 1), 'utf8');
     const env = Object.assign({}, process.env, {

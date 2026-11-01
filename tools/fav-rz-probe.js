@@ -19,7 +19,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'fav-rz-probe.txt');
 const PORT = 9333;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -81,7 +81,7 @@ const wtext = (h) => {
 function barRect() {
     let out = null;
     const cb = koffi.register((h) => {
-        if (wtext(h) === 'QuickSearchBar') {
+        if (wtext(h) === 'QuickAchieveBar') {
             const r = {}; GetWindowRect(h, r);
             out = [r.left, r.top, r.right - r.left, r.bottom - r.top];
         }
@@ -153,9 +153,9 @@ const SNAP = `(function(){
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-favrz-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
-    const realCfg = path.join(process.env.APPDATA, 'QuickSearch', 'config.json');
+    const realCfg = path.join(process.env.APPDATA, 'QuickAchieve', 'config.json');
     {
         const c = JSON.parse(fs.readFileSync(realCfg, 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
@@ -163,7 +163,7 @@ const SNAP = `(function(){
     }
     const logp = path.join(qs, 'log.txt');
 
-    try { execSync('taskkill /IM QuickSearch.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1200);
     const env = Object.assign({}, process.env, {
         APPDATA: tmp, QS_DEBUG: '1', QS_ALLOW_INJECTED: '1', QS_T_WV_ARGS: WV_ARGS,

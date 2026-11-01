@@ -1,4 +1,4 @@
-"""本地假 GitHub：验证 QuickSearch 的更新链路（发现新版 → 下载 → 校验 → 替换）。
+"""本地假 GitHub：验证 QuickAchieve 的更新链路（发现新版 → 下载 → 校验 → 替换）。
 
 为什么要这么测：真实 GitHub 上目前最新是 v1.1.1，而我们要验证的是
 "远端比当前新"这条分支 —— 只能靠一个可控的假服务。它同时验证：
@@ -9,12 +9,12 @@
 假服务要返回的最小形状：
   GET /releases/latest            → 302 Location: .../releases/tag/v9.9.9
   GET /api/releases/latest        → JSON: tag_name / body(含 SHA256) / assets
-  GET /dl/QuickSearch.exe         → 一个"新版本"exe 的字节
+  GET /dl/QuickAchieve.exe         → 一个"新版本"exe 的字节
 """
 import http.server, json, os, socketserver, sys, threading
 
 PORT = 8731
-NEW_EXE = r'C:\Users\64381\Documents\deepseek-harness\default-workspace\qs_build\target\release\QuickSearch.exe'
+NEW_EXE = r'C:\Users\64381\Documents\deepseek-harness\default-workspace\qs_build\target\release\QuickAchieve.exe'
 SHA = open(r'C:\Users\64381\Documents\deepseek-harness\default-workspace\qs_build\new_exe.sha').read().strip()
 SIZE = os.path.getsize(NEW_EXE)
 
@@ -30,13 +30,13 @@ class H(http.server.BaseHTTPRequestHandler):
         if p.startswith('/api/') and p.endswith('/latest'):
             body = json.dumps({
                 'tag_name': 'v9.9.9',
-                'html_url': 'https://github.com/QQQOrange/QuickSearch/releases/tag/v9.9.9',
+                'html_url': 'https://github.com/QQQOrange/QuickAchieve/releases/tag/v9.9.9',
                 'body': '## 这是一个测试版本\n\n- 第一行说明\n- 第二行说明\n\n'
                         f'SHA256: {SHA}\n',
                 'assets': [{
-                    'name': 'QuickSearch.exe',
+                    'name': 'QuickAchieve.exe',
                     'size': SIZE,
-                    'browser_download_url': f'http://127.0.0.1:{PORT}/dl/QuickSearch.exe',
+                    'browser_download_url': f'http://127.0.0.1:{PORT}/dl/QuickAchieve.exe',
                 }],
             }).encode()
             self.send_response(200)
@@ -48,10 +48,10 @@ class H(http.server.BaseHTTPRequestHandler):
         if p.endswith('/releases/latest'):
             # 302 → 带 tag 的 Location（程序从这里抠版本号）
             self.send_response(302)
-            self.send_header('Location', 'https://github.com/QQQOrange/QuickSearch/releases/tag/v9.9.9')
+            self.send_header('Location', 'https://github.com/QQQOrange/QuickAchieve/releases/tag/v9.9.9')
             self.end_headers()
             return
-        if p == '/dl/QuickSearch.exe':
+        if p == '/dl/QuickAchieve.exe':
             data = open(NEW_EXE, 'rb').read()
             self.send_response(200)
             self.send_header('Content-Type', 'application/octet-stream')

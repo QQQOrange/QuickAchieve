@@ -1,6 +1,6 @@
 //! 把 Windows 资源（图标 + 版本信息）编进 exe，**并把前端 ui/ 压缩后一起嵌进去**。
 //!
-//! 为什么要嵌前端：发布出去的是一个单独的 exe（GitHub Release 只挂 `QuickSearch.exe`），
+//! 为什么要嵌前端：发布出去的是一个单独的 exe（GitHub Release 只挂 `QuickAchieve.exe`），
 //! 而 WebView 需要 index.html / bar.js / data/icons/*.png。以前这些文件靠
 //! 「exe 同目录的 ui/」提供，找不到就回退到一个**开发者本机的绝对路径** ——
 //! 换台机器就是白屏。自动更新只会下载 exe，不会带 ui/ 目录。
@@ -89,15 +89,15 @@ fn main() {
 
     /* 版本资源**不会**跟着 Cargo.toml 自动走 —— 它是手写在 app.rc 里的。
      * v2.1.0 就踩过：程序里 `config::VERSION` 是 2.1.0，右键属性却还写着 2.0.0，
-     * `OriginalFilename` 更是留着构建名 `QuickSearch-lite.exe`（用户以为装错了）。
+     * `OriginalFilename` 更是留着构建名 `QuickAchieve-lite.exe`（用户以为装错了）。
      * 这里在构建期对一次账，不一致就大声警告，别等发出去才发现。 */
     if let Ok(rc) = std::fs::read_to_string("app.rc") {
         let want = env!("CARGO_PKG_VERSION");
         if !rc.contains(&format!("VALUE \"FileVersion\", \"{want}\"")) {
             println!("cargo:warning=app.rc 的 FileVersion 与 Cargo.toml 的 {want} 不一致 —— 右键属性会显示旧版本号");
         }
-        if !rc.contains("VALUE \"OriginalFilename\", \"QuickSearch.exe\"") {
-            println!("cargo:warning=app.rc 的 OriginalFilename 不是 QuickSearch.exe —— 属性里会显示构建名");
+        if !rc.contains("VALUE \"OriginalFilename\", \"QuickAchieve.exe\"") {
+            println!("cargo:warning=app.rc 的 OriginalFilename 不是 QuickAchieve.exe —— 属性里会显示构建名");
         }
     }
 

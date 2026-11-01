@@ -81,7 +81,7 @@ pub(crate) fn trans_agent() -> ureq::Agent {
             .timeout_connect(Duration::from_secs(6))
             .timeout_read(Duration::from_secs(60))
             .timeout(Duration::from_secs(180))
-            .user_agent("QuickSearch/1.0 (Windows)")
+            .user_agent("QuickAchieve/1.0 (Windows)")
             .build()
     })
     .clone()

@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9419;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=' + PORT;
@@ -48,11 +48,11 @@ async function connect(sub, ms) {
     return null;
 }
 (async () => {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(900);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r70i-'));
-    fs.mkdirSync(path.join(tmp, 'QuickSearch'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, 'QuickSearch', 'config.json'),
+    fs.mkdirSync(path.join(tmp, 'QuickAchieve'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'QuickAchieve', 'config.json'),
         JSON.stringify({ debug: true, bar_list: ['百度', 'Google'], imgEnable: true, imgAddToBar: true }), 'utf8');
     const env = Object.assign({}, process.env, {
         APPDATA: tmp, LOCALAPPDATA: tmp, QS_DEBUG: '1', QS_ALLOW_INJECTED: '1',
@@ -90,6 +90,6 @@ async function connect(sub, ms) {
         }, null, 1);
     })()`);
     console.log(out);
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     process.exit(0);
 })().catch((e) => { console.log('崩了：' + e); process.exit(2); });

@@ -3,9 +3,9 @@
  *
  *  要证的事（编号与用户反馈一一对应）：
  *    ① 备份命名**只有一个口径**：本地落盘的文件名 == 云端上传的文件名
- *       （`config(YYYY-MM-DD HH-MM-SS).QuickSearch`），且**逐字节相同**、内容是加密的。
+ *       （`config(YYYY-MM-DD HH-MM-SS).QuickAchieve`），且**逐字节相同**、内容是加密的。
  *       「备份文件名」这个自定义设置项已经删掉。
- *    ② 滚动备份改叫 `config.auto(时间).QuickSearch` —— 每次改设置都会重写它，
+ *    ② 滚动备份改叫 `config.auto(时间).QuickAchieve` —— 每次改设置都会重写它，
  *       但**绝不能把用户手动做的那份备份一起删掉**（同名就会，这是灾难）。
  *    ③ 「仅保留最近 10 份」= 本地 + 云端**一起清**，两边都只留最新 10 份，
  *       更早的精确删除（不是"大概删几个"）。
@@ -31,7 +31,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round20-probe.txt');
 const TAG = '-probe-r20';
 const PORT = 9345;                 // CDP
@@ -97,7 +97,7 @@ function startDav() {
     const srv = http.createServer((req, res) => {
         const u = new URL(req.url, 'http://127.0.0.1');
         // ⚠ 必须解码：PUT 的路径段是百分号编码过的（文件名里有空格和括号），
-        //   不解码的话服务端存下来的键是 `config%282026-…%29.QuickSearch`，
+        //   不解码的话服务端存下来的键是 `config%282026-…%29.QuickAchieve`，
         //   拿它去和本地真实文件名比对必然对不上 —— 那是探针自己的锅，不是功能的锅。
         const sub = decodeURIComponent(u.pathname.replace(/^\/dav\/?/, ''));
         davHits.push(req.method + ' /' + sub);
@@ -283,16 +283,16 @@ async function shot(ws, name) {
  *  主流程
  * ========================================================================== */
 const PENDING_STOP = [];
-const MANUAL_RE = /^config\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickSearch$/;
-const AUTO_RE = /^config\.auto\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickSearch$/;
-const stampName = (i) => 'config(2026-10-12 10-00-' + String(i).padStart(2, '0') + ').QuickSearch';
+const MANUAL_RE = /^config\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickAchieve$/;
+const AUTO_RE = /^config\.auto\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickAchieve$/;
+const stampName = (i) => 'config(2026-10-12 10-00-' + String(i).padStart(2, '0') + ').QuickAchieve';
 
 (async function main() {
     rec('=== 轮 20 专项探针 ===');
     rec('');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r20-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     rec('隔离实例数据目录：' + qs);
 
@@ -307,7 +307,7 @@ const stampName = (i) => 'config(2026-10-12 10-00-' + String(i).padStart(2, '0')
     const mkItem = (id, t, r) => ({ id, kind: 'text', text: t, html: '', image: '', remark: r });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.trigger_select = false;
         c.trigger_copy = false;
         c.ocr_enable = false;
@@ -424,7 +424,7 @@ const stampName = (i) => 'config(2026-10-12 10-00-' + String(i).padStart(2, '0')
     info('本地文件：' + JSON.stringify(localNames));
 
     const cloudName = cloudNames[0] || '';
-    chk('云端文件名是统一口径 config(时间).QuickSearch（不再是 quicksearch-backup.json）',
+    chk('云端文件名是统一口径 config(时间).QuickAchieve（不再是 quickachieve-backup.json）',
         MANUAL_RE.test(cloudName), cloudName);
     chk('本地也落了一份，且与云端**同名**',
         !!cloudName && localNames.includes(cloudName), 'local=' + JSON.stringify(localNames));
@@ -459,7 +459,7 @@ const stampName = (i) => 'config(2026-10-12 10-00-' + String(i).padStart(2, '0')
     rec('--- ② 滚动备份改名 config.auto(…)，绝不能顺手删掉手动备份 ---');
     await evalJs(setWs, "invoke('set_setting', {key:'iconSize', value: 33}).catch(function(){})");
     const gotAuto = await waitFor('出现 config.auto(…) 滚动备份', () => localAuto().length >= 1, 15000);
-    chk('改一次设置后出现滚动备份 config.auto(时间).QuickSearch', gotAuto,
+    chk('改一次设置后出现滚动备份 config.auto(时间).QuickAchieve', gotAuto,
         JSON.stringify(localAuto()));
     chk('  滚动备份与手动备份**不同名**（同名的话 save_to 会把手动备份删掉）',
         localAuto()[0] !== cloudName, localAuto()[0] + ' vs ' + cloudName);

@@ -38,7 +38,7 @@
   "p:读取失败：": "Read failed: ",
   "p:确定用云端的「": "Overwrite this machine's configuration with the cloud copy “",
   "s:」覆盖本机配置吗？": "”?",
-  "s:覆盖前会先在本机留一份 config.before-webdav(时间).QuickSearch。": "A config.before-webdav(timestamp).QuickSearch snapshot is saved locally before overwriting.",
+  "s:覆盖前会先在本机留一份 config.before-webdav(时间).QuickAchieve。": "A config.before-webdav(timestamp).QuickAchieve snapshot is saved locally before overwriting.",
   "p:正在恢复「": "Restoring “",
   "s:删除后无法恢复（本机的备份不受影响）。": "Deletion cannot be undone (local backups are unaffected).",
   "p:删除失败：": "Delete failed: ",

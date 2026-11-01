@@ -2089,11 +2089,11 @@
   },
   {
     "name": "Apache Issues",
-    "url": "https://issues.apache.org/jira/secure/QuickSearch.jspa?searchString=test",
+    "url": "https://issues.apache.org/jira/secure/QuickAchieve.jspa?searchString=test",
     "kind": "OK",
     "status": 200,
     "ms": 808,
-    "final": "https://issues.apache.org/jira/secure/QuickSearch.jspa?searchString=test"
+    "final": "https://issues.apache.org/jira/secure/QuickAchieve.jspa?searchString=test"
   },
   {
     "name": "Arch Wiki",

@@ -22,7 +22,7 @@ const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 
 const u = koffi.load('user32.dll');
 try { u.func('int SetProcessDpiAwarenessContext(intptr c)')(-4); } catch (e) { }
@@ -47,7 +47,7 @@ function titles() {
 const hasAny = (sub) => titles().some((x) => x.includes(sub));
 const waitFor = (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (fn()) return true; sleep(150); } return false; };
 
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 function logSince(off) {
     try {
         const fd = fs.openSync(LOG, 'r');
@@ -69,7 +69,7 @@ const ok = (n, c, extra) => {
     console.log((c ? 'PASS  ' : 'FAIL  ') + n + (c ? '' : '\n        ' + (extra || '')));
 };
 
-try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
 sleep(1600);
 const off = logSize();
 // QS_T_OCR_TEXT / QS_T_OCR_IMG：测试钩子（见 src/main.rs 里 ocr_selftest 那段），
@@ -77,7 +77,7 @@ const off = logSize();
 spawn(EXE, ['--no-elevate', '--ocr-demo'], {
     env: Object.assign({}, process.env, {
         QS_DEBUG: '1', QS_NO_ELEVATE: '1',
-        QS_T_OCR_TEXT: '这是识别出来的示例文字 QuickSearch OCR 12345',
+        QS_T_OCR_TEXT: '这是识别出来的示例文字 QuickAchieve OCR 12345',
         QS_T_OCR_IMG: '1',
     }),
     cwd: ROOT, detached: true, stdio: 'ignore',
@@ -105,6 +105,6 @@ for (const line of seg.split('\n')) {
 const fails = seg.split('\n').filter((l) => /\[ocrselftest\] FAIL/.test(l));
 ok('R4 自检没有任何 FAIL', fails.length === 0, fails.join('\n        '));
 
-try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

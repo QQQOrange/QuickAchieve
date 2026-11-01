@@ -35,7 +35,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'bar-latency-probe.txt');
 const PORT = 9340;
 const TAG = '-probe-lat';
@@ -176,7 +176,7 @@ const RE = /(copy path:|show_bar: 耗时|show_bar: atMouse|⏱ 端到端|迟到|
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-lat-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const T_OLD = '【旧剪贴板内容】OLD-CLIP';
     const T_DOC = '记事本文档内容 DOC-FOR-CTRLC';
@@ -185,7 +185,7 @@ const RE = /(copy path:|show_bar: 耗时|show_bar: atMouse|⏱ 端到端|迟到|
 
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         c.trigger_select = false;
         c.trigger_copy = true;          // 本轮要测的就是 Ctrl+C 这条路

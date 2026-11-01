@@ -976,7 +976,7 @@ window.qsImgIconNode = function () {
 
 /** icons 目录里「文件名 = 引擎名」的默认图标（#138）。
  *
- *  用户原话：「读取 C:\Users\64381\AppData\Roaming\QuickSearch\icons 目录中的
+ *  用户原话：「读取 C:\Users\64381\AppData\Roaming\QuickAchieve\icons 目录中的
  *  自定义图标，并将其设为软件中相应引擎的默认图标」。Rust 侧 config_view 把
  *  这个目录扫成 CONF.dirIcons（stem → data URL），已剔除被 overrideIcons
  *  引用的文件。这里只做查找：先精确命中，再忽略大小写命中（Windows 文件名
@@ -1903,7 +1903,7 @@ window.qsPickNav = function (host, opts) {
  *    C:\Users\me\a.txt   盘符 + 分隔符（\ 或 / 都行）
  *    \\server\share\a    UNC 网络路径
  *    .\bin\tool.exe      相对路径（.\ ..\ ./ ../ 开头）
- *    %APPDATA%\QuickSearch  含一个完整 %VAR% 段
+ *    %APPDATA%\QuickAchieve  含一个完整 %VAR% 段
  *
  *  ⚠ 不认「裸的 bin\tool.exe」：光有分隔符 + 扩展名的话也可能只是句子里带了
  *     反斜杠；误判的代价（横条上多个图标、点下去弹报错）比漏判大。

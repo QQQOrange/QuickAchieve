@@ -22,7 +22,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'ocr-dep-probe.txt');
 const PORT = 9422;
 
@@ -133,7 +133,7 @@ async function shot(ws, name) {
 
 /* ------------------------------ 实例工厂 ------------------------------ */
 function makeConf(dir, extra) {
-    const qs = path.join(dir, 'QuickSearch');
+    const qs = path.join(dir, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const c = Object.assign({
         trigger_copy: false, trigger_select: true, ocr_enable: false,
@@ -171,7 +171,7 @@ function spawnInstance(qs) {
     rec('启动实例 pid=' + child.pid + '（CDP ' + PORT + '，隔离 APPDATA=' + appData + '）');
 }
 function killInstance() {
-    // 只杀自己 spawn 的隔离实例。⚠ 不要用 taskkill /IM QuickSearch.exe ——
+    // 只杀自己 spawn 的隔离实例。⚠ 不要用 taskkill /IM QuickAchieve.exe ——
     // 那会把用户正在运行的真实实例一起杀掉。
     if (child) { try { child.kill(); } catch (e) { } }
     sleep(600);

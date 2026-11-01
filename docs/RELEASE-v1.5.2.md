@@ -1,4 +1,4 @@
-# Quick Search v1.5.2
+# Quick Achieve v1.5.2
 
 **双击托盘图标 = 打开设置。**
 
@@ -46,7 +46,7 @@ Tauri 用的托盘库（tray-icon 0.25）给托盘消息窗注册的窗口类**�
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,302,784 字节 | D509EA4D973275F4C197072916E616B1DEE9ACF057D042F3A3144A9AC8DC7029 |
+| `QuickAchieve.exe` | 13,302,784 字节 | D509EA4D973275F4C197072916E616B1DEE9ACF057D042F3A3144A9AC8DC7029 |
 
 ---
 

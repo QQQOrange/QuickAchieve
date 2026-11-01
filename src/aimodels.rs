@@ -152,7 +152,7 @@ pub const MODELS: &[ModelSpec] = &[
              * 都实测 206 + ONNX 文件头（`08 06 12 07 70 79` = protobuf 的
              * field1/field2 + "py"）验证过。
              * RMBG 那三个才有 modelscope 源（那是 briaai 的模型，魔搭有镜像）。 */
-            "https://gh-proxy.com/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/u2netp.onnx",
+            "https://gh-proxy.com/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/u2netp.onnx",
             "https://hf-mirror.com/tomjackson2023/rembg/resolve/main/u2netp.onnx",
             "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
         ],
@@ -174,7 +174,7 @@ pub const MODELS: &[ModelSpec] = &[
              * 所以 modelscope 排第一，自己 release 保底 —— 两个都快，
              * 谁先成功用谁（多源回退会逐个试）。 */
             "https://www.modelscope.cn/models/AI-ModelScope/RMBG-1.4/resolve/master/onnx/model_quantized.onnx",
-            "https://gh-proxy.com/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/rmbg-quantized.onnx",
+            "https://gh-proxy.com/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/rmbg-quantized.onnx",
             "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx",
             "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_quantized.onnx",
         ],
@@ -191,7 +191,7 @@ pub const MODELS: &[ModelSpec] = &[
         bytes: 88_217_533,
         urls: &[
             "https://www.modelscope.cn/models/AI-ModelScope/RMBG-1.4/resolve/master/onnx/model_fp16.onnx",
-            "https://gh-proxy.com/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/rmbg-fp16.onnx",
+            "https://gh-proxy.com/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/rmbg-fp16.onnx",
             "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/onnx/model_fp16.onnx",
             "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model_fp16.onnx",
         ],
@@ -208,7 +208,7 @@ pub const MODELS: &[ModelSpec] = &[
         bytes: 176_153_355,
         urls: &[
             "https://www.modelscope.cn/models/AI-ModelScope/RMBG-1.4/resolve/master/onnx/model.onnx",
-            "https://gh-proxy.com/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/rmbg-full.onnx",
+            "https://gh-proxy.com/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/rmbg-full.onnx",
             "https://hf-mirror.com/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
             "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
         ],
@@ -452,7 +452,7 @@ fn agent() -> ureq::Agent {
             .resolver(crate::net::ipv4_first)
             .timeout_connect(std::time::Duration::from_secs(15))
             .timeout(std::time::Duration::from_secs(1800))
-            .user_agent("QuickSearch/1.0 (Windows)")
+            .user_agent("QuickAchieve/1.0 (Windows)")
             .build()
     })
     .clone()
@@ -587,7 +587,7 @@ static CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::ne
 /// # 为什么必须有这个锁
 ///
 /// 用户报：「点击下载引擎，它会下完之后再进一步的重复下载」。
-/// 实测日志（`%APPDATA%\QuickSearch\log.txt`）把现场记下来了：
+/// 实测日志（`%APPDATA%\QuickAchieve\log.txt`）把现场记下来了：
 ///
 /// ```text
 /// 134368000379  ai_matting_download: 开始 rmbg-full
@@ -705,9 +705,9 @@ fn take_cancel() -> bool {
 /// 11.84MB、无解压、无中间文件。zip 那条路保留作为兜底（万一资产被删）。
 pub const RUNTIME_DLL_URLS: &[&str] = &[
     // 自己的 release（gh-proxy 加速，实测 ~10 MB/s）
-    "https://gh-proxy.com/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/onnxruntime.dll",
-    "https://ghfast.top/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/onnxruntime.dll",
-    "https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/onnxruntime.dll",
+    "https://gh-proxy.com/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/onnxruntime.dll",
+    "https://ghfast.top/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/onnxruntime.dll",
+    "https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/onnxruntime.dll",
 ];
 
 /// 运行时 dll 的期望大小（校验用：下少了/下成错误页会被拒）。
@@ -1278,9 +1278,9 @@ mod tests {
     fn 自托管源指向同一个资产版本() {
         for m in MODELS {
             for u in m.urls {
-                // 量自己的 release（QQQOrange/QuickSearch）才算自托管；
+                // 量自己的 release（QQQOrange/QuickAchieve）才算自托管；
                 // modelscope / hf-mirror / rembg 官方那些是第三方源，不在此列。
-                if !u.contains("github.com/QQQOrange/QuickSearch/releases/download/") {
+                if !u.contains("github.com/QQQOrange/QuickAchieve/releases/download/") {
                     continue;
                 }
                 assert!(
@@ -1293,7 +1293,7 @@ mod tests {
         }
         // 运行库那三条同理
         for u in RUNTIME_DLL_URLS {
-            if !u.contains("github.com/QQQOrange/QuickSearch/releases/download/") {
+            if !u.contains("github.com/QQQOrange/QuickAchieve/releases/download/") {
                 continue;
             }
             assert!(

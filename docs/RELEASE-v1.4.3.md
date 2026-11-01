@@ -1,4 +1,4 @@
-# Quick Search v1.4.3 发布说明
+# Quick Achieve v1.4.3 发布说明
 
 > 发布日期：2026-10-22
 > 上个版本：v1.4.2
@@ -64,8 +64,8 @@
 
 ## ⑥ 安装
 
-直接覆盖旧的 `QuickSearch.exe`（13,280,256 字节）。
-配置、图标、收藏、AI 模型都在 exe 旁边的 `Quick search data\` 里，覆盖 exe 不会动它们。
+直接覆盖旧的 `QuickAchieve.exe`（13,280,256 字节）。
+配置、图标、收藏、AI 模型都在 exe 旁边的 `Quick Achieve data\` 里，覆盖 exe 不会动它们。
 
 更新包校验（SHA256）：`0077E23795313E85250437A7966B080B8B1F3AA3C066B905443335AA26359ECB`
 

@@ -34,7 +34,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'fav-fold-probe.txt');
 const PORT = 9337;
 const TAG = '-probe-fold';
@@ -72,7 +72,7 @@ function mouse(flags, x, y) {
 }
 const moveTo = (x, y) => mouse(MOVE | ABS, x, y);
 
-/** 本进程的 QuickSearchBar 窗口矩形（用户自己的实例同名，必须按 pid 过滤） */
+/** 本进程的 QuickAchieveBar 窗口矩形（用户自己的实例同名，必须按 pid 过滤） */
 function barRect(pid) {
     let out = null;
     const cb = koffi.register((h) => {
@@ -81,7 +81,7 @@ function barRect(pid) {
         if (p[0] !== pid) return 1;
         const t = new Uint16Array(200); const n = GetWindowTextW(h, t, 200);
         let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(t[i]);
-        if (s === 'QuickSearchBar') {
+        if (s === 'QuickAchieveBar') {
             const r = {}; GetWindowRect(h, r);
             out = [r.left, r.top, r.right - r.left, r.bottom - r.top];
         }
@@ -193,7 +193,7 @@ function lastCss(txt) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-fold-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const mkItem = (id, t, r) => ({ id, kind: 'text', text: t, html: '', image: '', remark: r });
     const sub = (id, name, n) => ({
@@ -203,7 +203,7 @@ function lastCss(txt) {
     });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         c.trigger_select = false; c.trigger_copy = false; c.ocr_enable = false;
         c.auto_start = false;

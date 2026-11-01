@@ -1,5 +1,5 @@
 /* 端到端测试：不碰用户的程序，自己开一个带 EDIT 控件的窗口，
-   在里面拖选文字，看 QuickSearch 会不会自动弹横条。
+   在里面拖选文字，看 QuickAchieve 会不会自动弹横条。
    用法: node e2e.js   （跑完自动退出，窗口只存在约 12 秒） */
 const koffi = require('koffi');
 const user32 = koffi.load('user32.dll');
@@ -45,7 +45,7 @@ const ClientToScreen = user32.func('int ClientToScreen(void *h, _Inout_ POINT *p
 
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
-const TEXT = 'Quick Search 选中即弹出横条 —— 这是一段用来验证取词的中文测试文本。';
+const TEXT = 'Quick Achieve 选中即弹出横条 —— 这是一段用来验证取词的中文测试文本。';
 
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);

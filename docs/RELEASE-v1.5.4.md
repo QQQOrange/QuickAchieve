@@ -1,4 +1,4 @@
-# Quick Search v1.5.4
+# Quick Achieve v1.5.4
 
 **一个新功能：横条弹出位置可以选了（文字上方 / 下方）。另附：「点横条外面就收起」的核查结论。**
 
@@ -63,7 +63,7 @@ dismiss_bar: 已收起`，链路是通的（该日志文件里此类记录累计
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,327,872 字节 | `4F83EB4A3CEDCC9C240DB1663B35763A8D1A88E03DF6469A0452FF818E7809B1` |
+| `QuickAchieve.exe` | 13,327,872 字节 | `4F83EB4A3CEDCC9C240DB1663B35763A8D1A88E03DF6469A0452FF818E7809B1` |
 
 ---
 

@@ -22,7 +22,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9338;
 const TAG = '-probe-foldshot';
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -110,7 +110,7 @@ async function shot(ws, file) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-foldshot-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const mkItem = (id, t, r) => ({ id, kind: 'text', text: t, html: '', image: '', remark: r });
     const sub = (id, name, n) => ({
@@ -120,7 +120,7 @@ async function shot(ws, file) {
     });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         c.trigger_select = false; c.trigger_copy = false; c.ocr_enable = false; c.auto_start = false;
         c.fav_panel_sizes = {};

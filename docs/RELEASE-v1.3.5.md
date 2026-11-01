@@ -1,4 +1,4 @@
-# Quick Search v1.3.5 发布说明
+# Quick Achieve v1.3.5 发布说明
 
 > 发布日期：2026-10-21
 > 上个版本：v1.3.4
@@ -51,7 +51,7 @@
 密码原本**只存在 config.json 里**。主文件一坏、密码字段跟着没了，
 加密备份就永远解不开 —— **保护数据的机制反而让数据不可恢复**。
 
-现在把密码另存一份到 `%APPDATA%\QuickSearch\backup.key`。
+现在把密码另存一份到 `%APPDATA%\QuickAchieve\backup.key`。
 它和 config.json 同目录、同样受文件系统权限保护，安全性没有降低
 （能读 `%APPDATA%` 的程序本来就能读 config.json 里的密码），
 换来的是**可恢复性**。
@@ -141,7 +141,7 @@ AI 模型：rmbg-full
 
 ## 安装
 
-单文件，无需任何运行时，覆盖旧的 `QuickSearch.exe` 即可。
+单文件，无需任何运行时，覆盖旧的 `QuickAchieve.exe` 即可。
 
 > ⚠ 换上之后**请从托盘完全退出旧实例再打开**。
 
@@ -151,14 +151,14 @@ AI 模型：rmbg-full
 
 模型**不随本版本上传**。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 ---
 
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.37 MB (12968448 字节)
 MD5:    800B521D40F76D09ADD4E3891D038F4C
 SHA256: C2FDA27234ABA8D45C09D6683C92A05F3531EAD8C8D247E805FFD9BCCC7F0944

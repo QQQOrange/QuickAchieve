@@ -1,4 +1,4 @@
-# Quick Search v1.4.1 发布说明
+# Quick Achieve v1.4.1 发布说明
 
 > 发布日期：2026-10-22
 > 上个版本：v1.4.0
@@ -40,7 +40,7 @@
 只接受**备份目录里的文件名**（挡掉 `../`、盘符、分隔符）。
 
 **③ 恢复前先留一手**
-每次恢复前把当前配置存成 `config.before-restore(时间).QuickSearch` 放进备份目录，
+每次恢复前把当前配置存成 `config.before-restore(时间).QuickAchieve` 放进备份目录，
 挑错了还能退回来（和「恢复云端前留副本」同一套逻辑，只保留最近 5 份）。
 
 **④ 恢复不再把备份密码降级成空**（这条是排查时发现的更危险的坑）
@@ -63,13 +63,13 @@ v1.4.0 起"没设密码"的备份是 DPAPI 信封（`qsEnc:2`），会被当成"
   （新增 `restore_accepts_both_backup_formats`：格式判据 / 配置格式能恢复 /
   加密的能恢复 / **没密码的备份不能把本机密码清空**）
 - `cargo clippy --release`：0 warning
-- **真机实测**（把 `Quick search data` 复制到临时目录，用 `QS_DATA_DIR` 指过去，
+- **真机实测**（把 `Quick Achieve data` 复制到临时目录，用 `QS_DATA_DIR` 指过去，
   走 `--restore-probe` 这条和设置页完全相同的路）：
-  - 恢复真实的 `config.auto(2026-10-22 12-18-55).QuickSearch` → `OK=…`，
+  - 恢复真实的 `config.auto(2026-10-22 12-18-55).QuickAchieve` → `OK=…`，
     恢复后的配置 13953 字节（完整配置），`backup.key` 仍在；
   - 真实数据目录的 `config.json` 哈希**没有变化**（测试全程没碰用户配置）。
 - 版本号 1.4.0 → 1.4.1（Cargo.toml / tauri.conf.json / package.json / package-lock.json）
-- 交付：`D:\software\myself\QuickSearch.exe`（13,260,800 字节）
+- 交付：`D:\software\myself\QuickAchieve.exe`（13,260,800 字节）
 
 更新包校验（SHA256）：`561C8A3426D799483234CC3A1C7B88CADE3833D3AC516CCBBFF7B06F2822E2C2`
 

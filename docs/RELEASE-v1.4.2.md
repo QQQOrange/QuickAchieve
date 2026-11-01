@@ -1,4 +1,4 @@
-# Quick Search v1.4.2 发布说明
+# Quick Achieve v1.4.2 发布说明
 
 > 发布日期：2026-10-22
 > 上个版本：v1.4.1
@@ -50,7 +50,7 @@
 | 10-20 — 10-22 **12:18**（每一份） | `kind:hotkey`，`alt+a` / `alt+v`，绑定了微信 和 Octoclip |
 | **13:56 之后** | 全变成 `kind:search`、`url:""`、`hotkey:""` |
 
-13:56 的日志：「`webdav: 启动同步：云端「config(2026-10-22 12-25-37).QuickSearch」较新，已恢复到本机`」。
+13:56 的日志：「`webdav: 启动同步：云端「config(2026-10-22 12-25-37).QuickAchieve」较新，已恢复到本机`」。
 云端那份备份里**没有"种类 / 按键序列 / 绑定应用"这几个字段**，serde 按默认值一填，快捷键引擎就被打回"搜索类 + 没地址 + 没按键"的空壳 —— 横条画不出来、引擎库里也查不到，看起来就是"引擎被删了"。
 
 三件事一起做：
@@ -77,10 +77,10 @@
 
 ## ⑥ 安装
 
-直接覆盖旧的 `QuickSearch.exe` 即可（单文件，13,270,016 字节）。
-配置、图标、收藏、AI 模型都在 exe 旁边的 `Quick search data\` 里，覆盖 exe 不会动它们。
+直接覆盖旧的 `QuickAchieve.exe` 即可（单文件，13,270,016 字节）。
+配置、图标、收藏、AI 模型都在 exe 旁边的 `Quick Achieve data\` 里，覆盖 exe 不会动它们。
 
-> 想留退路：先把 `QuickSearch.exe` 改个名（比如 `QuickSearch.exe.old`），再把新的放进去。
+> 想留退路：先把 `QuickAchieve.exe` 改个名（比如 `QuickAchieve.exe.old`），再把新的放进去。
 
 更新包校验（SHA256）：`E20944AB07FC05D2B2C495E2C561492B74E0F71DD2540EE721A3B44E19DF7F01`
 

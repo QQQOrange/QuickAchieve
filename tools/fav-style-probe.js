@@ -21,7 +21,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'fav-style-probe.txt');
 const PORT = 9333;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -124,15 +124,15 @@ const STYLE_JS = `(function(sel){
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-favstyle-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify(c, null, 1), 'utf8');
     }
-    /* ⚠ 这里原来是 `taskkill /IM QuickSearch.exe /T /F` —— 会把**用户自己**开着的
+    /* ⚠ 这里原来是 `taskkill /IM QuickAchieve.exe /T /F` —— 会把**用户自己**开着的
      * 实例一起杀掉（r47 我就是这么误伤过一次）。现在给这个探针一套自己的身份
      * （QS_INSTANCE_TAG + 独立 WebView2 数据目录），单实例锁认的是 tag，
      * 于是完全不需要杀任何别人的进程；结束时也只杀自己这棵进程树。 */

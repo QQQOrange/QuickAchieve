@@ -1,7 +1,7 @@
 /* ============================================================================
  *  OCR 结果窗的 CDP 读取 / 点击（并行 e2e 用，由 run-ocr-parallel-e2e.py 驱动）
  *
- *  为什么走 CDP：QuickSearch 的窗口是 WebView2（Chromium）。应用启动时带了
+ *  为什么走 CDP：QuickAchieve 的窗口是 WebView2（Chromium）。应用启动时带了
  *  QS_T_WV_ARGS="... --remote-debugging-port=9333"（e2e 专用，正常启动不带），
  *  于是可以用 DevTools 协议直接读页面状态 / 点按钮 ——
  *    · 比按坐标点按钮确定得多（按钮宽度随字体/DPI 变，坐标点容易点到隔壁）；

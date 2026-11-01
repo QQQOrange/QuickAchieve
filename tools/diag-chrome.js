@@ -39,7 +39,7 @@ function d(h) {
     return `${String(h)} ${cls(h)} ${r.right - r.left}x${r.bottom - r.top}@${r.left},${r.top} vis=${IsWindowVisible(h) ? 1 : 0} pid=${pid.readUInt32LE(0)} st=0x${(st >>> 0).toString(16)} ex=0x${(ex >>> 0).toString(16)}`;
 }
 
-const BAR = FindWindowW(null, 'QuickSearchBar');
+const BAR = FindWindowW(null, 'QuickAchieveBar');
 console.log('BAR ->', d(BAR));
 
 const center = { x: 520, y: 360 };

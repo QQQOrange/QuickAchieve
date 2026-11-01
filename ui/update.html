@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="dark light">
-<title>Quick Search 更新</title>
+<title>Quick Achieve 更新</title>
 <style>
 /* 更新窗（v1.5.13）。
  *
@@ -156,7 +156,7 @@ button.btn[hidden] { display: none; }
 <body>
 <header>
     <span class="dot"></span>
-    <b>Quick Search</b>
+    <b>Quick Achieve</b>
     <span class="grow"></span>
     <button class="x" id="btnX" title="关闭">×</button>
 </header>
@@ -390,7 +390,7 @@ listen('qs://config', () => paint());
     // 让用户能从窗口本身确认"这是哪个版本在提示"
     try {
         const c = await invoke('get_config');
-        document.title = 'Quick Search ' + (c.version || '');
+        document.title = 'Quick Achieve ' + (c.version || '');
     } catch (_) {}
 })();
 </script>

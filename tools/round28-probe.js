@@ -35,7 +35,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round28-probe.txt');
 
 const user32 = koffi.load('user32.dll');
@@ -134,7 +134,7 @@ function wins() {
     koffi.unregister(cb);
     return out;
 }
-const barRect = () => { const w = wins().find((x) => x.title === 'QuickSearchBar'); return w ? w.rect : null; };
+const barRect = () => { const w = wins().find((x) => x.title === 'QuickAchieveBar'); return w ? w.rect : null; };
 const waitBar = (ms) => {
     const t0 = Date.now();
     while (Date.now() - t0 < (ms || 10000)) { const r = barRect(); if (r && r[2] > 0) return r; sleep(120); }
@@ -719,7 +719,7 @@ function measureDisp(prof, pill, model, specs) {
     /* ---------- 实例工厂 ---------- */
     const instances = [];
     function makeConf(dir, extra) {
-        const qs = path.join(dir, 'QuickSearch');
+        const qs = path.join(dir, 'QuickAchieve');
         fs.mkdirSync(qs, { recursive: true });
         const c = Object.assign({
             trigger_copy: false, trigger_select: false, ocr_enable: false,
@@ -739,9 +739,9 @@ function measureDisp(prof, pill, model, specs) {
     }
     function spawnInstance(qs, port, tag) {
         PORT = port;
-        // config::data_dir() = %APPDATA%\QuickSearch，而 makeConf 把配置写在
-        // <appData>\QuickSearch\config.json —— 所以 APPDATA 必须是 makeConf 的
-        // 那个目录本身。曾经统一设成 tmpRoot，实例读的是 tmpRoot\QuickSearch
+        // config::data_dir() = %APPDATA%\QuickAchieve，而 makeConf 把配置写在
+        // <appData>\QuickAchieve\config.json —— 所以 APPDATA 必须是 makeConf 的
+        // 那个目录本身。曾经统一设成 tmpRoot，实例读的是 tmpRoot\QuickAchieve
         // （根本不存在）→ 全默认配置，探针写的 bar_list / 自定义引擎它一个字
         // 都不看，B/C 两段因此全线 FAIL。
         const appData = path.dirname(qs);
@@ -759,7 +759,7 @@ function measureDisp(prof, pill, model, specs) {
         return p;
     }
     /** 杀掉一个实例并等它的横条窗口从桌面消失。
-     *  多实例的横条窗口标题同名（QuickSearchBar），waitBar 按标题找窗口会串 ——
+     *  多实例的横条窗口标题同名（QuickAchieveBar），waitBar 按标题找窗口会串 ——
      *  必须确认上一个实例的窗口已经没了，再起下一个。 */
     function killInstance(idx) {
         const p = instances[idx];
@@ -1147,7 +1147,7 @@ function measureDisp(prof, pill, model, specs) {
         // 之前只允许铺满虚拟屏的透明分层蒙层（均匀压暗，判据全是相对量，
         // 不受影响；判据见 zClean 注释）。
         // 被实心窗口挡掉的帧才丢，挡了什么记进 who 供取证。
-        const barHwnd0 = (wins().find((x) => x.title === 'QuickSearchBar') || {}).hwnd;
+        const barHwnd0 = (wins().find((x) => x.title === 'QuickAchieveBar') || {}).hwnd;
         const frames = [];
         let covered = 0;
         const coverWho = [];

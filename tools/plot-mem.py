@@ -13,7 +13,7 @@ plt.rcParams["axes.unicode_minus"] = False
 
 csv_path = sys.argv[1] if len(sys.argv) > 1 else "memtest.csv"
 out_path = sys.argv[2] if len(sys.argv) > 2 else "memtest.png"
-title = sys.argv[3] if len(sys.argv) > 3 else "QuickSearch 内存泄漏压测"
+title = sys.argv[3] if len(sys.argv) > 3 else "QuickAchieve 内存泄漏压测"
 warmup = float(sys.argv[4]) if len(sys.argv) > 4 else 30.0
 churn_end = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0
 

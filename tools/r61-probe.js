@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r61-probe.txt');
 const PORT = 9409;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -72,7 +72,7 @@ async function connect(sub, ms) {
 
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r61-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true,

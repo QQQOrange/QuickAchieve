@@ -1,4 +1,4 @@
-# Quick Search — User Help
+# Quick Achieve — User Help
 
 Applies to: **v2.6.0** (Windows 10 / 11)
 Back to: [Project overview](../README.en.md) ｜ [中文](HELP.md)
@@ -17,12 +17,12 @@ on-screen OCR, translation, screenshot image search, favorites, and encrypted ba
 
 ## 2. Install and first run
 
-1. Download `QuickSearch.exe` from the [releases page](https://github.com/QQQOrange/QuickSearch/releases/latest).
-2. Put it in its own folder (e.g. `D:\Apps\QuickSearch\`) and double-click it.
+1. Download `QuickAchieve.exe` from the [releases page](https://github.com/QQQOrange/QuickAchieve/releases/latest).
+2. Put it in its own folder (e.g. `D:\Apps\QuickAchieve\`) and double-click it.
 3. **No window appears on first run.** Look at the notification area at the bottom-right of the
    taskbar (it may be collapsed behind the `^` button).
 
-> The app is portable: configuration, icons, and logs are created in `Quick search data\` next
+> The app is portable: configuration, icons, and logs are created in `Quick Achieve data\` next
 > to the executable.
 
 ---
@@ -33,7 +33,9 @@ on-screen OCR, translation, screenshot image search, favorites, and encrypted ba
 |---|---|
 | **Select text** in any application | The bar pops up automatically |
 | **Ctrl + double-click** | Bring the bar up manually |
-| **Ctrl + C** (default) | Opens the **grid page** (a tile panel) — a separate surface from the selection bar |
+| **Ctrl + C** | Captures the selection and shows the bar (can be turned off in Settings) |
+| **Ctrl + Shift + G** (default) | Opens the **grid page** (a tile panel) — a separate surface from the selection bar |
+| **Ctrl + Alt + O** | Box-select the screen for text recognition |
 | Click an icon on the bar | Search / open with that engine |
 | **Double-click the tray icon** | Open Settings |
 | **Right-click the tray icon** | Menu (Settings, Exit, …) |
@@ -51,7 +53,7 @@ There are **two** surfaces, with separate content, styling and settings:
 
 | | Selection bar | Grid page |
 |---|---|---|
-| Opened by | Selecting text / Ctrl+double-click | A hotkey (default **Ctrl+C**) |
+| Opened by | Selecting text / Ctrl+C | A hotkey (default **Ctrl+Shift+G**) |
 | Looks like | A thin strip with engines in a row | A grid panel of tiles |
 | Items | Bar members (Settings → 🔎 Engines) | Its **own separate** list (below) |
 | What a click searches | The selected text | Text **already** in the clipboard; otherwise the engine home page |
@@ -331,7 +333,7 @@ Up to 200 entries.
 
 Entries live in the configuration (`shortcuts`), so they travel with the whole config:
 
-- **Local backup / restore** (`.QuickSearch`): the full configuration includes them — restoring brings that point in time back;
+- **Local backup / restore** (`.QuickAchieve`): the full configuration includes them — restoring brings that point in time back;
 - **WebDAV sync**: same file and same triggers as every other setting (compare at start, upload at exit); there is no separate switch;
 - **Import / export**: a new export group **"Smart Launch"** (links/paths, names, notes, icons). It is **unchecked by default** (paths reveal your local folder layout) — tick it to take them along.
 
@@ -371,7 +373,7 @@ Two behaviors worth knowing:
 - **Your icons survive upgrades.** When you update, previously customized icons are carried over
   automatically; nothing needs to be redone.
 - Drop an image named **exactly like the engine** (e.g. `百度.png`) into
-  `Quick search data\icons\` and that engine will use it — no per-engine setup needed.
+  `Quick Achieve data\icons\` and that engine will use it — no per-engine setup needed.
 
 ---
 
@@ -379,8 +381,8 @@ Two behaviors worth knowing:
 
 ### Local backups
 
-**Settings → ☁️ Backup** → create a backup. Files land in `QuickSearch back\` next to the
-executable, named like `config(2026-10-30 18-11-57).QuickSearch`. Scheduled auto-backup is also
+**Settings → ☁️ Backup** → create a backup. Files land in `Quick Achieve back\` next to the
+executable, named like `config(2026-10-30 18-11-57).QuickAchieve`. Scheduled auto-backup is also
 supported.
 
 ### Backup password (important)
@@ -408,10 +410,10 @@ not decrypt elsewhere.
 
 | Path | Contents |
 |---|---|
-| `<exe folder>\Quick search data\config.json` | Configuration (encrypted) |
-| `<exe folder>\Quick search data\icons\` | Your custom icons |
-| `<exe folder>\Quick search data\log.txt` | Runtime log (for troubleshooting) |
-| `<exe folder>\QuickSearch back\` | Backup files |
+| `<exe folder>\Quick Achieve data\config.json` | Configuration (encrypted) |
+| `<exe folder>\Quick Achieve data\icons\` | Your custom icons |
+| `<exe folder>\Quick Achieve data\log.txt` | Runtime log (for troubleshooting) |
+| `<exe folder>\Quick Achieve back\` | Backup files |
 
 The whole folder can be copied elsewhere. **Deleting the data folder is equivalent to a factory reset.**
 
@@ -429,7 +431,7 @@ Click `^` on the taskbar to expand hidden icons, or set the icon to "always show
 settings.
 
 **Icons don't show, or a letter appears instead.**
-That image could not be read. Check that the file exists in `Quick search data\icons\`; for custom
+That image could not be read. Check that the file exists in `Quick Achieve data\icons\`; for custom
 icons, use "Restore default" in Settings and pick the image again.
 
 **OCR says the quota is used up.**
@@ -441,13 +443,13 @@ Yes. The config format and folder location are unchanged; replacing the executab
 custom icons are carried over automatically.
 
 **How do I uninstall completely?**
-Exit the app → delete the exe plus the `Quick search data` and `QuickSearch back` folders → if
-needed, remove the startup entry (Task Manager → Startup → Quick Search, or the "start with
+Exit the app → delete the exe plus the `Quick Achieve data` and `Quick Achieve back` folders → if
+needed, remove the startup entry (Task Manager → Startup → Quick Achieve, or the "start with
 Windows" switch in Settings).
 
 ---
 
 ## 13. Feedback
 
-When reporting a problem, please include the last part of `Quick search data\log.txt` and the steps
+When reporting a problem, please include the last part of `Quick Achieve data\log.txt` and the steps
 to reproduce it.

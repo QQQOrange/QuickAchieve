@@ -1,4 +1,4 @@
-# Quick Search v1.3.8 发布说明
+# Quick Achieve v1.3.8 发布说明
 
 > 发布日期：2026-10-22
 > 上个版本：v1.3.7
@@ -111,7 +111,7 @@ https://​a.com               ← 夹带零宽字符（网页复制常见）
 
 ## 安装
 
-单文件，无需任何运行时，覆盖旧的 `QuickSearch.exe` 即可。
+单文件，无需任何运行时，覆盖旧的 `QuickAchieve.exe` 即可。
 
 > ⚠ 换上之后**请从托盘完全退出旧实例再打开**。
 
@@ -121,14 +121,14 @@ https://​a.com               ← 夹带零宽字符（网页复制常见）
 
 模型**不随本版本上传**。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 ---
 
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.40 MB (13003776 字节)
 MD5:    BC28DE2A7B5483B011ADF08DAF5674B6
 SHA256: 4EC8FFBF148A095A0205537B7C6F51B06734A657607721A074E0E80F4E2F197F

@@ -1,8 +1,8 @@
 /* r71 trace.moe 端到端验证（真 exe、真上传、真结果页）：
  *  ① Edge kiosk 全屏放一张动漫截图（独立 profile，按 pid 杀，不碰用户 Edge）
- *  ② 驱动 QuickSearch 的 img_region 抓全屏 → 走完整上传链路
+ *  ② 驱动 QuickAchieve 的 img_region 抓全屏 → 走完整上传链路
  *     （POST api.trace.moe → JSON → tracemoe_result_page → 默认浏览器开 file://）
- *  ③ 验证 %TEMP%\QuickSearch\img\tracemoe-result-*.html 内容：
+ *  ③ 验证 %TEMP%\QuickAchieve\img\tracemoe-result-*.html 内容：
  *     番名 / 第几集 / mm:ss / 相似度 / AniList 链接，且 null 不漏出
  *  ④ 顺带验证 SauceNAO 死代码修复那一支的判据函数没被带坏（只看日志）
  * 用法: node tools/r71-tracemoe-e2e.js */
@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const IMG = process.argv[2] || path.join(__dirname, '..', 'tools', '_r71-anime.jpg');
 const OUT = path.join(__dirname, 'r71-tracemoe-e2e.txt');
 const PORT = 9420;
@@ -64,10 +64,10 @@ async function connect(sub, ms) {
 }
 
 (async () => {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(900);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r71e2e-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     // 只勾 tracemoe 一家 + 设为默认：一轮识图只走这一条上传链路
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
@@ -110,7 +110,7 @@ async function connect(sub, ms) {
     await sleep(18000);   // 抓屏 700ms + 上传 + 渲染 + 开浏览器
 
     /* ---------- ③ 结果页 ---------- */
-    const imgDir = path.join(os.tmpdir(), 'QuickSearch', 'img');
+    const imgDir = path.join(os.tmpdir(), 'QuickAchieve', 'img');
     let page = null, pagePath = null;
     try {
         const files = fs.readdirSync(imgDir).filter((f) => /^tracemoe-result-.*\.html$/.test(f));
@@ -137,7 +137,7 @@ async function connect(sub, ms) {
     }
 
     /* ---------- ④ 日志链路 ---------- */
-    const logFile = path.join(tmp, 'QuickSearch', 'log.txt');
+    const logFile = path.join(tmp, 'QuickAchieve', 'log.txt');
     let log = '';
     try { log = fs.readFileSync(logFile, 'utf8'); } catch (e) { }
     rec('---- log.txt 尾部 ----');

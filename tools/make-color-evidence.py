@@ -37,7 +37,7 @@ H = TOP + PH + 110
 canvas = Image.new("RGB", (W, H), (250, 250, 252))
 d = ImageDraw.Draw(canvas)
 
-d.text((PAD, 30), "Quick Search 桌面版 · 横条自动取色验证", font=f_title, fill=(24, 26, 30))
+d.text((PAD, 30), "Quick Achieve 桌面版 · 横条自动取色验证", font=f_title, fill=(24, 26, 30))
 d.text((PAD, 76), "在两种截然不同的软件背景上选中同一段文字，横条取用其背后的屏幕颜色自适配深浅",
        font=f_sub, fill=(96, 102, 112))
 

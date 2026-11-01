@@ -24,7 +24,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const DLL = path.join(ROOT, 'target', 'release', 'onnxruntime.dll');
 const ICONDIR = path.join(ROOT, 'ui', 'data', 'icons');
 const OUT = path.join(__dirname, 'r80-ai-probe.txt');
@@ -33,8 +33,8 @@ const OUT = path.join(__dirname, 'r80-ai-probe.txt');
  * 探针不再依赖外部的 _matting-ref（那个临时目录已清理），
  * 改用本机可能残留的模型缓存；没有就走"未下载"分支（那些断言会标注跳过）。 */
 const LEGACY_MODELS = [
-    path.join(process.env.APPDATA || '', 'QuickSearch', 'models'),
-    path.join(process.env.LOCALAPPDATA || '', 'QuickSearch', 'models'),
+    path.join(process.env.APPDATA || '', 'QuickAchieve', 'models'),
+    path.join(process.env.LOCALAPPDATA || '', 'QuickAchieve', 'models'),
 ];
 const DLL_SRC = path.join(ROOT, 'vendor', 'ort', 'lib', 'onnxruntime.dll');
 function findLocalModel(name) {
@@ -153,7 +153,7 @@ const METRIC = (src, orig) => `(function(){
 (async () => {
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });   // 数据目录（配置放这儿）
     /* r80g：模型目录是**软件目录下的「抠图模型」**（不是数据目录） */
     const modelsDir = path.join(tmp, '抠图模型');
@@ -178,8 +178,8 @@ const METRIC = (src, orig) => `(function(){
     });
     /* ⚠ 用**临时目录里的那份 exe**（不是 target/release 的）——
      * 模型目录是按"exe 所在目录"算的，用原来的 exe 会去 target/release 找模型。 */
-    fs.copyFileSync(EXE, path.join(tmp, 'QuickSearch.exe'));
-    const proc = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
+    fs.copyFileSync(EXE, path.join(tmp, 'QuickAchieve.exe'));
+    const proc = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
     rec('r80 AI 抠图探针：pid=' + proc.pid);
     rec('  预置: 模型=' + (preloaded ? 'u2netp' : '无（未下载分支）') + '  运行库=' + (haveDll ? '有' : '无'));
     try {

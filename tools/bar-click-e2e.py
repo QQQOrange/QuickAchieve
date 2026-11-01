@@ -33,7 +33,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXE = os.environ.get("QS_E2E_EXE") or os.path.join(ROOT, "target", "release", "QuickSearch.exe")
+EXE = os.environ.get("QS_E2E_EXE") or os.path.join(ROOT, "target", "release", "QuickAchieve.exe")
 SCRATCH = os.path.join(ROOT, "tools", ".bar-click-data")
 LOG = os.path.join(SCRATCH, "log.txt")
 
@@ -167,7 +167,7 @@ def finish(proc):
         proc.kill()
     except Exception:
         pass
-    subprocess.run(["taskkill", "/IM", "QuickSearch.exe", "/FI", "PID eq %d" % proc.pid, "/T", "/F"],
+    subprocess.run(["taskkill", "/IM", "QuickAchieve.exe", "/FI", "PID eq %d" % proc.pid, "/T", "/F"],
                    capture_output=True)
     with open(os.path.join(ROOT, "tools", "_bar-click.result.txt"), "w", encoding="utf-8") as f:
         f.write("\n".join(RESULTS) + "\n")

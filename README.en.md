@@ -1,4 +1,4 @@
-# Quick Search for Windows
+# Quick Achieve for Windows
 
 > Select text in any application, or press a hotkey, and a search bar drops down from the top
 > of the screen: click an icon to hand the selected text to that website, app, or shortcut.
@@ -8,8 +8,14 @@
 A Windows 10 / 11 desktop app built on a **native host (wry + system WebView2)**, with no
 bundled runtime dependencies.
 
-> **Size (v2.6.0)**: a single **6.68 MiB** executable with the frontend embedded and
+> **Size (v2.15.0)**: a single **7.4 MiB** executable with the frontend embedded and
 > compressed — copy one `.exe` anywhere and it runs, with no resource folder beside it.
+>
+> **Renamed in v2.15.0**: the app is now **Quick Achieve** (formerly Quick Search), and the
+> repository moved to `github.com/QQQOrange/QuickAchieve`. On upgrade the data folder
+> (`Quick search data` → `Quick Achieve data`), the backup folder and the `.QuickSearch`
+> suffix are **renamed and migrated automatically** — settings, keys, icons and backups all
+> come along, nothing to move by hand.
 >
 > The inference runtime (`onnxruntime.dll`) and models used by **AI matting** are **not**
 > shipped in the executable. They are downloaded to `<program folder>/抠图模型/` only when
@@ -23,15 +29,17 @@ bundled runtime dependencies.
 
 | Capability | Description |
 |---|---|
-| **Selection bar** | Pops up when you select text, or on a hotkey; click an icon to search |
+| **Selection bar** | Pops up when you select text; click an icon to search. Two trigger modes, mutually exclusive: **on selection** / **only while Ctrl is held** (applies immediately) |
 | **Many engines** | **780+ engine entries** in 27 categories, plus custom web / app / hotkey engines |
 | **Aliases** | Many engines have aliases — type "B站" to reach Bilibili, "度娘" for Baidu |
 | **Image search** | Select a screen region → several engines (Baidu / Yandex / SauceNAO / trace.moe / AI vision models) |
-| **OCR** | Select a region to read text, with a **local offline engine plus multiple online engines**, and multi-engine side-by-side results |
+| **OCR** | Select a region to read text, with a **local offline engine plus a dozen online engines**; run several at once, with a **per-engine status strip** (queued / running / done · time / failed) in the result window |
 | **Translation** | Translate the selected text right from the bar, with streaming output |
 | **Favorites** | Two-level folders for text / images / rich text, drag to reorder |
 | **Smart Launch** | Paste one address — app, URL, or file is detected for you; name, note and icon are pre-filled; pin it to the bar and open it with one click |
-| **Two pop-ups** | Selecting text shows the thin bar; a hotkey (Ctrl+C by default) opens a **grid page** — rows/columns, cell size and items are configured separately |
+| **Two pop-ups** | Selecting text shows the thin bar; a hotkey (**Ctrl+Shift+G** by default) opens a **grid page** — rows/columns, cell size and items are configured separately, and both support per-app binding |
+| **Grid editing** | In edit mode a click only edits, never runs. **Long-press a tile for 0.4 s to lift and drag it** — the other tiles make room and the new order is saved on release (same feel with mouse and touch) |
+| **Multi-model tiles** | "Add to this cell" can bind several OCR / image-search / translation models to one tile and run them **in parallel**, each with its own result section |
 | **Wrap symbols** | Wrap the selection in “” 《》 【】 `[ ]` `{ }` pairs in one click; the same pair unwraps, another pair replaces the outer one, result is copied |
 | **Icon editor** | AI auto-matting (optional models) + brush touch-up + re-run with another model + export |
 | **Custom icons** | Any engine / OCR / translation / favorite item can use your own image, and **your icons carry over across upgrades** |
@@ -43,7 +51,7 @@ bundled runtime dependencies.
 
 ## Download & install
 
-1. Get `QuickSearch.exe` from the [releases page](https://github.com/QQQOrange/QuickSearch/releases/latest).
+1. Get `QuickAchieve.exe` from the [releases page](https://github.com/QQQOrange/QuickAchieve/releases/latest).
 2. Put it in any folder (a dedicated folder is recommended) and double-click it.
 3. **There is no window on first run** — the app lives in the notification area. Look for its
    icon in the tray at the bottom-right of the taskbar (it may be collapsed under `^`).
@@ -52,8 +60,8 @@ No installer, no .NET, and no separate WebView2 install (Windows 10/11 usually i
 
 ### Where your data lives
 
-Portable by design: configuration, icons, and logs live in `Quick search data\` next to the
-executable, and backups in `QuickSearch back\`. Copy the whole folder to another machine and
+Portable by design: configuration, icons, and logs live in `Quick Achieve data\` next to the
+executable, and backups in `Quick Achieve back\`. Copy the whole folder to another machine and
 keep working (but see the backup password note below).
 
 ---
@@ -61,7 +69,7 @@ keep working (but see the backup password note below).
 ## Getting started
 
 1. **Select text**: select a piece of text in any app — the bar pops up → click an icon to search.
-2. **Hotkeys**: Ctrl + double-click shows the bar; **Ctrl + C opens the grid page** (a tile panel with its own hotkey, rows/columns, cell size and items). Both support **per-app profiles** (one app gets its own set; everything else uses the default). The two surfaces are fully independent — see [Help](docs/HELP.en.md#two-different-pop-ups-important).
+2. **Hotkeys**: `Ctrl+C` captures the selection and shows the bar (can be turned off in Settings); `Ctrl+Shift+G` opens the **grid page** (a tile panel with its own hotkey, rows/columns, cell size and items); `Ctrl+Alt+O` starts text recognition. Both surfaces support **per-app profiles** and are fully independent — see [Help](docs/HELP.en.md).
 3. **OCR**: click the OCR button on the bar (it shows your own icon if you customized it) → select a screen region.
 4. **Open Settings**: double-click the tray icon, or right-click it → Settings.
 
@@ -87,7 +95,7 @@ keep working (but see the backup password note below).
 
 - **The configuration file itself is encrypted**: stored in a `{"qsEnc":1,"kdf":"argon2id",…}`
   envelope, with the key protected by local DPAPI.
-- **Backups can be encrypted**: with a backup password, an exported `.QuickSearch` backup can be
+- **Backups can be encrypted**: with a backup password, an exported `.QuickAchieve` backup can be
   restored on another machine — **if you lose the password, it cannot be decrypted**. Keep it safe.
 - **Moving machines**: prefer "Backup → export and restore" over copying `config.json`
   directly (the latter is tied to the local machine key).
@@ -97,8 +105,8 @@ keep working (but see the backup password note below).
 ## Upgrading from 1.x
 
 - **Configuration and backup formats are fully compatible**: 1.5.x `config.json` files and
-  `.QuickSearch` backups can be read and restored by 2.6.0 directly.
-- The data folder location is unchanged (still `Quick search data` next to the executable), so
+  `.QuickAchieve` backups can be read and restored by 2.6.0 directly.
+- The data folder location is unchanged (still `Quick Achieve data` next to the executable), so
   replacing the executable is all that is needed — no migration.
 - **Custom icons carry over automatically**: on first launch the new version reads your icon
   overrides from the previous installation.
@@ -115,7 +123,7 @@ release artifact is produced by the native-host version.
 ```powershell
 cargo test             # unit tests
 cargo clippy           # lints
-cargo build --release  # output: target\release\QuickSearch.exe
+cargo build --release  # output: target\release\QuickAchieve.exe
 ```
 
 Release profile is defined in `Cargo.toml`: `opt-level` + `lto="fat"` +
@@ -131,8 +139,8 @@ release, so there are two run-and-exit probes and two test-only endpoint overrid
 $env:QS_UPDATE_API = 'http://127.0.0.1:8731/api/repos/x/releases/latest'
 $env:QS_UPDATE_WEB = 'http://127.0.0.1:8731/web/releases/latest'
 
-QuickSearch.exe --update-probe     # check once, print NEWER/TAG/SIZE/SHA
-QuickSearch.exe --update-install   # actually download + replace (run in an isolated folder only)
+QuickAchieve.exe --update-probe     # check once, print NEWER/TAG/SIZE/SHA
+QuickAchieve.exe --update-install   # actually download + replace (run in an isolated folder only)
 ```
 
 ---

@@ -1,6 +1,6 @@
 ﻿# ============================================================================
 #  内存泄漏采样器
-#  跟踪 QuickSearch.exe 主进程 + 它拉起来的全部子进程（WebView2 渲染进程等），
+#  跟踪 QuickAchieve.exe 主进程 + 它拉起来的全部子进程（WebView2 渲染进程等），
 #  按固定间隔记录 WorkingSet / PrivateBytes / 句柄数 / 线程数，最后给出趋势判定。
 #
 #  用法:
@@ -10,7 +10,7 @@ param(
     [int]$TotalSeconds = 60,
     [int]$IntervalSec  = 2,
     [string]$OutCsv    = "memtest.csv",
-    [string]$RootName  = "QuickSearch"
+    [string]$RootName  = "QuickAchieve"
 )
 
 $ErrorActionPreference = "SilentlyContinue"
@@ -42,7 +42,7 @@ $t0 = Get-Date
 for ($i = 0; $i -le $n; $i++) {
     $root = Get-Process -Name $RootName -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $root) {
-        Write-Host "[$i] QuickSearch 未在运行，结束采样"
+        Write-Host "[$i] QuickAchieve 未在运行，结束采样"
         break
     }
 

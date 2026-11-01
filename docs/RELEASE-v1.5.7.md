@@ -1,4 +1,4 @@
-# Quick Search v1.5.7
+# Quick Achieve v1.5.7
 
 **更新页多了「GitHub 个人访问令牌」：额度从 60 次/小时 提到 5000 次/小时；没填令牌时只提示、不自动下载，把下载链接摆出来。**
 
@@ -237,7 +237,7 @@ PASS    没令牌时引导去填个人访问令牌
 > ① 等待不能照抄 r155/r156 的 `Atomics.wait` —— 那是**同步阻塞**，会把 Node 的
 > 事件循环一起冻住，而假 GitHub 就跑在同一个进程里，于是"服务端永远不响应"，
 > 看起来像令牌没生效。必须用 `await new Promise(r => setTimeout(r, ms))`。
-> ② 探针和开发机共用 `target/release/Quick search data`，而探针为了不被打扰会把
+> ② 探针和开发机共用 `target/release/Quick Achieve data`，而探针为了不被打扰会把
 > 「自动更新」关掉 —— 如果上一轮没还原，这一轮启动时压根不会自动检查，第 ⓪ 组
 > 就变成空转。所以现在开跑前先起一个实例把配置摆回出厂状态（`autoUpdate=true`、
 > 令牌清空），跑完再还原。
@@ -269,4 +269,4 @@ PASS    没令牌时引导去填个人访问令牌
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,365,760 字节 | `72A480535F823B9E60DAE553AD7C2698B073CCE703DDBC41C7070E3E15BE2F15` |
+| `QuickAchieve.exe` | 13,365,760 字节 | `72A480535F823B9E60DAE553AD7C2698B073CCE703DDBC41C7070E3E15BE2F15` |

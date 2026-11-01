@@ -34,8 +34,8 @@ Win11 自带 WebView2；Win10 上它通常跟着 Edge 一起装好了。但在
 ### 给了两条逃生口
 
 ```text
-QuickSearch.exe --skip-webview2-check      # 不做检查，强行启动
-QuickSearch.exe --simulate-no-webview2     # 反方向：假装没装，用来演示这个提示框
+QuickAchieve.exe --skip-webview2-check      # 不做检查，强行启动
+QuickAchieve.exe --simulate-no-webview2     # 反方向：假装没装，用来演示这个提示框
 ```
 
 第二条是为了让这条路径**可验证** —— 不然它只在坏机器上出现，谁也看不见。
@@ -65,9 +65,9 @@ QuickSearch.exe --simulate-no-webview2     # 反方向：假装没装，用来�
 
 ```text
 正常启动     日志 "webview2: 155.0.4283.62"，横条正常起来，engines=770
-模拟缺组件   进程存活，窗口标题 = "Quick Search 缺少运行组件"（框确实画出来了）
+模拟缺组件   进程存活，窗口标题 = "Quick Achieve 缺少运行组件"（框确实画出来了）
 下载链接     301 → MicrosoftEdgeWebview2Setup.exe（1,888,472 字节，微软官方）
-自启项       带着拷来的配置启动副本，Run\QuickSearch 仍指向正式版 ✅
+自启项       带着拷来的配置启动副本，Run\QuickAchieve 仍指向正式版 ✅
 锁屏         设了密码 → 日志 "lock: 窗口已建"，lock.html 正常加载 ✅
 ```
 
@@ -82,7 +82,7 @@ SHA256: D6047F87EF5755DD60536320DCFF7F78D589897514BAC3E1AE8A19AEB6DBF5C5
 
 | 文件 | 大小 | 校验值 |
 |---|---|---|
-| `QuickSearch.exe` | 13,657,088 字节 | 同上 |
+| `QuickAchieve.exe` | 13,657,088 字节 | 同上 |
 
 > 上面那一行 `SHA256: <64 位十六进制>` 是**自动更新用的**：程序会从发布说明里
 > 解析它，校验用户下到的更新包是不是我们发的这一份（`update::sha_from_notes`）。
@@ -92,7 +92,7 @@ SHA256: D6047F87EF5755DD60536320DCFF7F78D589897514BAC3E1AE8A19AEB6DBF5C5
 
 ## 装机
 
-覆盖 `QuickSearch.exe` 即可，配置、收藏夹、图标都不动。
+覆盖 `QuickAchieve.exe` 即可，配置、收藏夹、图标都不动。
 
 > 这一版没有改任何配置结构，也没有迁移 —— 从任何旧版本直升都不需要额外操作。
 

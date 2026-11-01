@@ -23,7 +23,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round22-probe.txt');
 const TAG = '-probe-r22';
 const PORT = 9347;
@@ -246,14 +246,14 @@ const clickCat = (ws, cat) => evalJs(ws, `(function(){
     rec('');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r22-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     rec('隔离实例数据目录：' + qs);
 
     const mkItem = (id, t) => ({ id, kind: 'text', text: t, html: '', image: '', remark: '' });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.trigger_select = false; c.trigger_copy = false; c.ocr_enable = false;
         c.auto_start = false; c.auto_color = false; c.fav_hotkey = '';
         c.webdav_url = ''; c.webdav_on_start = false; c.webdav_on_exit = false;

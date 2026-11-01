@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r70-verify.txt');
 const PORT = 9418;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -61,10 +61,10 @@ async function connect(sub, ms) {
 }
 
 (async () => {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(900);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r70v-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, bar_list: ['百度', 'Google'],
@@ -190,7 +190,7 @@ async function connect(sub, ms) {
     check('P5d Kimi 指向新域名', (engines.find(e => e.id === 'kimi') || {}).page === 'https://www.kimi.com/', '');
 
     /* ---------- ④ 设置页：引擎库结构 ---------- */
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(800);
     const proc2 = spawn(EXE, ['--no-elevate', '--settings'], { env, cwd: ROOT, stdio: 'ignore' });
     rec('设置页 pid=' + proc2.pid);

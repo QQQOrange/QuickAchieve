@@ -20,7 +20,7 @@ const os = require('os');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r56-tmppic-probe.txt');
 const PORT = 9399;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -93,7 +93,7 @@ function findPics(dir, depth) {
  *  更直接的办法：`Get-Process` 拿不到句柄，所以这里只扫目录。 */
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r56tp-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     // 只勾 Post 类（全自动那两家）：这条验"用完之后剪贴板里的图被清掉"
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
@@ -128,7 +128,7 @@ function findPics(dir, depth) {
     const after = findPics(tmp, 0);
     rec('识图之后：隔离 APPDATA 里图片 ' + after.length + ' 个（基线 ' + before + '）');
     const newPics = after.slice(before);
-    /* ⚠ r57 改口径：识图现在**会**写一张临时图（`%TEMP%\QuickSearch\img\shot.jpg`），
+    /* ⚠ r57 改口径：识图现在**会**写一张临时图（`%TEMP%\QuickAchieve\img\shot.jpg`），
      *   因为 ascii2d / SauceNAO / IQDB 那些老站点只吃原生文件框，浏览器又不允许
      *   往文件框里粘贴 —— 不留一张，用户走到上传页就没法继续。
      *   所以"零落盘"这条断言已经不成立了，不能留着骗人。
@@ -138,7 +138,7 @@ function findPics(dir, depth) {
         newPics.length === 0, newPics.slice(0, 3).join(', '));
 
     /* ---------- 临时图：只一张、固定名字 ---------- */
-    const tmpImgDir = path.join(os.tmpdir(), 'QuickSearch', 'img');
+    const tmpImgDir = path.join(os.tmpdir(), 'QuickAchieve', 'img');
     let tmpFiles = [];
     try { tmpFiles = fs.readdirSync(tmpImgDir); } catch (e) { }
     rec('临时图目录 ' + tmpImgDir + ' = ' + JSON.stringify(tmpFiles));
@@ -173,8 +173,8 @@ function findPics(dir, depth) {
 
     /* ---------- 顺带看一眼后端日志怎么说（证明真跑了）----------
      * 日志在 data_dir()/log.txt（见 win.rs 的 log_sync / log_writer），
-     * 不是 logs/quicksearch.log —— 第一版探针读错路径，白fail一条。 */
-    const logPath = path.join(tmp, 'QuickSearch', 'log.txt');
+     * 不是 logs/quickachieve.log —— 第一版探针读错路径，白fail一条。 */
+    const logPath = path.join(tmp, 'QuickAchieve', 'log.txt');
     let logTxt = '';
     try { logTxt = fs.readFileSync(logPath, 'utf8'); } catch (e) { }
     const hasJpegLog = /img: jpeg \d+ KB/.test(logTxt);
@@ -223,8 +223,8 @@ function findPics(dir, depth) {
         const before = src.slice(Math.max(0, i - 900), i);
         const debugGated = /QS_DUMP_OCR|env_or_empty|QS_[A-Z_]+/i.test(before);
         const isIcon = /icon|ico/i.test(ctx.slice(0, 120));
-        // ④ 临时图：函数名在附近，且写的是 temp_dir/QuickSearch/img
-        const isTempShot = /img_temp_file|temp_dir\(\)[\s\S]{0,120}QuickSearch/.test(before + ctx.slice(0, 200));
+        // ④ 临时图：函数名在附近，且写的是 temp_dir/QuickAchieve/img
+        const isTempShot = /img_temp_file|temp_dir\(\)[\s\S]{0,120}QuickAchieve/.test(before + ctx.slice(0, 200));
         picish.push({
             at: i,
             why: inTests(i) ? '测试代码（mod tests 内）'
@@ -263,7 +263,7 @@ function findPics(dir, depth) {
     await sleep(9000);
 
     let logTxt2 = '';
-    try { logTxt2 = fs.readFileSync(path.join(tmp, 'QuickSearch', 'log.txt'), 'utf8'); } catch (e) { }
+    try { logTxt2 = fs.readFileSync(path.join(tmp, 'QuickAchieve', 'log.txt'), 'utf8'); } catch (e) { }
     const didWrite = /img: clipboard image ok=true/.test(logTxt2);
     const didRestore = /img: 已把剪贴板还原成截图前的内容/.test(logTxt2);
     rec('第二轮：剪贴板写过图=' + didWrite + ' 跑完还原了=' + didRestore);

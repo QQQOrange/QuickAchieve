@@ -34,7 +34,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round23-probe.txt');
 const TAG = '-probe-r23';
 const PORT = 9348;                 // CDP
@@ -211,14 +211,14 @@ const CONF_OF = `invoke('get_config')`;
     rec('');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r23-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     rec('隔离实例数据目录：' + qs);
 
     /* ---------- 临时配置：带三个一眼能认出来的明文标记 ---------- */
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.trigger_select = false;
         c.trigger_copy = false;
         c.ocr_enable = false;
@@ -334,8 +334,8 @@ const CONF_OF = `invoke('get_config')`;
     await sleep(800);
 
     // —— 找到刚落下的那份备份（本地 & 云端同名）——
-    const cloudNames = [...davFiles.keys()].filter((n) => /^config\(.*\)\.QuickSearch$/.test(n));
-    const localNames = lsDir().filter((n) => /^config\(.*\)\.QuickSearch$/.test(n));
+    const cloudNames = [...davFiles.keys()].filter((n) => /^config\(.*\)\.QuickAchieve$/.test(n));
+    const localNames = lsDir().filter((n) => /^config\(.*\)\.QuickAchieve$/.test(n));
     info('云端备份：' + JSON.stringify(cloudNames));
     info('本地备份：' + JSON.stringify(localNames));
     chk('云端正好 1 份，且名字带时间戳', cloudNames.length === 1, JSON.stringify(cloudNames));
@@ -419,12 +419,12 @@ const CONF_OF = `invoke('get_config')`;
     // ②a 三份内容完全相同的手动备份（判重该留最新那份）—— 与刚才真备份的内容不同，
     //     所以真备份不会被判成重复
     const dupBody = '{"barList":["百度"],"favPanelSizes":{"a":1},"lastEngine":"百度"}';
-    plant('config(2026-10-13 09-00-01).QuickSearch', dupBody);
-    plant('config(2026-10-13 09-00-02).QuickSearch', dupBody);
-    plant('config(2026-10-13 09-00-03).QuickSearch', dupBody);
+    plant('config(2026-10-13 09-00-01).QuickAchieve', dupBody);
+    plant('config(2026-10-13 09-00-02).QuickAchieve', dupBody);
+    plant('config(2026-10-13 09-00-03).QuickAchieve', dupBody);
     // ②b 六个恢复前快照（只留最近 5 份）
     for (let i = 1; i <= 6; i++) {
-        plant('config.before-webdav(2026-10-13 1' + i + '-00-00).QuickSearch', '{}');
+        plant('config.before-webdav(2026-10-13 1' + i + '-00-00).QuickAchieve', '{}');
     }
     // ②c 一个没人引用的自定义图标
     fs.mkdirSync(path.join(qs, 'icons'), { recursive: true });
@@ -432,7 +432,7 @@ const CONF_OF = `invoke('get_config')`;
     fs.writeFileSync(orphanPng, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     planted['icons/没人用的图标.png'] = 8;
     // ②d 一份空备份（恢复不了）
-    plant('config(2026-10-13 08-00-00).QuickSearch', '');
+    plant('config(2026-10-13 08-00-00).QuickAchieve', '');
     // ②e 两份配置损坏留档（留最新那份）—— 用 utimes 把 mtime 拨开，
     //     免得两颗文件同一毫秒落地、排序平手时留错
     plant('config.json.bad-1', '{"坏内容":"第一份"}');
@@ -506,10 +506,10 @@ const CONF_OF = `invoke('get_config')`;
 
     /* ---------- 点「确认清理」：真删 ---------- */
     const expectedDelete = [
-        'config(2026-10-13 09-00-01).QuickSearch',
-        'config(2026-10-13 09-00-02).QuickSearch',
-        'config.before-webdav(2026-10-13 11-00-00).QuickSearch',
-        'config(2026-10-13 08-00-00).QuickSearch',
+        'config(2026-10-13 09-00-01).QuickAchieve',
+        'config(2026-10-13 09-00-02).QuickAchieve',
+        'config.before-webdav(2026-10-13 11-00-00).QuickAchieve',
+        'config(2026-10-13 08-00-00).QuickAchieve',
         'config.json.bad-1',
         'config.json.bak',
     ];
@@ -543,7 +543,7 @@ const CONF_OF = `invoke('get_config')`;
         && gone.length === expectedDelete.length && iconGone,
         '删了 ' + (gone.length + (iconGone ? 1 : 0)) + ' 个');
     chk('★ 每组都留了该留的：最新那份重复备份还在',
-        after.includes('config(2026-10-13 09-00-03).QuickSearch'));
+        after.includes('config(2026-10-13 09-00-03).QuickAchieve'));
     chk('  最近 5 份快照都还在', after.filter((n) => /^config\.before-webdav\(/.test(n)).length === 5,
         JSON.stringify(after.filter((n) => /^config\.before-webdav\(/.test(n))));
     chk('  最新的坏档（bad-2）还在', after.includes('config.json.bad-2'));

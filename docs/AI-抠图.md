@@ -75,7 +75,7 @@
 
 ```text
 Desktop/
-├── QuickSearch.exe
+├── QuickAchieve.exe
 └── 抠图模型/                  ← 模型与运行库都在这儿
     ├── onnxruntime.dll        (11.84MB，随模型一起下)
     ├── u2netp.onnx            (4.4MB)
@@ -199,7 +199,7 @@ Desktop/
 - **运行库**：自己 release 的 dll 直链 → 官方 zip 兜底
 
 模型与 dll 都传在本项目的 release 上（5 个资产，约 316MB），
-地址形如 `https://gh-proxy.com/https://github.com/QQQOrange/QuickSearch/releases/download/v1.1.1/xxx`。
+地址形如 `https://gh-proxy.com/https://github.com/QQQOrange/QuickAchieve/releases/download/v1.1.1/xxx`。
 
 ### 运行库：**直接下 11.84MB 的 dll**，不再下 69MB 的 zip
 
@@ -344,7 +344,7 @@ r80i 时期四个下载并发跑，共用**同一个** `onnxruntime.zip` 固定�
 > |---|---|
 > | "缺 dll 也能启动" | 被 Windows 的模态错误框骗了 —— 进程**活着**≠启动成功，它在弹框等用户点"确定" |
 > | "是硬依赖" | 被**单例检查**骗了 —— 日志是 `another instance is running, exit`，退出码 0 |
-> | ✅ "能启动" | 唯一可信的证据：进程存活 + 主窗口 `QuickSearchBar` + **WebView2 子进程 +2** |
+> | ✅ "能启动" | 唯一可信的证据：进程存活 + 主窗口 `QuickAchieveBar` + **WebView2 子进程 +2** |
 >
 > 教训：判断"程序起没起来"要看**有没有真的建出界面**，不能只看进程在不在。
 > 另外测试必须用 `QS_INSTANCE_TAG` 起**独立实例**，否则会被单例检查干扰。

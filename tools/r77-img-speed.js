@@ -17,8 +17,8 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const A = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickSearch.exe.old-r76-20261018-101556';
-const B = process.argv[3] || path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const A = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickAchieve.exe.old-r76-20261018-101556';
+const B = process.argv[3] || path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r77-img-speed.txt');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
@@ -86,7 +86,7 @@ async function measure(label, exe) {
     if (!fs.existsSync(exe)) { rec('找不到这个 exe，跳过'); return null; }
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-spd-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, theme: 'light',

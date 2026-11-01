@@ -1,4 +1,4 @@
-/* 用 koffi 把 QuickSearchBar 窗口自身渲出来存 BMP。
+/* 用 koffi 把 QuickAchieveBar 窗口自身渲出来存 BMP。
    Tauri 的透明窗口是 DirectComposition 后备的，桌面 BitBlt 抓不到，
    必须用 PrintWindow + PW_RENDERFULLCONTENT。
    只截这一个窗口，不会把用户整个桌面抓走。 */
@@ -51,7 +51,7 @@ function writeBmp(file, w, h, bgra) {
     fs.writeFileSync(file, Buffer.concat([header, bgra]));
 }
 
-const hwnd = FindWindowW(null, 'QuickSearchBar');
+const hwnd = FindWindowW(null, 'QuickAchieveBar');
 if (!hwnd) { console.log(JSON.stringify({ found: false })); process.exit(2); }
 
 const titleBuf = new Uint16Array(260);

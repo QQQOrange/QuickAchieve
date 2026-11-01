@@ -22,7 +22,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round21-probe.txt');
 const ENGINES = path.join(ROOT, 'ui', 'data', 'engines.json');
 const ICON_DIR = path.join(ROOT, 'ui', 'data', 'icons');
@@ -261,7 +261,7 @@ const MEASURE = (cat) => `(function(){
 
     /* ---------------- 起隔离实例 ---------------- */
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r21-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     rec('');
     rec('隔离实例数据目录：' + qs);
@@ -269,7 +269,7 @@ const MEASURE = (cat) => `(function(){
     const mkItem = (id, t) => ({ id, kind: 'text', text: t, html: '', image: '', remark: '' });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.trigger_select = false;
         c.trigger_copy = false;
         c.ocr_enable = false;

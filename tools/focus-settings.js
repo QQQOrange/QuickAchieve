@@ -31,7 +31,7 @@ const str = (h) => {
 
 let target = null;
 const cb = koffi.register((h) => {
-    if (IsWindowVisible(h) && str(h).indexOf('Quick Search 设置') >= 0) target = h;
+    if (IsWindowVisible(h) && str(h).indexOf('Quick Achieve 设置') >= 0) target = h;
     return 1;
 }, koffi.pointer(ENUMPROC));
 EnumWindows(cb, 0);

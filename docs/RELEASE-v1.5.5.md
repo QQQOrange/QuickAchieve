@@ -1,4 +1,4 @@
-# Quick Search v1.5.5
+# Quick Achieve v1.5.5
 
 **修一个「上一版看着做完、实际没生效」的 bug：横条弹出位置选「文字上方」也弹在下面。**
 
@@ -103,4 +103,4 @@ PASS  贴顶时胶囊没被压出工作区
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,329,408 字节 | `B63AE154FF91FE58A0B75D58D9FE0FA0FDC950DF8460533718141D25726BBDF4` |
+| `QuickAchieve.exe` | 13,329,408 字节 | `B63AE154FF91FE58A0B75D58D9FE0FA0FDC950DF8460533718141D25726BBDF4` |

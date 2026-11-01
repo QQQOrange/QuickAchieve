@@ -12,7 +12,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const ICONDIR = path.join(ROOT, 'ui', 'data', 'icons');
 const MODELS_SRC = 'D:\\Local AI\\git\\_matting-ref\\rmbg';
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -99,7 +99,7 @@ const OPEN_EDITOR = (dataUrl) => `window.__TAURI__.core.invoke('open_icon_editor
 (async () => {
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80d-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     const modelsDir = path.join(qs, 'models');
     fs.mkdirSync(modelsDir, { recursive: true });
     // 预置已下载模型（让 AI 可用，这样测的才是抠图流程本身）

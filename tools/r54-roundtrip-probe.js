@@ -36,7 +36,7 @@ const { spawn } = require('child_process');
 const koffi = require('koffi');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r54-roundtrip-probe.txt');
 const PORT = 9380;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -136,7 +136,7 @@ async function connect(sub, ms) {
     return null;
 }
 function readLogNew(dir) {
-    const p = path.join(dir, 'QuickSearch', 'log.txt');
+    const p = path.join(dir, 'QuickAchieve', 'log.txt');
     if (!fs.existsSync(p)) return [];
     const all = fs.readFileSync(p, 'utf8');
     const tail = all.slice(dir._logOff || 0);
@@ -147,7 +147,7 @@ function readLogNew(dir) {
 /** 起一个隔离实例，等设置页能连上。返回 { proc, tmp, setWs } 或 null。 */
 async function boot() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r54rt-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, ocr_enable: true, theme: 'light',

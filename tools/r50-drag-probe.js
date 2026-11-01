@@ -24,7 +24,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r50-drag-probe.txt');
 const PORT = 9343;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -114,12 +114,12 @@ const SNAP = `JSON.stringify({
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-drag-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     let favId = '';
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         const favs = Array.isArray(c.favorites) ? c.favorites : [];
         if (favs.length) {
@@ -267,9 +267,9 @@ const SNAP = `JSON.stringify({
     flush();
 
     try {
-        for (const f of fs.readdirSync(path.join(tmp, 'QuickSearch'))) {
+        for (const f of fs.readdirSync(path.join(tmp, 'QuickAchieve'))) {
             if (!/\.(log|txt)$/i.test(f)) continue;
-            const lines = fs.readFileSync(path.join(tmp, 'QuickSearch', f), 'utf8').split('\n');
+            const lines = fs.readFileSync(path.join(tmp, 'QuickAchieve', f), 'utf8').split('\n');
             const places = lines.filter((l) => /place: |layout_bar css=/.test(l));
             rec('');
             rec('应用日志 ' + f + '：place/layout 行 ' + places.length + ' 条；最后 8 条：');

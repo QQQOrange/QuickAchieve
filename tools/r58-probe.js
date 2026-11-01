@@ -10,7 +10,7 @@
  *      选了应用 → 才出现「以管理员身份打开」。切回搜索类整块消失。
  *   B. 保存校验：勾了开关却没选应用 / 选了不存在的应用 → 当场报错。
  *   C. 落库：三件套真的进了 config.json（且只有快捷键类带得上）。
- *   D. 运行时「应用已经在跑」：绑到自己（QuickSearch.exe）→ 日志说 已在运行=true、
+ *   D. 运行时「应用已经在跑」：绑到自己（QuickAchieve.exe）→ 日志说 已在运行=true、
  *      窗口=true、按键已发送。
  *   E. 运行时「应用没在跑」：绑到 whoami.exe（跑一下就自己退出，零副作用）
  *      → 日志说 已在运行=false、已拉起、然后就绪检查完成。
@@ -25,7 +25,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r58-probe.txt');
 const PORT = 9403;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -77,7 +77,7 @@ async function connect(sub, ms) {
     return null;
 }
 const readLog = (tmp) => {
-    try { return fs.readFileSync(path.join(tmp, 'QuickSearch', 'log.txt'), 'utf8'); } catch (e) { return ''; }
+    try { return fs.readFileSync(path.join(tmp, 'QuickAchieve', 'log.txt'), 'utf8'); } catch (e) { return ''; }
 };
 /** 某个元素此刻是不是"看得见"（hidden 属性 + 计算样式都算）。 */
 const vis = (sel) => `(function(){
@@ -91,7 +91,7 @@ const vis = (sel) => `(function(){
 
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r58-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true,
@@ -237,7 +237,7 @@ const vis = (sel) => `(function(){
     await sleep(6000);
     let newLog = readLog(tmp).slice(logBefore);
     rec('新增日志：\n' + newLog.split('\n').filter((l) => l.indexOf('open_search') >= 0).join('\n'));
-    check('D1 日志说「已在运行=true」（真的去查了进程）', /绑定应用 QuickSearch\.exe 已在运行=true/.test(newLog), newLog.slice(-400));
+    check('D1 日志说「已在运行=true」（真的去查了进程）', /绑定应用 QuickAchieve\.exe 已在运行=true/.test(newLog), newLog.slice(-400));
     check('D2 找到了它的窗口（就绪检查 窗口=true）', /就绪检查完成，窗口=true/.test(newLog));
     check('D3 按键真的发出去了（模拟按键 f24 已发送）', /模拟按键 f24 -> 已发送/.test(newLog));
 

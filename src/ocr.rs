@@ -112,7 +112,7 @@ pub(crate) fn agent(timeout_secs: u64) -> ureq::Agent {
         // 会让「首包丢了、靠重传才连上」的弱网直接连接失败，得不偿失。
         .timeout_connect(Duration::from_secs(6))
         .timeout(Duration::from_secs(t))
-        .user_agent("QuickSearch/1.0 (Windows)")
+        .user_agent("QuickAchieve/1.0 (Windows)")
         // ⚠ 这里**故意**每次新建 Agent，不复用连接池，别顺手改成 static。
         //   ureq 只对「幂等方法 + 空 body」做失败重试（见 unit.rs::is_retryable），
         //   而识别接口是带 body 的 POST —— 一旦复用到服务器已经关掉的空闲连接，
@@ -937,7 +937,7 @@ pub fn ocr_dep_check() -> Value {
     let missing_all = if !engine_ok {
         "系统里一个 OCR 语言包都探测不到，需要连语言包一起装（先装中文（简体），英文可选）"
     } else if cn_names.is_empty() {
-        "系统里有 OCR 语言包，但没有中文 —— QuickSearch 识别中文内容需要中文（简体）文字识别"
+        "系统里有 OCR 语言包，但没有中文 —— QuickAchieve 识别中文内容需要中文（简体）文字识别"
     } else {
         ""
     };

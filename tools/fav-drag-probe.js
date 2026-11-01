@@ -23,7 +23,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'fav-drag-probe.txt');
 const PORT = 9335;
 const TAG = '-probe-drag';
@@ -63,7 +63,7 @@ const moveTo = (x, y) => mouse(MOVE | ABS, x, y);
 const ldown = (x, y) => mouse(MOVE | ABS | LDOWN, x, y);
 const lup = (x, y) => mouse(MOVE | ABS | LUP, x, y);
 
-/** 本进程的 QuickSearchBar 窗口矩形（用户自己的实例同名，必须按 pid 过滤） */
+/** 本进程的 QuickAchieveBar 窗口矩形（用户自己的实例同名，必须按 pid 过滤） */
 function barRect(pid) {
     let out = null;
     const cb = koffi.register((h) => {
@@ -72,7 +72,7 @@ function barRect(pid) {
         if (p[0] !== pid) return 1;
         const t = new Uint16Array(200); const n = GetWindowTextW(h, t, 200);
         let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(t[i]);
-        if (s === 'QuickSearchBar') {
+        if (s === 'QuickAchieveBar') {
             const r = {}; GetWindowRect(h, r);
             out = [r.left, r.top, r.right - r.left, r.bottom - r.top];
         }
@@ -163,11 +163,11 @@ async function snapConsistent(ws, pid) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-favrz-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.webdav_url = ''; c.webdav_user = ''; c.webdav_pass = ''; c.webdav_auto = false;
         fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify(c, null, 1), 'utf8');
     }

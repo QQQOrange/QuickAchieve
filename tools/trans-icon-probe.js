@@ -18,7 +18,7 @@ const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const EXE = process.env.QS_E2E_EXE
     ? process.env.QS_E2E_EXE
-    : path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+    : path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9349;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=' + PORT;
@@ -74,7 +74,7 @@ async function connect(sub) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-transicon-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const conf = {
         trans_enable: true,
@@ -95,7 +95,7 @@ async function connect(sub) {
         //   压根不看 APPDATA（见 src/config.rs 的 data_dir()）。
         //   只设 APPDATA 的话，隔离实例会跟开发目录共用同一份 config/log，
         //   而且那份 config 是**加密**的 —— 探针会莫名其妙地启动失败。
-        QS_DATA_DIR: path.join(tmp, 'QuickSearch'),
+        QS_DATA_DIR: path.join(tmp, 'QuickAchieve'),
         APPDATA: tmp, LOCALAPPDATA: tmp, WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2'),
         QS_INSTANCE_TAG: '-probe-transicon', QS_T_WV_ARGS: WV_ARGS,
     });

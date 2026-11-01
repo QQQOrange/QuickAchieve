@@ -1,4 +1,4 @@
-# Quick Search v1.3.3 发布说明
+# Quick Achieve v1.3.3 发布说明
 
 > 发布日期：2026-10-20
 > 上个版本：v1.3.2
@@ -89,8 +89,8 @@ app_bring_front = true  →  抢焦点=true（开关键=true 刚拉起=false）
 
 ## 安装
 
-单文件，无需任何运行时，覆盖旧的 `QuickSearch.exe` 即可。
-配置与图标都在 `%APPDATA%\QuickSearch`，不会丢。
+单文件，无需任何运行时，覆盖旧的 `QuickAchieve.exe` 即可。
+配置与图标都在 `%APPDATA%\QuickAchieve`，不会丢。
 
 > 已在用 v1.3.x 的话：打开软件就会看到更新提示，点一下即可。
 
@@ -100,7 +100,7 @@ app_bring_front = true  →  抢焦点=true（开关键=true 刚拉起=false）
 
 模型**不随本版本上传**。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 程序会自己去那里下载（设置 → 通用 → AI 抠图 → 点某个模型的「下载」），
 不需要你手动找。不打开这个功能就一个都不下。
@@ -110,7 +110,7 @@ app_bring_front = true  →  抢焦点=true（开关键=true 刚拉起=false）
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.33 MB (12929024 字节)
 MD5:    BDBBFAB8A424961432414784546FFE2A
 SHA256: FEDB419905CD1F0E8A76A11BBEF66A8260A07B10CF9045BCB44C0214AE2B0959

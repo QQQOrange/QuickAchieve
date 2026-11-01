@@ -3,7 +3,7 @@
 # 取证窗口由 node 在后台撑着；READY 标记里带横条窗口的真实矩形，
 # 截图直接按这个矩形精确裁剪，并且**多拍几张**（用户一动手横条就会关）。
 set -u
-cd "C:/Users/64381/WorkBuddy/2026-10-10-16-56-30/QuickSearch-Win"
+cd "C:/Users/64381/WorkBuddy/2026-10-10-16-56-30/QuickAchieve-Win"
 
 NODE="C:/Users/64381/.workbuddy/binaries/node/versions/22.22.2-6/node.exe"
 export NODE_PATH="C:/Users/64381/.workbuddy/binaries/node/workspace/node_modules"

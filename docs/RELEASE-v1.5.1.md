@@ -1,4 +1,4 @@
-# Quick Search v1.5.1
+# Quick Achieve v1.5.1
 
 **「外观」页换了顺序：界面主题 → 横条预览 → 横条外观。**
 
@@ -28,7 +28,7 @@
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,300,736 字节 | `B622874A97E91D4F01CE6C96F1FBAF5E28F685FFE9FD29A2124010CD290864DF` |
+| `QuickAchieve.exe` | 13,300,736 字节 | `B622874A97E91D4F01CE6C96F1FBAF5E28F685FFE9FD29A2124010CD290864DF` |
 
 ---
 

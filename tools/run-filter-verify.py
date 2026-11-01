@@ -27,11 +27,11 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-EXE = os.path.join(ROOT, 'target', 'release', 'QuickSearch.exe')
+EXE = os.path.join(ROOT, 'target', 'release', 'QuickAchieve.exe')
 TOOLS = os.path.join(ROOT, 'tools')
 NODE = r'C:/Users/64381/.workbuddy/binaries/node/versions/22.22.2-6/node.exe'
-CFG = os.path.join(os.environ['APPDATA'], 'QuickSearch', 'config.json')
-LOG = os.path.join(os.environ['APPDATA'], 'QuickSearch', 'log.txt')
+CFG = os.path.join(os.environ['APPDATA'], 'QuickAchieve', 'config.json')
+LOG = os.path.join(os.environ['APPDATA'], 'QuickAchieve', 'log.txt')
 
 
 def read_cfg():
@@ -49,7 +49,7 @@ def write_cfg(d):
 
 
 def restart():
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
     time.sleep(1.5)
     env = dict(os.environ)
     env['QS_DEBUG'] = '1'
@@ -145,7 +145,7 @@ finally:
     d['filter_list'] = saved['filter_list']
     d['trigger_copy'] = orig_copy.get('trigger_copy', False)
     write_cfg(d)
-    subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+    subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
     print('（已还原名单配置：filter_mode=%s filter_list=%s）' %
           (saved['filter_mode'], saved['filter_list']))
 

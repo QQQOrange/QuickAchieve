@@ -1,14 +1,14 @@
 [workspace]
-members = ["qs-macros"]
+members = ["qa-macros"]
 
 [package]
-name = "qs-hw"
-version = "2.14.1"
+name = "quick-achieve"
+version = "2.15.0"
 edition = "2021"
-description = "Quick Search 原生宿主（wry + tao 取代 Tauri 运行时）"
+description = "Quick Achieve 原生宿主（wry + tao 取代 Tauri 运行时）"
 
 [[bin]]
-name = "QuickSearch"
+name = "QuickAchieve"
 path = "src/main.rs"
 
 [build-dependencies]
@@ -17,7 +17,7 @@ embed-resource = "3"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
 [dependencies]
-qs-macros = { path = "qs-macros" }
+qa-macros = { path = "qa-macros" }
 
 # GUI 底座：直接驱动 WebView2，不再经过 Tauri 的框架层。
 tao = "0.37"

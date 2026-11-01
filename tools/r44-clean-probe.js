@@ -23,11 +23,11 @@ const os = require('os');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const TAG = 'r44clean';
 const DIR = path.join(os.tmpdir(), 'qs-r44-' + process.pid);
 fs.rmSync(DIR, { recursive: true, force: true });
-const QS = path.join(DIR, 'QuickSearch');
+const QS = path.join(DIR, 'QuickAchieve');
 fs.mkdirSync(QS, { recursive: true });
 const CFG = path.join(QS, 'config.json');
 /* 起点：四项里开三项、空格=智能。

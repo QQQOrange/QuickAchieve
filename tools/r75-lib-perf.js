@@ -18,8 +18,8 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const A = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickSearch.exe';
-const B = process.argv[3] || path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const A = process.argv[2] || 'C:\\Users\\64381\\Desktop\\QuickAchieve.exe';
+const B = process.argv[3] || path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r75-lib-perf.txt');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
@@ -116,7 +116,7 @@ async function measure(label, exe) {
     rec('exe: ' + exe);
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-perf-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true, theme: 'light' }, null, 1), 'utf8');
     const env = Object.assign({}, process.env, {

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""跑回归之前先把残留的 QuickSearch 进程清干净。
+"""跑回归之前先把残留的 QuickAchieve 进程清干净。
 
-为什么需要它：QuickSearch 是单例（靠命名互斥体），而它默认**会自提权**。
+为什么需要它：QuickAchieve 是单例（靠命名互斥体），而它默认**会自提权**。
 上一轮测试如果没正常退出，留下的就是管理员权限的进程 —— 普通
 OpenProcess(PROCESS_TERMINATE) 会静默失败（返回 0），脚本看不出来，
 于是下一轮每一句「another instance is running, exit」都被误判成
@@ -55,14 +55,14 @@ class PE(ctypes.Structure):
     ]
 
 
-def find_quicksearch():
+def find_quickachieve():
     pe = PE()
     pe.dwSize = ctypes.sizeof(PE)
     snap = k32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
     out = []
     if k32.Process32FirstW(snap, ctypes.byref(pe)):
         while True:
-            if pe.szExeFile.lower() == "quicksearch.exe":
+            if pe.szExeFile.lower() == "quickachieve.exe":
                 out.append(pe.th32ProcessID)
             if not k32.Process32NextW(snap, ctypes.byref(pe)):
                 break
@@ -88,18 +88,18 @@ def kill(pids):
 def main():
     if "--no-elevate" not in sys.argv:
         enable_terminate_privilege()
-    before = find_quicksearch()
+    before = find_quickachieve()
     if not before:
         print("没有残留进程")
         return 0
-    print("发现残留 QuickSearch：%s" % before)
+    print("发现残留 QuickAchieve：%s" % before)
     kill(before)
     # 等它真的消失：TerminateProcess 是异步的，立刻启动新实例仍可能撞上互斥体
     for _ in range(30):
         time.sleep(0.1)
-        if not find_quicksearch():
+        if not find_quickachieve():
             break
-    left = find_quicksearch()
+    left = find_quickachieve()
     if left:
         print("!! 仍然存活：%s —— 后续测试会误报，先手动结束任务管理器里的它" % left)
         return 1

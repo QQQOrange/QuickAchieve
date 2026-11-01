@@ -21,7 +21,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const PORT = 9387;
 const TAG = '-probe-skin';
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -78,12 +78,12 @@ const PROBE = `(() => {
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-skin-'));
     const appdata = path.join(tmp, 'appdata');
-    fs.mkdirSync(path.join(appdata, 'QuickSearch'), { recursive: true });
-    fs.writeFileSync(path.join(appdata, 'QuickSearch', 'log.on'), '');
+    fs.mkdirSync(path.join(appdata, 'QuickAchieve'), { recursive: true });
+    fs.writeFileSync(path.join(appdata, 'QuickAchieve', 'log.on'), '');
     // 用户配置：开实时折射，帧率故意写成没有的值 → 应回落到默认 30
-    fs.copyFileSync(path.join(os.homedir(), 'AppData', 'Roaming', 'QuickSearch', 'config.json'),
-        path.join(appdata, 'QuickSearch', 'config.json'));
-    const cf = path.join(appdata, 'QuickSearch', 'config.json');
+    fs.copyFileSync(path.join(os.homedir(), 'AppData', 'Roaming', 'QuickAchieve', 'config.json'),
+        path.join(appdata, 'QuickAchieve', 'config.json'));
+    const cf = path.join(appdata, 'QuickAchieve', 'config.json');
     const cfg = JSON.parse(fs.readFileSync(cf, 'utf8'));
     /* ⚠⚠ 磁盘配置里是 **snake_case**（`bar_glass_fps`），不是前端的 camelCase！
      *

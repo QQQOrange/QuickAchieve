@@ -16,10 +16,10 @@
 | 项 | 状态 |
 |---|---|
 | 本地仓库 | ✅ 分支 `main`，工作区干净 |
-| 远端配置 | ✅ `origin` = `git@github.com:QQQOrange/QuickSearch.git`（**SSH**，2026-10-31 切换） |
+| 远端配置 | ✅ `origin` = `git@github.com:QQQOrange/QuickAchieve.git`（**SSH**，2026-10-31 切换） |
 | GitHub 凭据 | ✅ 凭据管理器里有（`git credential fill` 能拿到，2026-10-25 验证 200）；SSH 用仓库部署密钥 |
 | 网络 | ⚠️ **间歇性**：`github.com:443` 时通时不通；**`github.com:22`(SSH) 稳定可用**；`api.github.com` 一直可用 |
-| 发布 | ✅ 最新 Release **v2.6.7**（2026-10-31），资产 `QuickSearch.exe` 7,470,592 字节 / md5 `0155c1e3…` |
+| 发布 | ✅ 最新 Release **v2.6.7**（2026-10-31），资产 `QuickAchieve.exe` 7,470,592 字节 / md5 `0155c1e3…` |
 | 代码 | ✅ `main` 已推（2026-10-31），tag `v2.6.7`；本次起改用 SSH push，不再需要 Git Data API |
 | 待发布 | 无 |
 
@@ -30,8 +30,8 @@ SSH（22 端口）不经过那条代理，实测稳定。本机已配置：
 
 - 私钥 `~/.ssh/id_ed25519`（无口令），公钥以**仓库部署密钥**（`workbuddy-deploy-pc`，
   读写权限）挂在 GitHub 上 —— 不是账号级 key（经典令牌缺 `admin:public_key`，加账号 key 会 404）。
-- `git remote set-url origin git@github.com:QQQOrange/QuickSearch.git`
-- 验证：`ssh -T git@github.com` → `Hi QQQOrange/QuickSearch! You've successfully authenticated`
+- `git remote set-url origin git@github.com:QQQOrange/QuickAchieve.git`
+- 验证：`ssh -T git@github.com` → `Hi QQQOrange/QuickAchieve! You've successfully authenticated`
 - 推送：`git push origin main && git push origin vX.Y.Z`
 
 > 部署密钥只对**这一个仓库**有效，且不能通过 API 建 Release 以外的账号级操作。
@@ -100,7 +100,7 @@ if echo "$out" | grep -qE "main -> main" && ! echo "$out" | grep -q rejected; th
 或者干脆用 API 核对远端 SHA（最可靠）：
 
 ```bash
-curl -s https://api.github.com/repos/QQQOrange/QuickSearch/commits/main | grep -m1 '"sha"'
+curl -s https://api.github.com/repos/QQQOrange/QuickAchieve/commits/main | grep -m1 '"sha"'
 ```
 
 ### 3. git 协议持续不通时，**单文件更新走 Contents API**
@@ -111,9 +111,9 @@ curl -s https://api.github.com/repos/QQQOrange/QuickSearch/commits/main | grep -
 ```bash
 # 1) 先拿远端当前 sha
 curl -H "Authorization: token $TOKEN" \
-  "https://api.github.com/repos/QQQOrange/QuickSearch/contents/<path>?ref=main"
+  "https://api.github.com/repos/QQQOrange/QuickAchieve/contents/<path>?ref=main"
 # 2) PUT 回去（content 用 base64，带上 sha 和 branch）
-curl -X PUT ... "https://api.github.com/repos/QQQOrange/QuickSearch/contents/<path>"
+curl -X PUT ... "https://api.github.com/repos/QQQOrange/QuickAchieve/contents/<path>"
 ```
 
 > 副作用：会产生一个 SHA 与本地不同的 commit，本地 `origin/main` 看起来"落后"。
@@ -121,7 +121,7 @@ curl -X PUT ... "https://api.github.com/repos/QQQOrange/QuickSearch/contents/<pa
 > "patch already applied" 直接跳过。**内容已核对一致**（2026-10-25 实测 4645 字符全等）。
 
 > ⚠ 附件（exe）**不能**走 Contents API，必须走
-> `POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=QuickSearch.exe`
+> `POST https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=QuickAchieve.exe`
 > ，`Content-Type: application/octet-stream`，成功返回 **201**。
 
 ### 4. 2026-10-25 发 v1.5.12：代理整段 502，用 Git Data API 推的
@@ -173,7 +173,7 @@ POST /git/tags + /git/refs            → annotated tag
 
 - **`uploads.github.com` 是通的**，即使 git 协议和 `github.com:443` 全挂。
   `curl -X OPTIONS https://uploads.github.com/` 返 302 就说明能传。
-  资产上传 `POST /releases/{id}/assets?name=QuickSearch.exe`
+  资产上传 `POST /releases/{id}/assets?name=QuickAchieve.exe`
   （`Content-Type: application/octet-stream`）返 **201**。
 - 新版 API 会给资产回一个 `digest`（`sha256:...`），**可以直接和本地
   `sha256sum` 对比** —— 比"看 size 对不对"硬得多。v1.5.14 实测一致。
@@ -192,7 +192,7 @@ POST /git/tags + /git/refs            → annotated tag
 > GET    /releases?per_page=3          → 拿到 id（tag 查询此时已 404）
 > 重建 tag（POST /git/tags + /git/refs）
 > DELETE /releases/{id}/assets/{aid}   → 换资产
-> POST   uploads.github.com/.../assets?name=QuickSearch.exe
+> POST   uploads.github.com/.../assets?name=QuickAchieve.exe
 > PATCH  /releases/{id}  {tag_name, body, draft:false, prerelease:false}
 > ```
 >
@@ -269,7 +269,7 @@ $env:PATH = "C:\Users\64381\.cargo\bin;$env:PATH"
 $env:ORT_SKIP_DOWNLOAD = '1'
 cd "D:\Local AI\git\Quick search 源代码"
 cargo build --release
-Get-FileHash target\release\QuickSearch.exe -Algorithm MD5, SHA256
+Get-FileHash target\release\QuickAchieve.exe -Algorithm MD5, SHA256
 ```
 
 > ⚠ **产物目录不该有 `onnxruntime.dll`**（r80g 起运行库随模型下载）。
@@ -278,7 +278,7 @@ Get-FileHash target\release\QuickSearch.exe -Algorithm MD5, SHA256
 ### 4. 打 tag + 推送
 
 ```powershell
-git tag -a v1.2.0 -m "Quick Search v1.2.0"
+git tag -a v1.2.0 -m "Quick Achieve v1.2.0"
 git push origin main
 git push origin v1.2.0
 ```
@@ -286,14 +286,14 @@ git push origin v1.2.0
 ### 5. 建 Release + 上传 exe
 
 用 API（不依赖 git 协议端口，网络更稳）。
-**资产名必须是 `QuickSearch.exe`** —— 自动更新就是按这个名字挑更新包的：
+**资产名必须是 `QuickAchieve.exe`** —— 自动更新就是按这个名字挑更新包的：
 
 ```powershell
 # 需要 token：git credential fill 取
 $h = @{ Authorization = "token <TOKEN>"; Accept = "application/vnd.github+json" }
-$body = @{ tag_name="v1.2.0"; name="Quick Search v1.2.0"; body=(Get-Content docs\RELEASE-v1.2.0.md -Raw); draft=$false; prerelease=$false } | ConvertTo-Json
-Invoke-WebRequest -Method Post -Uri "https://api.github.com/repos/QQQOrange/QuickSearch/releases" -Headers $h -Body $body -ContentType "application/json"
-# 再上传资产：POST /releases/{id}/assets?name=QuickSearch.exe  （二进制 body）
+$body = @{ tag_name="v1.2.0"; name="Quick Achieve v1.2.0"; body=(Get-Content docs\RELEASE-v1.2.0.md -Raw); draft=$false; prerelease=$false } | ConvertTo-Json
+Invoke-WebRequest -Method Post -Uri "https://api.github.com/repos/QQQOrange/QuickAchieve/releases" -Headers $h -Body $body -ContentType "application/json"
+# 再上传资产：POST /releases/{id}/assets?name=QuickAchieve.exe  （二进制 body）
 ```
 
 ---
@@ -328,7 +328,7 @@ Invoke-WebRequest -Method Post -Uri "https://api.github.com/repos/QQQOrange/Quic
 
 `docs/evidence/`（22MB 截图）、`tools/probe-out/`（16MB 探针日志）、
 `tools/*.txt`（探针输出）**已排除在版本控制之外**（`.gitignore` 里写死）。
-它们被归档到 `D:\Local AI\git\QuickSearch-evidence-archive`。
+它们被归档到 `D:\Local AI\git\QuickAchieve-evidence-archive`。
 
 > 之所以另存而不是删掉：这些截图与日志是"当时的实测证据"。
 > 重跑探针能生成新的，但旧的那份对应旧版本的实测状态，删了就没了。

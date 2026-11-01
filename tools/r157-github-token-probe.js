@@ -27,8 +27,8 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const DATA = path.join(ROOT, 'target', 'release', 'Quick search data');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const DATA = path.join(ROOT, 'target', 'release', 'Quick Achieve data');
 const OUT = path.join(__dirname, 'r157-github-token.txt');
 const PORT = 9431;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -57,9 +57,9 @@ const release = () => ({
     body: '探针版本\nSHA256: ' + 'A'.repeat(64),
     html_url: 'http://127.0.0.1:' + PORT + '/release',
     assets: [{
-        name: 'QuickSearch.exe',
+        name: 'QuickAchieve.exe',
         size: 12345,
-        browser_download_url: 'http://127.0.0.1:' + PORT + '/QuickSearch.exe',
+        browser_download_url: 'http://127.0.0.1:' + PORT + '/QuickAchieve.exe',
     }],
 });
 const server = http.createServer((req, res) => {
@@ -230,7 +230,7 @@ const logSize = () => { try { return fs.statSync(LOG).size; } catch (e) { return
     };
 
     /* ---------- 预检：把配置摆成"出厂状态" ----------
-     * 探针和开发机共用 `target/release/Quick search data`，而上一轮跑完
+     * 探针和开发机共用 `target/release/Quick Achieve data`，而上一轮跑完
      * 可能把"自动更新"关掉了（为了不让它中途插一脚）——那样这一轮启动时
      * 根本不会自动检查，第 ⓪ 组断言就成了空转。所以先起一个实例把
      * autoUpdate 打开、令牌清空，再杀掉，正式那一次才是确定的起点。 */
@@ -267,7 +267,7 @@ const logSize = () => { try { return fs.statSync(LOG).size; } catch (e) { return
     check('  没令牌 → canAuto=false（界面只能给"用浏览器下载"）',
         pAuto.canAuto === false, JSON.stringify(pAuto).slice(0, 160));
     check('  但下载网址照样带回来了（用户有出路）',
-        /QuickSearch\.exe$/.test(pAuto.url || ''), pAuto.url);
+        /QuickAchieve\.exe$/.test(pAuto.url || ''), pAuto.url);
 
     /* 就算界面被绕过、直接调下载命令，后端也必须拒 —— 这是"检测到了也不能下"的硬保证 */
     hits.length = 0;
@@ -279,7 +279,7 @@ const logSize = () => { try { return fs.statSync(LOG).size; } catch (e) { return
         /按口径不自动下载/.test(logInstall),
         logInstall.split(/\r?\n/).filter((s) => /update:/.test(s)).join(' | '));
     check('  而且一个下载请求都没发出去',
-        !hits.some((h) => h.path.indexOf('/QuickSearch.exe') === 0),
+        !hits.some((h) => h.path.indexOf('/QuickAchieve.exe') === 0),
         hits.map((h) => h.path).join(',') || '(无请求)');
 
     // 关掉自动更新，别让它在中途插一脚（收尾时会再打开）
@@ -305,7 +305,7 @@ const logSize = () => { try { return fs.statSync(LOG).size; } catch (e) { return
     check('update_pending 回报 canAuto=true（前端才给"下载并安装"）',
         p1.canAuto === true, JSON.stringify(p1));
     check('  也如实记下这次检查用了令牌（authed=true）', p1.authed === true);
-    check('  下载地址也带回来了', /QuickSearch\.exe$/.test(p1.url || ''), p1.url);
+    check('  下载地址也带回来了', /QuickAchieve\.exe$/.test(p1.url || ''), p1.url);
     const log1 = readLogFrom(off1);
     check('日志里不出现令牌原文（凭据不入日志）', log1.indexOf(TOKEN) < 0);
 

@@ -31,7 +31,7 @@ const http = require('http');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round19-probe.txt');
 const TAG = '-probe-r19';
 const PORT = 9344;                 // CDP
@@ -69,7 +69,7 @@ function startDav() {
     const srv = http.createServer((req, res) => {
         const u = new URL(req.url, 'http://127.0.0.1');
         // ⚠ 必须解码：PUT 的路径段是百分号编码过的（文件名里有空格和括号），
-        //   不解码的话服务端存下来的键是 `config%282026-…%29.QuickSearch`，
+        //   不解码的话服务端存下来的键是 `config%282026-…%29.QuickAchieve`，
         //   拿它去和本地真实文件名比对必然对不上 —— 那是探针自己的锅，不是功能的锅。
         const sub = decodeURIComponent(u.pathname.replace(/^\/dav\/?/, ''));
         davHits.push(req.method + ' /' + sub);
@@ -234,7 +234,7 @@ const CONF_OF = `invoke('get_config')`;
     rec('');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r19-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     rec('隔离实例数据目录：' + qs);
 
@@ -242,7 +242,7 @@ const CONF_OF = `invoke('get_config')`;
     const mkItem = (id, t, r) => ({ id, kind: 'text', text: t, html: '', image: '', remark: r });
     {
         const c = JSON.parse(fs.readFileSync(
-            path.join(process.env.APPDATA, 'QuickSearch', 'config.json'), 'utf8'));
+            path.join(process.env.APPDATA, 'QuickAchieve', 'config.json'), 'utf8'));
         c.trigger_select = false;
         c.trigger_copy = false;
         c.ocr_enable = false;
@@ -276,12 +276,12 @@ const CONF_OF = `invoke('get_config')`;
         c.bar_list = ['百度', 'Google', '@fav:pg1'];
         fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify(c, null, 1), 'utf8');
     }
-    /** 备份目录里「和云端配对」的那些文件：`config(时间).QuickSearch`。
-     *  注意别把滚动备份 `config.auto(时间).QuickSearch` 和恢复前快照
-     *  `config.before-webdav(时间).QuickSearch` 也算进来 —— 它们不是一次备份。
+    /** 备份目录里「和云端配对」的那些文件：`config(时间).QuickAchieve`。
+     *  注意别把滚动备份 `config.auto(时间).QuickAchieve` 和恢复前快照
+     *  `config.before-webdav(时间).QuickAchieve` 也算进来 —— 它们不是一次备份。
      *  正则用 `^config\(` 就能天然排除（两者都多一段前缀）。 */
     const localPaired = () => fs.readdirSync(qs)
-        .filter((n) => /^config\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickSearch$/.test(n))
+        .filter((n) => /^config\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickAchieve$/.test(n))
         .sort();
 
     const cfgPath = path.join(qs, 'config.json');
@@ -473,14 +473,14 @@ const CONF_OF = `invoke('get_config')`;
     await sleep(600);
     const snap1 = {
         dav: [...davFiles.keys()],
-        // 只认「和云端配对的那一份」的命名：config(时间).QuickSearch。
+        // 只认「和云端配对的那一份」的命名：config(时间).QuickAchieve。
         // 不能只按「有括号时间戳」过滤 —— config.auto(…) 与 config.before-webdav(…)
         // 也长这样，混进来会把份数算多（上一版探针就这么误报过一次）。
         local: localPaired(),
     };
     chk('第 1 次备份后云端有 1 份', snap1.dav.length === 1, JSON.stringify(snap1.dav));
     chk('  文件名带时间戳（不是固定名）',
-        snap1.dav[0] && /^config\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickSearch$/.test(snap1.dav[0]),
+        snap1.dav[0] && /^config\(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\)\.QuickAchieve$/.test(snap1.dav[0]),
         snap1.dav[0]);
     chk('  本地也落了一份，且**同名**', snap1.local.includes(snap1.dav[0]),
         'local=' + JSON.stringify(snap1.local));

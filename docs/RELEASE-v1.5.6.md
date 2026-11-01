@@ -1,4 +1,4 @@
-# Quick Search v1.5.6
+# Quick Achieve v1.5.6
 
 **补一条逻辑：Ctrl+C 哪怕没复制到文本，也一定弹横条。**
 
@@ -96,4 +96,4 @@ PASS  [no-copy] 「划选没取到文字就不弹」开着也照样弹（Ctrl+C 
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,337,088 字节 | `FEAC60A7C0F161C273A602A92FDEB81FAD9FF6EFE438AE188DDD1FD678D025C5` |
+| `QuickAchieve.exe` | 13,337,088 字节 | `FEAC60A7C0F161C273A602A92FDEB81FAD9FF6EFE438AE188DDD1FD678D025C5` |

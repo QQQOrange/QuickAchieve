@@ -9,7 +9,7 @@
  *    E 收藏面板：从 ⋯ 面板点收藏夹目录 → 面板矩形 + 横条位置有没有动
  *
  *  用法：node bar-probe.js [--keep]
- *  说明：自带「启动 + 交互」，因为 QuickSearch.exe 一旦由别的进程拉起、
+ *  说明：自带「启动 + 交互」，因为 QuickAchieve.exe 一旦由别的进程拉起、
  *        父进程退出就会跟着没（踩过），所以必须在同一个活着的进程里做完。
  * ========================================================================== */
 const koffi = require('koffi');
@@ -19,7 +19,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'bar-probe.txt');
 const PORT = 9333;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -101,7 +101,7 @@ function wins() {
 const find = (title) => wins().find((w) => w.title === title) || null;
 const findHas = (sub) => wins().find((w) => w.title.includes(sub)) || null;
 const barRect = () => {
-    const w = find('QuickSearchBar');
+    const w = find('QuickAchieveBar');
     return w ? w.rect : null;
 };
 function waitFor(fn, ms) {
@@ -193,9 +193,9 @@ const SNAP = `(function(){
     const keep = process.argv.includes('--keep');
     // 临时 APPDATA：拷一份真实配置（保留用户的收藏夹/引擎），不碰用户数据
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-barprobe-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
-    const realCfg = path.join(process.env.APPDATA, 'QuickSearch', 'config.json');
+    const realCfg = path.join(process.env.APPDATA, 'QuickAchieve', 'config.json');
     // ⚠ 拷过来的配置里带着用户真实的 WebDAV 设置 —— 启动同步会把云端配置拉下来
     //   覆盖掉本地这份（实测：日志里「启动同步：云端配置更新，已恢复到本机」），
     //   探测的前提就没了。这里先把 WebDAV 关掉，让这次探测完全跑在本地副本上。
@@ -209,7 +209,7 @@ const SNAP = `(function(){
     }
     const logp = path.join(qs, 'log.txt');
 
-    try { execSync('taskkill /IM QuickSearch.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /T /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1200);
 
     const env = Object.assign({}, process.env, {
@@ -275,13 +275,13 @@ const SNAP = `(function(){
 
     // ---- C 点面板底栏「设置…」 ----
     await evalJs(barWs, "document.getElementById('btnSettings').click()");
-    const c1 = waitFor(() => findHas('Quick Search 设置'), 12000);
-    const C = findHas('Quick Search 设置');
+    const c1 = waitFor(() => findHas('Quick Achieve 设置'), 12000);
+    const C = findHas('Quick Achieve 设置');
     rec('C 点设置…：设置窗口 ' + (c1 ? '出现' : '**没出现**') + '  ' + fmt(C && C.rect)
         + (C ? ' 可见=' + C.vis : ''));
     // 可见性可能要等页面首帧（ready 信号）或 2.5s 兜底，多等一会儿再判
-    const c2 = waitFor(() => { const w = findHas('Quick Search 设置'); return w && w.vis; }, 9000);
-    const C2 = findHas('Quick Search 设置');
+    const c2 = waitFor(() => { const w = findHas('Quick Achieve 设置'); return w && w.vis; }, 9000);
+    const C2 = findHas('Quick Achieve 设置');
     rec('C 等待可见：' + (c2 ? 'OK 可见' : '**始终不可见**') + '  ' + fmt(C2 && C2.rect));
     execSync('python tools/shot.py tools/_bar-C.png', { cwd: ROOT, stdio: 'ignore' });
 
@@ -289,7 +289,7 @@ const SNAP = `(function(){
     const PostMessageW = user32.func('int PostMessageW(void *h, uint32 msg, uintptr wp, intptr lp)');
     if (C2) {
         PostMessageW(C2.hwnd, 0x0010 /* WM_CLOSE */, 0, 0);
-        const d0 = waitFor(() => !findHas('Quick Search 设置'), 6000);
+        const d0 = waitFor(() => !findHas('Quick Achieve 设置'), 6000);
         rec('D 关设置窗口：' + (d0 ? '已关闭' : '**关不掉**'));
     }
     sleep(600);

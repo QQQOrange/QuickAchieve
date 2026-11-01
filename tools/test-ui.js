@@ -272,9 +272,9 @@ function makeEnv(htmlFile, conf, opts) {
                 // 上面那条 `return null` 的兜底值，取 .dir 直接 TypeError。
                 if (cmd === 'backup_info') {
                     return Promise.resolve({
-                        dir: 'C:\\Users\\tester\\AppData\\Roaming\\QuickSearch',
+                        dir: 'C:\\Users\\tester\\AppData\\Roaming\\QuickAchieve',
                         isCustom: false,
-                        configPath: 'C:\\Users\\tester\\AppData\\Roaming\\QuickSearch\\config.json',
+                        configPath: 'C:\\Users\\tester\\AppData\\Roaming\\QuickAchieve\\config.json',
                         files: [],
                     });
                 }
@@ -297,7 +297,7 @@ function makeEnv(htmlFile, conf, opts) {
                         groups: [
                             { kind: 'dup-backup', label: '2 份「内容重复」的旧备份',
                               why: '解密后剔掉界面状态字段，内容与更新的那一份完全一样。',
-                              count: 2, bytes: 3072, files: ['config(a).QuickSearch', 'config(b).QuickSearch'] },
+                              count: 2, bytes: 3072, files: ['config(a).QuickAchieve', 'config(b).QuickAchieve'] },
                             { kind: 'orphan-icon', label: '1 个没人用的自定义图标',
                               why: 'icons 目录里还在，但配置里已经没有引擎引用它了。',
                               count: 1, bytes: 1024, files: ['旧图标.png'] },
@@ -3900,7 +3900,7 @@ async function testDownloadFailureRoute() {
         payload: {
             newer: true, version: '99.0.0', notes: '说明', size: 13415936,
             canAuto: true, authed: true,
-            url: 'https://github.com/o/r/releases/download/v99/QuickSearch.exe',
+            url: 'https://github.com/o/r/releases/download/v99/QuickAchieve.exe',
             page: 'https://example.com/release',
         },
     });
@@ -4165,9 +4165,9 @@ async function testBackupPage() {
     const listCb = env.listeners.get('qs://wd-list');
     ok('设置页登记了 qs://wd-list 的接收', !!listCb);
     const items = [
-        { name: 'config(2026-10-12 10-00-00).QuickSearch', size: 2048, mtime: 1760000000 },
-        { name: 'config(2026-10-11 10-00-00).QuickSearch', size: 2048, mtime: 1759900000 },
-        { name: 'config(2026-10-10 10-00-00).QuickSearch', size: 2048, mtime: 1759800000 },
+        { name: 'config(2026-10-12 10-00-00).QuickAchieve', size: 2048, mtime: 1760000000 },
+        { name: 'config(2026-10-11 10-00-00).QuickAchieve', size: 2048, mtime: 1759900000 },
+        { name: 'config(2026-10-10 10-00-00).QuickAchieve', size: 2048, mtime: 1759800000 },
     ];
     listCb({ payload: items });
     await flush();
@@ -4620,7 +4620,7 @@ async function testUpdateToken() {
         payload: {
             version: '9.9.9', newer: true, current: '1.0.0', notes: '说明',
             size: 1024 * 1024, page: 'https://github.com/x/releases/tag/v9.9.9',
-            url: 'https://github.com/x/releases/download/v9.9.9/QuickSearch.exe',
+            url: 'https://github.com/x/releases/download/v9.9.9/QuickAchieve.exe',
             canAuto, authed, manual: true,
         },
     });
@@ -4632,7 +4632,7 @@ async function testUpdateToken() {
     ok('  提示里写明"没填 GitHub 令牌"',
         /没填 GitHub 令牌/.test($('updHint').textContent || ''));
     ok('  完整下载网址显示出来了',
-        $('updDownloadLink').textContent === 'https://github.com/x/releases/download/v9.9.9/QuickSearch.exe'
+        $('updDownloadLink').textContent === 'https://github.com/x/releases/download/v9.9.9/QuickAchieve.exe'
         && !$('updLinkRow').hidden,
         $('updDownloadLink').textContent);
 
@@ -4679,7 +4679,7 @@ async function testUpdateToken() {
     env.setPending({
         has: true, version: '9.9.9', notes: '说明', size: 1024 * 1024,
         page: 'https://github.com/x/releases/tag/v9.9.9',
-        url: 'https://github.com/x/releases/download/v9.9.9/QuickSearch.exe',
+        url: 'https://github.com/x/releases/download/v9.9.9/QuickAchieve.exe',
         canAuto: false,
     });
     w.updInit();

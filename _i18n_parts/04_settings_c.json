@@ -46,7 +46,7 @@
   "中英混合": "Chinese + English",
   "纯英文": "English only",
   "识别精度": "Accuracy",
-  "标准版每天 500 次免费；高精度更准更慢，且要在百度控制台开通付费 —— 软件不会偷偷替你降档": "Standard includes 500 free calls per day; high accuracy is more precise but slower and must be enabled (paid) in the Baidu console. Quick Search never silently downgrades you.",
+  "标准版每天 500 次免费；高精度更准更慢，且要在百度控制台开通付费 —— 软件不会偷偷替你降档": "Standard includes 500 free calls per day; high accuracy is more precise but slower and must be enabled (paid) in the Baidu console. Quick Achieve never silently downgrades you.",
   "标准（免费）": "Standard (free)",
   "高精度（付费）": "High accuracy (paid)",
   "开始框选识别": "Start selecting",
@@ -88,8 +88,8 @@
   "理由：几个标签页几乎同时往外冒，前台归属不确定，盲发按键会把图粘到错误的页面。": "Reason: several tabs open at once, focus is unpredictable, and blind key presses paste into the wrong page.",
   "关掉这个开关 = 任何时候都尝试按键（旧行为）。": "Turning this off means always trying the key presses (old behaviour).",
   "公网图片地址（可选）": "Public image URL (optional)",
-  "只对「按图片地址搜」那两家（Yandex / trace.moe 的地址版）有用：填一张公网可访问的图片链接，软件直接拼好搜索地址。": "Only used by the URL-based variants (Yandex and trace.moe): provide a publicly reachable image link and Quick Search builds the search URL directly.",
+  "只对「按图片地址搜」那两家（Yandex / trace.moe 的地址版）有用：填一张公网可访问的图片链接，软件直接拼好搜索地址。": "Only used by the URL-based variants (Yandex and trace.moe): provide a publicly reachable image link and Quick Achieve builds the search URL directly.",
   "不填，它们就不参与搜索": "If empty, they are skipped",
-  "。软件不会替你把截图传到第三方图床": ". Quick Search never uploads your screenshot to a third-party host",
+  "。软件不会替你把截图传到第三方图床": ". Quick Achieve never uploads your screenshot to a third-party host",
   "框一次试试": "Try selecting once"
 }

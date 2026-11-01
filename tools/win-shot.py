@@ -23,7 +23,7 @@ def find_bar():
         if n:
             b = ctypes.create_unicode_buffer(n + 1)
             u.GetWindowTextW(h, b, n + 1)
-            if b.value == 'QuickSearchBar' and u.IsWindowVisible(h):
+            if b.value == 'QuickAchieveBar' and u.IsWindowVisible(h):
                 r = wt.RECT()
                 u.GetWindowRect(h, ctypes.byref(r))
                 if r.left > -5000:

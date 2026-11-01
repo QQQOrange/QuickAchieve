@@ -29,7 +29,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round27-probe.txt');
 const TAG = '-probe-r27';
 
@@ -124,7 +124,7 @@ function wins() {
     return out;
 }
 const winCount = () => wins().filter((w) => w.title).length;
-const barRect = () => { const w = wins().find((x) => x.title === 'QuickSearchBar'); return w ? w.rect : null; };
+const barRect = () => { const w = wins().find((x) => x.title === 'QuickAchieveBar'); return w ? w.rect : null; };
 function waitBar(ms) {
     const t0 = Date.now();
     while (Date.now() - t0 < (ms || 8000)) { const r = barRect(); if (r && r[2] > 0) return r; sleep(120); }
@@ -225,7 +225,7 @@ function info(name, detail) { rec('  INFO  ' + name + (detail ? '   [' + detail 
     rec('');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r27-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     rec('隔离实例数据目录：' + qs);
 

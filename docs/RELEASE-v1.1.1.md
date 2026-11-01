@@ -1,4 +1,4 @@
-# Quick Search v1.1.1
+# Quick Achieve v1.1.1
 
 修 v1.1.0 里被用户实际用出来的问题，并**重做下载链路**。
 
@@ -166,7 +166,7 @@ v1.1.0 把模型默认位置改成了 `<程序目录>/抠图模型`，但**旧�
 
 ## 安装
 
-1. 下载 `QuickSearch.exe`（**直接覆盖旧版即可**，配置与模型都不受影响）
+1. 下载 `QuickAchieve.exe`（**直接覆盖旧版即可**，配置与模型都不受影响）
 2. 双击运行（无需安装）
 3. 升级后**首次启动会自动清一次残留**，把旧版本留下的临时文件与旧位置的模型清掉
 4. 想用 AI 抠图 → 设置 → 通用 → AI 抠图 → 打开开关 → 点「下载」
@@ -200,7 +200,7 @@ v1.1.0 把模型默认位置改成了 `<程序目录>/抠图模型`，但**旧�
 ## 校验
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.07 MB (12,657,664 字节)
 MD5:    36DF9EDA4031C42EFD7B4C330829596E
 SHA256: 831BE26BEA0A0624D085419BF54D4E0DC6D8AA7D94727FF3F5BB098887C5B401
@@ -209,7 +209,7 @@ SHA256: 831BE26BEA0A0624D085419BF54D4E0DC6D8AA7D94727FF3F5BB098887C5B401
 核对方式：
 
 ```powershell
-Get-FileHash .\QuickSearch.exe -Algorithm SHA256
+Get-FileHash .\QuickAchieve.exe -Algorithm SHA256
 ```
 
 > 注：exe 每次编译的哈希都不同（构建时会嵌入时间戳），

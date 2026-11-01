@@ -17,9 +17,9 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const CFG = path.join(process.env.APPDATA || '', 'QuickSearch', 'config.json');
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const CFG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'config.json');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 
 const user32 = koffi.load('user32.dll');
 try { user32.func('int SetProcessDpiAwarenessContext(intptr ctx)')(-4); } catch (e) { }
@@ -85,13 +85,13 @@ function ensureWanted(name) {
 }
 
 function startApp() {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     // 等干净：上个进程的窗口（尤其铺满全屏的 picker）必须真的没了，否则
     // 后面的断言会扫到残留窗口、把"这一轮没建起来"误判成 PASS。
     for (let i = 0; i < 20; i++) {
         sleep(250);
-        if (!windows().some((w) => /QS-Picker|Quick Search 设置/.test(w.t) && w.vis)) break;
-        try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+        if (!windows().some((w) => /QS-Picker|Quick Achieve 设置/.test(w.t) && w.vis)) break;
+        try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     }
     sleep(1200);
     try { fs.writeFileSync(ENSURE_FILE, '', 'utf8'); } catch (e) { }
@@ -101,7 +101,7 @@ function startApp() {
     const mark = fs.existsSync(LOG) ? fs.statSync(LOG).size : 0;
     spawn(EXE, ['--no-elevate', '--settings', '--ensure-file', ENSURE_FILE],
         { env, cwd: ROOT, detached: true, stdio: 'ignore' }).unref();
-    console.log('已启动 QuickSearch.exe --settings（带 --ensure-file）');
+    console.log('已启动 QuickAchieve.exe --settings（带 --ensure-file）');
 
     /* ⚠ 不能「死等 9 秒」。
      *
@@ -115,7 +115,7 @@ function startApp() {
     let ok = false;
     while (Date.now() < deadline) {
         sleep(400);
-        const winUp = windows().some((w) => w.t === 'Quick Search 设置' && w.vis);
+        const winUp = windows().some((w) => w.t === 'Quick Achieve 设置' && w.vis);
         let rects = false;
         try {
             // 按**字节**切片（日志里有中文，用字符串下标切会被越切越偏）
@@ -150,16 +150,16 @@ function rectsFromLog(mark) {
 (async function main() {
     startApp();
 
-    const win = findWin('Quick Search 设置');
+    const win = findWin('Quick Achieve 设置');
     ok('S0 设置窗口开起来了', !!win, '窗口列表=' + JSON.stringify(windows().filter(w => w.vis).map(w => w.t).slice(0, 12)));
     if (!win) { done(); return; }
 
     // 把设置窗口拉到前台并定位。窗口位置可能还在动，所以读几次取最后一次。
     SetForegroundWindow(win.h);
     sleep(800);
-    let geo = findWin('Quick Search 设置');
+    let geo = findWin('Quick Achieve 设置');
     for (let i = 0; i < 5; i++) {
-        const g = findWin('Quick Search 设置');
+        const g = findWin('Quick Achieve 设置');
         if (g && g.l === geo.l && g.tp === geo.tp) break;
         geo = g || geo;
         sleep(300);
@@ -177,7 +177,7 @@ function rectsFromLog(mark) {
     /** 每次点击前重新定位窗口（用户可能拖动过，也可能系统挪过），
      *  顺便刷新缩放比。 */
     const refreshGeo = () => {
-        const g = findWin('Quick Search 设置');
+        const g = findWin('Quick Achieve 设置');
         if (!g) return;
         WX = g.cl; WY = g.ct;
         scaleX = g.cw / 780;
@@ -391,6 +391,6 @@ function done() {
         + `\n\n${pass}/${results.length} passed\n`;
     fs.writeFileSync(path.join(__dirname, 'verify-settings-features.result.txt'), out, 'utf8');
     console.log(`\n${pass}/${results.length} passed`);
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     process.exit(pass === results.length ? 0 : 1);
 }

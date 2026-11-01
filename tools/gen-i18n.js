@@ -60,7 +60,7 @@ const q = (s) => '"' + esc(s) + '"';
 
 const lines = [];
 lines.push('/* ============================================================================');
-lines.push(' * Quick Search —— English dictionary (v1.5.13)');
+lines.push(' * Quick Achieve —— English dictionary (v1.5.13)');
 lines.push(' * ----------------------------------------------------------------------------');
 lines.push(' * 中文原文 → English。由 ui/i18n.js 在运行时按文本节点 / 整句 / 属性查表。');
 lines.push(' *');

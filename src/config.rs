@@ -1,4 +1,4 @@
-//! 配置持久化：`<exe>\Quick search data\config.json`（v1.4.0 起便携 + 全加密）
+//! 配置持久化：`<exe>\Quick Achieve data\config.json`（v1.4.0 起便携 + 全加密）
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::imgsearch;
 
-pub const APP_DIR: &str = "QuickSearch";
+pub const APP_DIR: &str = "QuickAchieve";
 
 /* ══════════════════════════════════════════════════════════════════════
  * v1.4.0：`LOCKED` —— 「主文件解不开」时**禁止任何写盘**
@@ -1887,7 +1887,7 @@ pub ocr_accurate: bool,
     /// 「智能直达」入口：软件 / 网址 / 文件，一条输入自动归类。
     ///
     /// `#[serde(default)]` 保证**老配置读进来是空列表**，不会因为缺字段整份配置
-    /// 解析失败 —— 老版本的 config.json / .QuickSearch 备份都能直接恢复。
+    /// 解析失败 —— 老版本的 config.json / .QuickAchieve 备份都能直接恢复。
     #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
     /// 引擎名 -> 自定义图标文件名（存在 icons 目录里）
@@ -1952,7 +1952,7 @@ pub ocr_accurate: bool,
     /// 所以它只在本机 config.json 里持久化，恢复备份时由 apply_view 原样保留。
     pub ocr_win_w: u32,
     pub ocr_win_h: u32,
-    /// 本地备份目录。空 = 用默认的数据目录（%APPDATA%/QuickSearch）。
+    /// 本地备份目录。空 = 用默认的数据目录（%APPDATA%/QuickAchieve）。
     ///
     /// 用户报过「配置到底备份到哪了都不知道」—— .bak、WebDAV 同步前的
     /// 时间戳快照、导出的 json 全都可以落到这个目录，设置在备份页可见可改。
@@ -2350,17 +2350,17 @@ pub fn ocr_window_size(cfg: &Config) -> (f64, f64) {
  * v1.4.0：便携数据目录
  *
  * 用户要求（原话）：「这个软件的所有数据都要保存在软件所在的文件夹当中，
- *   命名为 Quick search data，所有备份的文件也要备份在这个文件夹里面，
- *   文件夹的名字叫做 quicksearch back」。
+ *   命名为 Quick Achieve data，所有备份的文件也要备份在这个文件夹里面，
+ *   文件夹的名字叫做 quickachieve back」。
  *
  * 默认布局：
- *   `<exe 所在目录>\Quick search data\`   配置 / 图标 / 日志 / AI 模型
- *   `<exe 所在目录>\QuickSearch back\`    所有备份（滚动 + 立即备份 + 快照）
+ *   `<exe 所在目录>\Quick Achieve data\`   配置 / 图标 / 日志 / AI 模型
+ *   `<exe 所在目录>\Quick Achieve back\`    所有备份（滚动 + 立即备份 + 快照）
  *
  * `data_dir()` 的三条优先级：
  *   ① `QS_DATA_DIR` 环境变量 —— 测试 / 调试 / 用户想自己指定；
  *   ② 便携目录 —— 能建、能写就用（正常安装走这条）；
- *   ③ `%APPDATA%\QuickSearch` —— exe 落在 Program Files 这类只读位置时兜底。
+ *   ③ `%APPDATA%\QuickAchieve` —— exe 落在 Program Files 这类只读位置时兜底。
  *
  * ⚠ 只有"生产 + 没设环境变量"这条分支才缓存（`OnceLock`）。
  *   `QS_DATA_DIR` 是进程级环境变量，测试里每条都改它 —— 缓存了就会串味，
@@ -2368,9 +2368,37 @@ pub fn ocr_window_size(cfg: &Config) -> (f64, f64) {
  * ══════════════════════════════════════════════════════════════════════ */
 
 /// 便携数据目录名（exe 旁边）。
-pub const DATA_DIR_NAME: &str = "Quick search data";
+pub const DATA_DIR_NAME: &str = "Quick Achieve data";
 /// 备份目录名（exe 旁边）。
-pub const BACKUP_DIR_NAME: &str = "QuickSearch back";
+pub const BACKUP_DIR_NAME: &str = "Quick Achieve back";
+
+/* ────────────────────────── 更名兼容（v2.15.0） ──────────────────────────
+ *
+ * 软件在 v2.14.1 之前叫 **Quick Search**，目录名 / 备份后缀都是那套名字。
+ * 改名之后老用户升级上来，如果直接按新名字找，看到的就是"设置全没了、
+ * 备份也没了" —— 那是比不更名严重得多的事故。
+ *
+ * 所以这里留一份老名字，并且只做**一次**就地改名（同盘 rename 是瞬时的，
+ * 不产生副本、也不会多占一倍空间）；万一改名失败（跨盘挂载、权限问题），
+ * 就直接继续用老目录，功能不受影响。 */
+/// 更名前的数据目录名。
+pub const LEGACY_DATA_DIR_NAME: &str = "Quick search data";
+/// 更名前的备份目录名。
+pub const LEGACY_BACKUP_DIR_NAME: &str = "QuickSearch back";
+/// 更名前的 `%APPDATA%` 子目录名。
+pub const LEGACY_APP_DIR: &str = "QuickSearch";
+/// 备份文件后缀（写一律用它）。
+pub const BACKUP_EXT: &str = ".QuickAchieve";
+/// 更名前用的后缀。**只读兼容**：老备份照常列出、能恢复、参与裁剪。
+pub const LEGACY_BACKUP_EXT: &str = ".QuickSearch";
+
+/// 名字是不是「配置备份」的形态（以 `)` + 备份后缀结尾，新旧都认）。
+///
+/// 单独抽出来是因为有三处判据（滚动备份 / 立即备份 / 恢复前快照）都要认它；
+/// 只改一处、漏一处，表现就是"老备份在列表里看不见"或"裁剪永远清不掉"。
+pub fn backup_name_has_ext(name: &str) -> bool {
+    name.ends_with(&format!("){BACKUP_EXT}")) || name.ends_with(&format!("){LEGACY_BACKUP_EXT}"))
+}
 
 /// 可执行文件所在目录 —— 便携模式的一切都挂在它下面。
 ///
@@ -2387,14 +2415,45 @@ pub fn exe_dir() -> PathBuf {
     .clone()
 }
 
-/// `<exe>\Quick search data`（不管存不存在）。
+/// `<exe>\Quick Achieve data`（不管存不存在）。
+///
+/// 更名兼容：老名字（`Quick search data`）还在、新名字还没建出来时，先就地改名。
 pub fn portable_data_dir() -> PathBuf {
-    exe_dir().join(DATA_DIR_NAME)
+    portable_dir_adopted(DATA_DIR_NAME, LEGACY_DATA_DIR_NAME)
 }
 
-/// `<exe>\QuickSearch back`（不管存不存在）。
+/// `<exe>\Quick Achieve back`（不管存不存在）。同样带一次性地名兼容。
 pub fn portable_backup_dir() -> PathBuf {
-    exe_dir().join(BACKUP_DIR_NAME)
+    portable_dir_adopted(BACKUP_DIR_NAME, LEGACY_BACKUP_DIR_NAME)
+}
+
+/// 「新名字目录还没有、老名字目录在」→ 就地改名；改名失败就**继续用老目录**。
+///
+/// 为什么失败时返回老路径而不是新路径：新路径是空的，返回它等于让用户
+/// 面对一份全新的配置（密钥、备份、图标全"消失"）。宁可先用老目录跑着，
+/// 也不能让升级把数据变成孤儿。
+fn portable_dir_adopted(new_name: &str, old_name: &str) -> PathBuf {
+    let base = exe_dir();
+    let new = base.join(new_name);
+    let old = base.join(old_name);
+    if !new.exists() && old.exists() {
+        match std::fs::rename(&old, &new) {
+            Ok(_) => crate::win::log(&format!(
+                "rename: 目录已更名 {} → {}",
+                old.display(),
+                new.display()
+            )),
+            Err(e) => {
+                crate::win::log(&format!(
+                    "rename: {} → {} 失败（{e}）—— 继续使用老目录，数据不受影响",
+                    old.display(),
+                    new.display()
+                ));
+                return old;
+            }
+        }
+    }
+    new
 }
 
 /// 目录能不能建出来、能不能写 —— 便携模式的准入判据。
@@ -2446,6 +2505,11 @@ pub fn data_dir() -> PathBuf {
         static C: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
         C.get_or_init(|| {
             let portable = portable_data_dir();
+            /* 备份目录也在这里"摸一下"：它的改名是懒加载的（点备份才计算路径），
+             * 不主动碰的话，用户升级后目录里会同时躺着 `Quick Achieve back` 和
+             * 更名前的 `QuickSearch back`，看起来像"没迁干净"。这一步只算路径
+             * + 改名，不会创建任何文件。 */
+            let _ = portable_backup_dir();
             if ensure_writable(&portable) {
                 return portable;
             }
@@ -2472,13 +2536,13 @@ pub fn config_path() -> PathBuf {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
- * v1.4.0：老用户迁移（`%APPDATA%\QuickSearch` → exe 旁边的便携目录）
+ * v1.4.0：老用户迁移（`%APPDATA%\QuickAchieve` → exe 旁边的便携目录）
  *
  * 顺序刻意是「**先搬、再校验、最后才删**」：
  *   1. 用老目录自己的钥匙读出老配置（可能是明文，也可能是密码/DPAPI 信封）；
  *   2. 写进新目录（`save_to` 顺手把主文件、备份、`backup.key` 全部换成加密形态）；
  *   3. 图标 / 模型整目录搬过去（同盘 rename 是瞬时的）；
- *   4. 老备份**逐个重新封装**后放进 `QuickSearch back`（明文备份不能原样搬）；
+ *   4. 老备份**逐个重新封装**后放进 `Quick Achieve back`（明文备份不能原样搬）；
  *   5. 回读新配置，和搬之前那份逐字节比一次；
  *   6. 只有 5 通过了，才删老目录 —— 用户要求「迁移成功后删掉整个旧目录」，
  *      但这条必须以"新目录真的能用"为前提，否则等于删库。
@@ -2549,11 +2613,19 @@ fn is_config_family(name: &str) -> bool {
         || name.starts_with("config.json.bad-")
 }
 
-/// 老版本数据目录（`%APPDATA%\QuickSearch`）。
+/// 老版本数据目录（`%APPDATA%\QuickAchieve`，更名前是 `%APPDATA%\QuickSearch`）。
+///
+/// 两个名字都看：更名前后装过安装版的用户，老配置可能躺在任一名字下面。
+/// 新名字优先（更晚的版本写的），老名字兜底。
 fn legacy_data_dir() -> Option<PathBuf> {
     let base = std::env::var("APPDATA").ok()?;
-    let p = PathBuf::from(base).join(APP_DIR);
-    p.is_dir().then_some(p)
+    for name in [APP_DIR, LEGACY_APP_DIR] {
+        let p = PathBuf::from(&base).join(name);
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 /// 便携测试版：把**上一次安装里用户自定义的图标**搬过来。
@@ -2574,9 +2646,9 @@ fn legacy_data_dir() -> Option<PathBuf> {
 ///
 /// # 源目录怎么找
 ///
-/// `%APPDATA%\\QuickSearch`（安装版）优先；本项目的实际形态是便携版，
-/// 所以再往 exe 的上一级 / 上两级找 `Quick search data` —— 测试版就装在
-/// `…\\myself\\测试\\` 下，原版数据在 `…\\myself\\Quick search data`。
+/// `%APPDATA%\\QuickAchieve`（安装版）优先；本项目的实际形态是便携版，
+/// 所以再往 exe 的上一级 / 上两级找 `Quick Achieve data` —— 测试版就装在
+/// `…\\myself\\测试\\` 下，原版数据在 `…\\myself\\Quick Achieve data`。
 ///
 /// # 幂等
 ///
@@ -2613,8 +2685,12 @@ pub fn import_user_icons_if_needed() -> Option<String> {
                         p = x.to_path_buf();
                     }
                 }
-                cands.push(p.join("Quick search data"));
-                cands.push(p.join("QuickSearch"));
+                cands.push(p.join(DATA_DIR_NAME));
+                cands.push(p.join(APP_DIR));
+                // 更名前的老目录也找一遍：万一就地改名失败（跨盘/权限），
+                // 用户自定义的图标仍然能搬过来。
+                cands.push(p.join(LEGACY_DATA_DIR_NAME));
+                cands.push(p.join(LEGACY_APP_DIR));
             }
         }
     }
@@ -2959,7 +3035,7 @@ pub fn load_backup_password() -> String {
 
 /// 备份文件名里的「详细时间」：本地时间 `YYYY-MM-DD HH-MM-SS`。
 ///
-/// 用户要求备份文件名形如「文件名(详细时间).QuickSearch」—— 时间必须是本地
+/// 用户要求备份文件名形如「文件名(详细时间).QuickAchieve」—— 时间必须是本地
 /// 时间（备份是给人看的，UTC 时间用户对不上自己几点做的备份）。Windows 文件名
 /// 不能含 `:`，时分秒之间用连字符。走 WinRT Calendar（已在依赖里）取本地时间；
 /// 取不到就退回 UNIX 秒，绝不让备份因为拿不到时间而失败。
@@ -2988,15 +3064,15 @@ pub fn backup_stamp() -> String {
 
 /// 「立即备份」的文件名 —— 本地落盘与云端上传**完全同名**。
 ///
-/// 用户原话：「本地备份的文件名是 config(2026-10-12 23-06-22).QuickSearch，
-/// 而备份到云端的文件名是 quicksearch-backup.json，这完全对不上……备份到云端的
+/// 用户原话：「本地备份的文件名是 config(2026-10-12 23-06-22).QuickAchieve，
+/// 而备份到云端的文件名是 quickachieve-backup.json，这完全对不上……备份到云端的
 /// 文件名完全没有必要自定义，直接把本地的拉上去就可以了呀」。
 ///
 /// 所以现在**只有这一个命名口径**：本地写什么名字，云端就 PUT 什么名字，
 /// 内容也是同一份字节（见 `backup_once`）。以前那套「基名 + 时间戳 + .json」
 /// 的云端自定义名连同设置项一起删掉了。
 pub fn backup_name(stamp: &str) -> String {
-    format!("config({stamp}).QuickSearch")
+    format!("config({stamp}).QuickAchieve")
 }
 
 /// 滚动备份（每次改设置自动留的那份，只保留 1 份）。
@@ -3005,10 +3081,10 @@ pub fn backup_name(stamp: &str) -> String {
 /// 滚动备份删掉，如果两者同名，用户手动做的备份会被下一次改设置顺手删光。
 /// 多一层 `.auto` 前缀，两族文件互不干扰。
 pub fn rolling_backup_name(stamp: &str) -> String {
-    format!("config.auto({stamp}).QuickSearch")
+    format!("config.auto({stamp}).QuickAchieve")
 }
 
-/// 默认备份目录：exe 旁边的 `QuickSearch back`（v1.4.0 起）。
+/// 默认备份目录：exe 旁边的 `Quick Achieve back`（v1.4.0 起）。
 ///
 /// 用户要求：「所有备份的文件也要备份在这个文件夹里面」。建不出来（只读位置）
 /// 就退回数据目录 —— 备份绝不能因为"目录不可写"而整个失败。
@@ -3559,8 +3635,8 @@ pub(crate) fn sanitize(mut c: Config) -> Config {
         }
     }
     // WebDAV 地址只存「用户填的那一段」。
-    // 老版本会把软件自己的子目录（QuickSearch/）一起写进配置，用户打开设置页
-    // 看到那一截会以为必须手填 —— 用户明确说过"补全 /QuickSearch/ 就够了，再多不用"。
+    // 老版本会把软件自己的子目录（QuickAchieve/）一起写进配置，用户打开设置页
+    // 看到那一截会以为必须手填 —— 用户明确说过"补全 /QuickAchieve/ 就够了，再多不用"。
     // 读进来时还原成纯根地址；子目录在真正发请求时由 webdav::normalize_base 补，
     // 最终访问的地址一字不差。
     let want_url = crate::webdav::normalize_input(&c.webdav_url);
@@ -3911,12 +3987,12 @@ fn load_backup_of(path: &std::path::Path) -> Option<Config> {
     // 候选位置都试一遍：走到这里说明主文件已经坏了，此时还不知道用户把备份
     // 目录设到哪，只能都找 —— 找到哪个用哪个。
     //
-    // 当前滚动备份叫 `config(YYYY-MM-DD HH-MM-SS).QuickSearch`（用户要求：
+    // 当前滚动备份叫 `config(YYYY-MM-DD HH-MM-SS).QuickAchieve`（用户要求：
     // 「文件名(详细时间).软件名后缀」，后缀用软件名也算一层防误认）。
     // 老名字（config.json.bak / config.before-webdav-*.json）继续兼容，
     // 升级上来的用户不至于丢掉上一份备份。
     // 候选顺序（先命中谁用谁）：
-    //   ① 主文件**同目录**的最新滚动备份 `config(...).QuickSearch`
+    //   ① 主文件**同目录**的最新滚动备份 `config(...).QuickAchieve`
     //      —— save_to 的 cfg.backup_dir 指向旁边时备份就落在这儿；
     //   ② 主文件同目录的老名 `config.json.bak`（旧版布局 / 测试手写备份）；
     //   ③ 数据目录（= 没设备份目录时的落点）的最新滚动备份；
@@ -4131,7 +4207,7 @@ fn looks_wiped(c: &Config) -> bool {
  *
  * 查下来是一条**恢复链断在半路**：
  *   1. `config.json` 某次损坏（`preserve_broken` 留了档，证据是
- *      `config.broken(2026-10-20 12-22-12).QuickSearch`）；
+ *      `config.broken(2026-10-20 12-22-12).QuickAchieve`）；
  *   2. `load_backup_of` 去找滚动备份，逐个 `serde_json::from_str::<Config>`；
  *   3. 但用户**设了备份密码**，滚动备份里躺着的是 `{"qsEnc":1,"kdf":...}`
  *      这种**密文信封** —— 明文解析必然失败；
@@ -4255,12 +4331,12 @@ fn configured_string(path: &std::path::Path, key_name: &str) -> Option<String> {
 }
 
 /// 是不是「滚动备份」—— save_to 每次保存时留下的那一份。
-/// 名字形如 `config(2026-10-12 06-30-37).QuickSearch`。
+/// 名字形如 `config(2026-10-12 06-30-37).QuickAchieve`。
 pub fn is_rolling_backup(p: &std::path::Path) -> bool {
     let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
         return false;
     };
-    name.starts_with("config.auto(") && name.ends_with(").QuickSearch")
+    name.starts_with("config.auto(") && backup_name_has_ext(name)
 }
 
 /// 是不是「立即备份」产生的备份文件（本地与云端同名的那一族）。
@@ -4268,13 +4344,13 @@ pub fn is_rolling_backup(p: &std::path::Path) -> bool {
 /// 老版本里滚动备份也叫这个名字，所以老用户的目录里会留下几份 ——
 /// 它们内容上就是完整的配置备份，**照常当备份认**，由「仅保留最近 N 份」清理。
 pub fn is_manual_backup(name: &str) -> bool {
-    name.starts_with("config(") && name.ends_with(").QuickSearch")
+    name.starts_with("config(") && backup_name_has_ext(name)
 }
 
 /// 「恢复之前留的本机快照」—— 恢复云端之前（`stash_local_config`）和
 /// **恢复本地备份之前**（`stash_before_restore`，v1.4.1）都留一份。
 ///
-/// 只认前缀：新名字是 `config.before-*(时间).QuickSearch`，
+/// 只认前缀：新名字是 `config.before-*(时间).QuickAchieve`，
 /// 老版本还留过 `config.before-webdav-*.json`，两种都得算进来。
 pub fn is_snapshot(name: &str) -> bool {
     name.starts_with("config.before-")
@@ -4321,7 +4397,7 @@ fn preserve_broken(path: &std::path::Path, text: &str) {
 /// 下次启动 `load()` 解析失败 → 用户配置全丢。写临时文件再 rename 的话，
 /// 崩溃只会留下一份 `.tmp` 垃圾，正式文件始终是完整的上一版。
 ///
-/// 另外每次成功保存都顺手留一份滚动备份（`config(时间).QuickSearch`），
+/// 另外每次成功保存都顺手留一份滚动备份（`config(时间).QuickAchieve`），
 /// 供上面 `load()` 的兜底路径使用。
 pub fn save(cfg: &Config) {
     save_to(&config_path(), cfg);
@@ -4381,7 +4457,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
         }
     };
     // 滚动备份落在**备份目录**（用户在设置里指定的目录；没指定就是数据目录），
-    // 名字按用户要求来：`config(YYYY-MM-DD HH-MM-SS).QuickSearch` ——
+    // 名字按用户要求来：`config(YYYY-MM-DD HH-MM-SS).QuickAchieve` ——
     // 「文件名(详细时间)」+ 软件名后缀（后缀用软件名也算一层防误认，
     // 资源管理器里不会一眼看成普通 json）。
     //
@@ -4399,7 +4475,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
     /* 滚动备份落点（v1.4.0 口径）：
      *
      *   · 用户设了备份目录 → 用他的；
-     *   · 没设 + 写的是**正式主文件** → exe 旁边的 `QuickSearch back`
+     *   · 没设 + 写的是**正式主文件** → exe 旁边的 `Quick Achieve back`
      *     （用户要求"所有备份都放这个文件夹"）；
      *   · 没设 + 写的是**注入的路径**（测试传临时文件）→ 就放它旁边，
      *     绝不往真实目录里塞测试配置（2026-10-22 的事故，见 r99 记录）。 */
@@ -4636,7 +4712,7 @@ pub fn restore_icon(engine: &str, data_url: &str) -> Option<String> {
 
 /// icons 目录里「文件名 = 引擎名」的默认图标（#138）。
 ///
-/// 用户原话：「读取 C:\Users\64381\AppData\Roaming\QuickSearch\icons 目录中的
+/// 用户原话：「读取 C:\Users\64381\AppData\Roaming\QuickAchieve\icons 目录中的
 /// 自定义图标，并将其设为软件中相应引擎的默认图标」。
 ///
 /// 约定与 [`stash_icon`] 的落地规则一致（用户在图库挑的图就存成
@@ -5008,11 +5084,11 @@ mod tests {
     fn migration_classifies_config_files() {
         for n in [
             "config.json",
-            "config(2026-10-22 10-00-00).QuickSearch",
-            "config.auto(2026-10-22 10-00-00).QuickSearch",
-            "config.before-webdav(2026-10-22 10-00-00).QuickSearch",
-            "config.broken(2026-10-22 10-00-00).QuickSearch",
-            "config.wiped(2026-10-21 07-29-56).QuickSearch",
+            "config(2026-10-22 10-00-00).QuickAchieve",
+            "config.auto(2026-10-22 10-00-00).QuickAchieve",
+            "config.before-webdav(2026-10-22 10-00-00).QuickAchieve",
+            "config.broken(2026-10-22 10-00-00).QuickAchieve",
+            "config.wiped(2026-10-21 07-29-56).QuickAchieve",
             "config.json.bad-1",
         ] {
             assert!(is_config_family(n), "{n} 应当算配置族");
@@ -5025,8 +5101,8 @@ mod tests {
     /// 便携目录的名字必须和用户说的一字不差（这是他自己要去文件夹里找的）。
     #[test]
     fn portable_dir_names_match_the_request() {
-        assert_eq!(DATA_DIR_NAME, "Quick search data");
-        assert_eq!(BACKUP_DIR_NAME, "QuickSearch back");
+        assert_eq!(DATA_DIR_NAME, "Quick Achieve data");
+        assert_eq!(BACKUP_DIR_NAME, "Quick Achieve back");
         assert!(portable_data_dir().ends_with(DATA_DIR_NAME));
         assert!(portable_backup_dir().ends_with(BACKUP_DIR_NAME));
         assert_eq!(
@@ -5109,7 +5185,7 @@ mod tests {
         let _serial = big_lock();
         let t = TempDir::new("restart");
         let f = t.file();
-        // 备份关进 TempDir：滚动备份 config(...).QuickSearch 就落在 f 旁边，
+        // 备份关进 TempDir：滚动备份 config(...).QuickAchieve 就落在 f 旁边，
         // 恢复路径走「同目录滚动备份」这条，跟真机行为一致且完全隔离。
         let mc = marked_in(&t.0.to_string_lossy());
 
@@ -5202,7 +5278,7 @@ mod tests {
     }
 
     /// WebDAV 地址的口径（用户拍板）：**配置里只存用户填的根地址**，
-    /// 软件自己的子目录（QuickSearch/）不写进配置，发请求时才补。
+    /// 软件自己的子目录（QuickAchieve/）不写进配置，发请求时才补。
     /// 所以老配置里就算带着子目录，读回来也要被还原成根地址。
     #[test]
     fn webdav_url_stores_bare_root_only() {
@@ -5217,7 +5293,7 @@ mod tests {
 
         // 老配置带着子目录 → 读回来被还原成根地址（子目录发请求时才补）
         let mut c2 = marked();
-        c2.webdav_url = "https://dav.jianguoyun.com/dav/QuickSearch/".into();
+        c2.webdav_url = "https://dav.jianguoyun.com/dav/QuickAchieve/".into();
         save_to(&f, &c2);
         assert_eq!(load_from(&f).webdav_url, "https://dav.jianguoyun.com/dav/");
     }
@@ -6319,13 +6395,39 @@ mod sanitize_tests {
 
     /// 备份命名的**唯一口径**：本地落盘与云端上传必须同名。
     ///
-    /// 用户反馈原话：「本地备份的文件名是 config(2026-10-12 23-06-22).QuickSearch，
-    /// 而备份到云端的文件名是 quicksearch-backup.json，这完全对不上」。
+    /// 用户反馈原话：「本地备份的文件名是 config(2026-10-12 23-06-22).QuickAchieve，
+    /// 而备份到云端的文件名是 quickachieve-backup.json，这完全对不上」。
     /// 现在两边都从 `backup_name` 出，这条断言就是"再也不会岔开"的护栏。
     #[test]
     fn backup_name_is_the_single_source_of_truth() {
         let stamp = "2026-10-12 23-06-22";
-        assert_eq!(backup_name(stamp), "config(2026-10-12 23-06-22).QuickSearch");
+        assert_eq!(backup_name(stamp), "config(2026-10-12 23-06-22).QuickAchieve");
+    }
+
+    /// v2.15.0 更名：新后缀写、**新旧后缀都认**。
+    ///
+    /// 只认新后缀的后果是"升级之后老备份在列表里全消失"（用户以为是软件把备份删了）；
+    /// 只认旧后缀则新备份不参与裁剪。两者必须同时成立，这条测试把口径钉死。
+    #[test]
+    fn backup_suffix_accepts_renamed_and_legacy() {
+        let _serial = big_lock();
+        // 新名字
+        assert!(backup_name_has_ext("config(2026-11-01 10-00-00).QuickAchieve"));
+        assert!(backup_name_has_ext("config.auto(2026-11-01 10-00-00).QuickAchieve"));
+        assert!(is_manual_backup("config(2026-11-01 10-00-00).QuickAchieve"));
+        assert!(is_rolling_backup(std::path::Path::new(
+            "config.auto(2026-11-01 10-00-00).QuickAchieve"
+        )));
+        // 更名前的老名字：照样能列出来、能恢复、能参与"只留最近 N 份"
+        assert!(backup_name_has_ext("config(2026-10-12 23-06-22).QuickSearch"));
+        assert!(is_manual_backup("config(2026-10-12 23-06-22).QuickSearch"));
+        assert!(is_rolling_backup(std::path::Path::new(
+            "config.auto(2026-10-12 23-06-22).QuickSearch"
+        )));
+        // 不是备份的东西不许混进来
+        assert!(!backup_name_has_ext("config.json"));
+        assert!(!backup_name_has_ext("config(2026-10-12 23-06-22).txt"));
+        assert!(!backup_name_has_ext("config(2026-10-12 23-06-22).QuickAchieve.bak"));
     }
 
     /// 滚动备份**绝不能**跟「立即备份」同名。
@@ -6353,9 +6455,9 @@ mod sanitize_tests {
     /// 恢复前快照的新老两种名字都要认。
     #[test]
     fn snapshot_names_are_recognized() {
-        assert!(is_snapshot("config.before-webdav(2026-10-12 23-06-22).QuickSearch"));
+        assert!(is_snapshot("config.before-webdav(2026-10-12 23-06-22).QuickAchieve"));
         assert!(is_snapshot("config.before-webdav-3.json"));
-        assert!(!is_snapshot("config(2026-10-12 23-06-22).QuickSearch"));
+        assert!(!is_snapshot("config(2026-10-12 23-06-22).QuickAchieve"));
     }
 
     /// r54 栽过的坑：`#[serde(default)]` 用在 `Vec<String>` 上时，serde 取的是

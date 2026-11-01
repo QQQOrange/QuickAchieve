@@ -10,7 +10,7 @@
  *
  *  取证方式：隔离实例（独立 APPDATA + WebView2 + QS_INSTANCE_TAG）+ CDP
  *  驱动 UI；A 段另建一个 Win32 EDIT 窗口当"目标软件"，注入真实鼠标拖选
- *  （QS_ALLOW_INJECTED=1），以 QuickSearch 自己的日志为判据。
+ *  （QS_ALLOW_INJECTED=1），以 QuickAchieve 自己的日志为判据。
  *
  *  用法：node tools/round33-probe.js
  * ========================================================================== */
@@ -22,7 +22,7 @@ const zlib = require('zlib');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'round33-probe.txt');
 
 const user32 = koffi.load('user32.dll');
@@ -127,7 +127,7 @@ function forceForeground(h) {
  *   （实测 (138,324)-(824,456)）， EDIT 放在它下面会被遮住 —— A 段划选的
  *   mousedown 落在横条上，被 is_bar_inner 吃掉，整段测试会静默失效
  *   （轮 33 首跑踩过：4 次划选全部 from=None）。 */
-const EDIT_TEXT = 'Quick Search 选中即弹出横条：这是一段用来验证取词稳定性的中文测试文本。';
+const EDIT_TEXT = 'Quick Achieve 选中即弹出横条：这是一段用来验证取词稳定性的中文测试文本。';
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
 const clsName = 'QSR33Target';
@@ -385,7 +385,7 @@ const instances = [];
 
 /* ------------------------------ 实例工厂 ------------------------------ */
 function makeConf(dir, extra) {
-    const qs = path.join(dir, 'QuickSearch');
+    const qs = path.join(dir, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     const c = Object.assign({
         trigger_copy: false, trigger_select: true, ocr_enable: false,
@@ -425,7 +425,7 @@ function spawnInstance(qs, port, tag) {
 function killInstance() {
     for (const p of instances) { try { p.kill(); } catch (e) { } }
 }
-/* 实例日志：QS_DEBUG=1 时写在 <APPDATA>\QuickSearch\log.txt */
+/* 实例日志：QS_DEBUG=1 时写在 <APPDATA>\QuickAchieve\log.txt */
 const logOf = (qs) => path.join(qs, 'log.txt');
 let logOffset = 0;
 function logMark(qs) {
@@ -484,7 +484,7 @@ function tinyPng(w, h, rgb) {
 /* ------------------------------ 日志轮询 ------------------------------ */
 async function waitLog(pred, ms) {
     /* ⚠ 必须持续 pumpMsg。目标 EDIT 的消息循环就是**本线程**（窗口在这建），
-     * QuickSearch 注入的 WM_KEYDOWN 排在队列里等派发 —— 纯睡（Atomics.wait）
+     * QuickAchieve 注入的 WM_KEYDOWN 排在队列里等派发 —— 纯睡（Atomics.wait）
      * 不 pump 的话 EDIT 永远收不到 Ctrl+C，产品侧表现为三轮 changed=false
      * （轮 33 连续四跑 A1/A2/B0 全挂的根因，一度被误判为产品 bug）。
      * 判据：app 日志里 kbd 与序号变化的间隔远超正常 ~12ms。 */

@@ -1455,7 +1455,7 @@
     },
     {
      "name": "Apache Issues",
-     "url": "https://issues.apache.org/jira/secure/QuickSearch.jspa?searchString=%s",
+     "url": "https://issues.apache.org/jira/secure/QuickAchieve.jspa?searchString=%s",
      "icon": "https://api.iconify.design/simple-icons:apache.svg?color=%23D22128",
      "inset": 1,
      "iconFile": "Apache_Issues.svg",

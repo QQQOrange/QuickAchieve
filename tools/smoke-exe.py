@@ -13,14 +13,14 @@ import subprocess
 import sys
 import time
 
-EXE = os.path.join(os.environ.get('USERPROFILE', 'C:/Users/64381'), 'Desktop', 'QuickSearch.exe')
-LOG = os.path.join(os.environ['APPDATA'], 'QuickSearch', 'log.txt')
+EXE = os.path.join(os.environ.get('USERPROFILE', 'C:/Users/64381'), 'Desktop', 'QuickAchieve.exe')
+LOG = os.path.join(os.environ['APPDATA'], 'QuickAchieve', 'log.txt')
 
 if not os.path.exists(EXE):
     print('桌面上没有 %s' % EXE)
     sys.exit(1)
 
-subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
 time.sleep(1.5)
 io.open(LOG, 'w', encoding='utf-8').close()
 
@@ -39,7 +39,7 @@ panicked = any('PANIC' in x for x in lines)
 #   而且 /FI 过滤器在这个环境里也取不到东西，所以直接全量列再找。
 raw = subprocess.run(['tasklist'], capture_output=True).stdout
 alive = raw.decode('utf-8', 'replace') if raw else ''
-running = 'QuickSearch.exe' in alive
+running = 'QuickAchieve.exe' in alive
 
 print('exe = %s' % EXE)
 print('日志行数         = %d' % len(lines))
@@ -55,5 +55,5 @@ ok = started and running and not panicked
 print('')
 print('[PASS] 桌面上的 exe 能正常启动且没崩' if ok else '[FAIL] 冒烟没过')
 
-subprocess.run(['taskkill', '/IM', 'QuickSearch.exe', '/F'], capture_output=True)
+subprocess.run(['taskkill', '/IM', 'QuickAchieve.exe', '/F'], capture_output=True)
 sys.exit(0 if ok else 1)

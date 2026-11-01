@@ -22,8 +22,8 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const CFG = path.join(process.env.APPDATA || '', 'QuickSearch', 'config.json');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const CFG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'config.json');
 
 const u = koffi.load('user32.dll');
 try { u.func('int SetProcessDpiAwarenessContext(intptr c)')(-4); } catch (e) { }
@@ -66,7 +66,7 @@ const ok = (n, c, extra) => {
 };
 
 function killOld() {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(1500);
 }
 

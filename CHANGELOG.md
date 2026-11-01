@@ -5,6 +5,71 @@
 
 ---
 
+## v2.15.0 — 2026-11-01
+
+**全盘更名：Quick Search → Quick Achieve**，仓库同步改为
+`github.com/QQQOrange/QuickAchieve`；帮助与关于页按当前功能重写。
+
+### 1. 更名范围
+
+| 位置 | 旧 | 新 |
+|---|---|---|
+| 产品名 / 窗口标题 / 托盘 | Quick Search | **Quick Achieve** |
+| 可执行文件 | `QuickSearch.exe` | **`QuickAchieve.exe`** |
+| Cargo 包名 | `qs-hw` | **`quick-achieve`** |
+| 宏 crate | `qs-macros` | **`qa-macros`** |
+| 数据目录 | `Quick search data` | **`Quick Achieve data`** |
+| 备份目录 / 后缀 | `QuickSearch back` / `.QuickSearch` | **`Quick Achieve back`** / **`.QuickAchieve`** |
+| `%APPDATA%` 兜底目录 | `QuickSearch` | **`QuickAchieve`** |
+| 仓库地址 | `QQQOrange/QuickSearch` | **`QQQOrange/QuickAchieve`** |
+
+代码、界面文案、i18n 词典、托盘菜单、窗口标题、User-Agent、更新检查地址、文档、
+构建与发布脚本全部同步 —— 全仓库已无旧名字残留。
+
+### 2. 升级不丢数据（重要）
+
+- **数据目录 / 备份目录**：启动时若发现新名字目录不存在、老名字目录在，**就地改名**
+  （同盘 rename 是瞬时的，不复制、不多占空间）。改名失败（跨盘、权限）则继续用老目录，
+  功能不受影响 —— 不会让用户看到"设置全没了"。
+- **备份文件名**：新备份写 `.QuickAchieve`；**老备份 `.QuickSearch` 照常列出、能恢复、
+  参与"只留最近 10 份"**（读写双兼容，只写新后缀）。
+- **开机自启**：写新自启项的同时删掉旧的 `QuickSearch` 项 —— 否则它会指向一个
+  已经不存在的 exe，开机静默失败。
+- **`%APPDATA%` 老目录**：安装版用户的老配置仍在迁移链路里（新旧名字都找）。
+
+### 3. 帮助页 / 关于页
+
+- **关于**：补上定位说明、能力清单、常用快捷键、数据位置；版本、更新时间、渲染方式、
+  仓库地址保持不变，仓库按钮指向新地址。
+- **帮助**：① 增加「触发方式二选一（选中即弹 / 按住 Ctrl 才弹）」；新增
+  **④b 网格页**（快捷键、编辑态、长按拖拽、多选模型并行、多页、按应用绑定、实时预览）；
+  ⑩ 数据位置改成实际形态（便携目录优先，只读位置才退回 `%APPDATA%`）。
+- 英文界面同步：`helpCard` 整块与关于页新增行都有对应英文（切换语言可验）。
+
+### 4. 文档
+
+- `README.md` / `README.en.md` 同步更名与仓库地址，功能表补上网格页编辑、一键多模型、
+  OCR 状态条，快捷键说明改到当前默认（`Ctrl+Shift+G` 网格 / `Ctrl+C` 取词 / `Ctrl+Alt+O` 识别）。
+- `docs/HELP.md` / `docs/HELP.en.md` 的快捷键与两套弹层说明一并纠正。
+
+## 验证
+
+- `cargo test --release`：**420 通过 / 0 失败 / 2 忽略**
+  （新增 `backup_suffix_accepts_renamed_and_legacy`：新旧备份后缀双认）
+- 真机升级演练：把老目录 `Quick search data` 与 `QuickSearch back` 放在新 exe 旁边启动 →
+  日志 `rename: 目录已更名 …`，两个目录都变成新名字，配置原样读出（`version=2.15.0`、
+  `ocrEngine` 仍是用户设的那家），未出现"设置丢失"
+- 界面：窗口标题 `Quick Achieve 横条 / 设置`；关于页 8 行齐全、仓库按钮 `QQQOrange/QuickAchieve ↗`；
+  帮助目录含 ④b 网格页；切英文后同页显示 `Capabilities / Hotkeys / Data location` 与
+  `④b Grid page: one tile, one action, summoned by hotkey`
+
+## 升级说明
+
+替换 exe 即可，数据自动迁移。注意 **exe 改名了**（`QuickAchieve.exe`）：
+桌面快捷方式 / 任务栏固定项如果指向旧文件名，需要重新指向一次。
+
+---
+
 ## v2.14.1 — 2026-11-01
 
 修掉 OCR 结果窗的两个问题：**结果没回来前窗口一直闪**，以及**状态条说"识别完成"
@@ -797,7 +862,7 @@ pub const BUILT_AT: &str = match option_env!("QS_BUILD_STAMP") { Some(s) => s, N
 ### 验证
 
 ```
-$ grep -a -o "2026-..-.. ..:..:.." target/release/QuickSearch.exe
+$ grep -a -o "2026-..-.. ..:..:.." target/release/QuickAchieve.exe
 2026-10-31 21:57:54
 ```
 
@@ -933,7 +998,7 @@ post-ocr: 本地识别补字成功（10 字）
 ## v2.11.5 — 2026-10-31
 
 微信（Qt 4.x）里"选中文字不弹条/没字"的真正根因：**微信忽略合成 Ctrl+C**，
-而它又以管理员权限运行 —— 普通权限的 QuickSearch 连钩子都收不到它的输入。
+而它又以管理员权限运行 —— 普通权限的 QuickAchieve 连钩子都收不到它的输入。
 
 ### 1. 权限不对等（根因，两个症状的共同来源）
 
@@ -942,7 +1007,7 @@ post-ocr: 本地识别补字成功（10 字）
 - `Weixin.exe` 以**管理员权限**运行（非提升进程连 `OpenProcess` 都打不开它的 pid）；
 - 用户这边 `auto-elevate 已在设置里关闭，以普通权限运行`，`admin = false`；
 - 提权后同一个拖选，微信里选区正常出现（蓝色高亮 1787→2779 像素），
-  但 **QuickSearch 日志里一条鼠标事件都没有** ——
+  但 **QuickAchieve 日志里一条鼠标事件都没有** ——
   低完整性进程的全局钩子收不到发往高完整性窗口的输入（UIPI）。
 
 所以：**划词不弹条、快捷键不弹网格，是同一个原因**（钩子根本没收到事件）。
@@ -1534,7 +1599,7 @@ ocr: 并行 windows 用时 7 ms（失败）        ← 跑的是本地，不是�
 ### 智能直达
 
 - **添加网址自动填备注（真的修好了）**：根因是请求头 `User-Agent` 里带了中文
-  （`QuickSearch/直达`）—— HTTP 头只允许 ASCII，ureq 在**发请求前**就报错、又被 `.ok()?` 吞掉，
+  （`QuickAchieve/直达`）—— HTTP 头只允许 ASCII，ureq 在**发请求前**就报错、又被 `.ok()?` 吞掉，
   于是每次都"抓不到标题"，只剩域名。现在 UA 纯 ASCII、错误写日志；
   另外补了**页面内跳转跟随**（百度 https 首页是个 227 字节的 `location.replace` 桩，本身没有标题）
   → 会跟到 http 版本再取 `<title>`，以及协议互换兜底。
@@ -1554,7 +1619,7 @@ ocr: 并行 windows 用时 7 ms（失败）        ← 跑的是本地，不是�
 ### 新功能：右下角提示当前功能
 
 - 用**划词横条 / 网格页 / 文字识别 / 翻译 / 识图**时，屏幕右下角弹一条系统通知：
-  标题 `Quick Search`，正文「正在使用：<功能> · <软件>」，约 5 秒自动消失（可点 ✕ 立刻关）。
+  标题 `Quick Achieve`，正文「正在使用：<功能> · <软件>」，约 5 秒自动消失（可点 ✕ 立刻关）。
 - 只在功能**真的启动**时弹（被暂停/黑名单/功能关闭拦掉的不弹）；同一功能 **4 秒内只弹一次**
   （横条会因鼠标移动被反复唤起，不节流会连弹好几条）。
 - 走的是托盘气泡（`Shell_NotifyIconW` + `NIF_INFO`），不额外开窗口、不抢焦点。
@@ -1939,10 +2004,10 @@ ocr: 并行 windows 用时 7 ms（失败）        ← 跑的是本地，不是�
 
 ### 工程
 
-- `Cargo.toml` 的 `[[bin]] name` 由 `QuickSearch-lite` 改为 **`QuickSearch`**，
+- `Cargo.toml` 的 `[[bin]] name` 由 `QuickAchieve-lite` 改为 **`QuickAchieve`**，
   构建产物与部署同名，不再出现"两个 exe"的困惑。
 - `app.rc` 的 FileVersion / ProductVersion 同步到 2.2.0，`OriginalFilename` 改为
-  `QuickSearch.exe`；`build.rs` 增加构建期对账，版本资源与 `Cargo.toml` 不一致会打警告。
+  `QuickAchieve.exe`；`build.rs` 增加构建期对账，版本资源与 `Cargo.toml` 不一致会打警告。
 - 新增 `win::resolve_on_path`（`SearchPathW` 封装）、`config::is_go_sentinel` 等。
 - 测试 394 通过（新增 2 条：导入容错、导出分组）。
 
@@ -1992,7 +2057,7 @@ ocr: 并行 windows 用时 7 ms（失败）        ← 跑的是本地，不是�
 - 清理确认无引用的死代码（`box_err`、`window_op`、`reg_window_op`、`trayhost::remove`）；
   Tauri 兼容层保留接口面并加模块级说明（`Manager`/`App` 的方法属于 trait 必需项）。
 - 新增自检入口，便于长期回归：
-  - `QuickSearch.exe --esc-probe`：弹条 → 发 Esc → 断言已收起 → 再发一次断言无动作
+  - `QuickAchieve.exe --esc-probe`：弹条 → 发 Esc → 断言已收起 → 再发一次断言无动作
   - `__probe_clip_restore`：复制改动剪贴板后能否原样还原
   - `__probe_bar_stays`：横条弹出 1.2 秒后是否仍在
   - `__probe_post_copy`：「先弹条后复制」的顺序与分支
@@ -2035,9 +2100,9 @@ ocr: 并行 windows 用时 7 ms（失败）        ← 跑的是本地，不是�
 
 - `Config` 结构 **99 个字段与原版完全一致**，无缺失、无多余、无类型差异。
 - 加密实现与旧版**字节级一致**（`qsEnc` 信封 + Argon2id + DPAPI）。
-- 1.5.x 的 `config.json`、`.QuickSearch` 备份、WebDAV 数据均可直接读取与恢复；
+- 1.5.x 的 `config.json`、`.QuickAchieve` 备份、WebDAV 数据均可直接读取与恢复；
   实测从旧备份恢复到全新目录，**19 项配置指纹完全一致**。
-- 数据目录位置不变（`Quick search data` / `QuickSearch back`），覆盖 exe 即可升级。
+- 数据目录位置不变（`Quick Achieve data` / `Quick Achieve back`），覆盖 exe 即可升级。
 
 ### 默认值调整
 
@@ -2096,7 +2161,7 @@ ocr: 并行 windows 用时 7 ms（失败）        ← 跑的是本地，不是�
 | v1.4.3 | 2026-10-22 | 配置保存不再每次重算 Argon2 |
 | v1.4.2 | 2026-10-22 | 修「更多引擎」搜不到引擎 |
 | v1.4.1 | 2026-10-22 | 修「自动备份恢复不了」 |
-| v1.4.0 | 2026-10-22 | 数据迁到 exe 同级目录（`Quick search data`） |
+| v1.4.0 | 2026-10-22 | 数据迁到 exe 同级目录（`Quick Achieve data`） |
 | v1.3.10 | 2026-10-22 | 划词选网址不弹按钮（OCR 噪声） |
 | v1.3.8 | 2026-10-22 | 选中网址不弹按钮 + 选中文件直接搜 |
 | v1.3.7 | 2026-10-21 | 默认 / 磨砂主题下不再显示刷新帧率 |

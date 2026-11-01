@@ -1,4 +1,4 @@
-# Quick Search v1.2.1 发布说明
+# Quick Achieve v1.2.1 发布说明
 
 > 发布日期：2026-10-19
 > 上个版本：v1.2.0
@@ -86,8 +86,8 @@ CSS 的 `border-radius` 只能给一个值、没法四个角各用各的，所�
 
 ## 安装
 
-单文件，无需任何运行时。直接覆盖旧的 `QuickSearch.exe` 即可 ——
-配置与图标都在 `%APPDATA%\QuickSearch`，不会丢。
+单文件，无需任何运行时。直接覆盖旧的 `QuickAchieve.exe` 即可 ——
+配置与图标都在 `%APPDATA%\QuickAchieve`，不会丢。
 
 > 已经在用 v1.2.0 的话：**打开软件就会看到更新提示**（自动更新是 v1.2.0 起的功能），
 > 点一下就能装好。
@@ -95,7 +95,7 @@ CSS 的 `border-radius` 只能给一个值、没法四个角各用各的，所�
 ## 校验值
 
 ```
-文件:   QuickSearch.exe
+文件:   QuickAchieve.exe
 大小:   12.28 MB (12,877,312 字节)
 MD5:    7D40643E7F56FFE7FD10ADE30C9F51BC
 SHA256: D5000AA6DDBCC3C85BF0BDD4746C956BFAB2A98A18C047052C46174A7CC9B421
@@ -107,7 +107,7 @@ SHA256: D5000AA6DDBCC3C85BF0BDD4746C956BFAB2A98A18C047052C46174A7CC9B421
 
 模型**不随本版本上传**（300+ MB，不重复传）。它们固定在 **v1.1.1** 那个发布页：
 
-👉 **https://github.com/QQQOrange/QuickSearch/releases/tag/v1.1.1**
+👉 **https://github.com/QQQOrange/QuickAchieve/releases/tag/v1.1.1**
 
 程序会自己去那里下载（设置 → 通用 → AI 抠图 → 点某个模型的「下载」），
 不需要你手动找。不打开这个功能就一个都不下。

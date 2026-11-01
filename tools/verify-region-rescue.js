@@ -20,8 +20,8 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
-const LOG = path.join(process.env.APPDATA || '', 'QuickSearch', 'log.txt');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
+const LOG = path.join(process.env.APPDATA || '', 'QuickAchieve', 'log.txt');
 
 const u = koffi.load('user32.dll');
 const EnumWindows = u.func('int EnumWindows(void *cb, intptr lp)');
@@ -55,7 +55,7 @@ function hasAnyQS() {
         const b = new Uint16Array(300);
         const n = GetWindowTextW(h, b, 300);
         let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(b[i]);
-        if (s.startsWith('QS-') || s.includes('Quick Search')) { any = true; return 0; }
+        if (s.startsWith('QS-') || s.includes('Quick Achieve')) { any = true; return 0; }
         return 1;
     }, P);
     EnumWindows(cb, 0); koffi.unregister(cb);
@@ -70,7 +70,7 @@ const ok = (n, c, extra) => {
 };
 
 (async function () {
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     sleep(2000);
     spawn(EXE, ['--no-elevate', '--region'], {
         env: Object.assign({}, process.env, { QS_DEBUG: '1', QS_ALLOW_INJECTED: '1', QS_NO_ELEVATE: '1' }),
@@ -108,7 +108,7 @@ const ok = (n, c, extra) => {
     ok('K5 强杀遮罩不影响程序本身（还能枚举到自己的横条窗口 =进程活着）', stillHasBar,
         '枚举不到任何 QS-* 窗口，程序可能真的挂了');
 
-    try { execSync('taskkill /IM QuickSearch.exe /F', { stdio: 'ignore' }); } catch (e) { }
+    try { execSync('taskkill /IM QuickAchieve.exe /F', { stdio: 'ignore' }); } catch (e) { }
     console.log(`\n${pass}/${total} passed`);
     process.exit(pass === total ? 0 : 1);
 })();

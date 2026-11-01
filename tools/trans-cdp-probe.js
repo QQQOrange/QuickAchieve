@@ -1,7 +1,7 @@
 /* ============================================================================
  *  翻译窗的 CDP 读取（真机 e2e 用，由 run-trans-e2e.js 驱动）
  *
- *  为什么走 CDP：QuickSearch 的窗口是 WebView2（Chromium）。测试实例带
+ *  为什么走 CDP：QuickAchieve 的窗口是 WebView2（Chromium）。测试实例带
  *  QS_T_WV_ARGS="… --remote-debugging-port=9333"（e2e 专用，正常启动不带），
  *  于是能用 DevTools 协议**直接读页面 DOM** ——
  *    · 比截图可靠（截图只能人眼看，且本会话看不了图）；

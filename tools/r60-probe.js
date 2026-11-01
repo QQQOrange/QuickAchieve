@@ -19,7 +19,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r60-probe.txt');
 const PORT = 9407;
 const WV = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -70,13 +70,13 @@ async function connect(sub, ms) {
     }
     return null;
 }
-const readLog = (tmp) => { try { return fs.readFileSync(path.join(tmp, 'QuickSearch', 'log.txt'), 'utf8'); } catch (e) { return ''; } };
+const readLog = (tmp) => { try { return fs.readFileSync(path.join(tmp, 'QuickAchieve', 'log.txt'), 'utf8'); } catch (e) { return ''; } };
 
 const CMD = 'C:\\Windows\\System32\\charmap.exe';
 
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r60-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true, bar_list: [] }, null, 1), 'utf8');
     const env = Object.assign({}, process.env, {

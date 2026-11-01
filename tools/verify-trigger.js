@@ -4,7 +4,7 @@
  *  核心命题（用户要求）：**横条出现的唯一条件是「确实选中了一段文字」**。
  *  没选中任何文字时，绝对不能出现。
  *
- *  判定依据 = QuickSearch 自己的调试日志里的 `show_bar:` 行数。
+ *  判定依据 = QuickAchieve 自己的调试日志里的 `show_bar:` 行数。
  *  横条窗口是 WS_EX_NOACTIVATE 的无激活浮层，靠可见性判断不如日志精确。
  *
  *  4 个场景：
@@ -15,7 +15,7 @@
  *    [4] 空白处拖动（无选区） -> 必须不弹（拖动是"选中"语义，不是 Ctrl+C）
  *
  *  前置：
- *    - QuickSearch.exe 带 QS_DEBUG=1 QS_ALLOW_INJECTED=1 运行
+ *    - QuickAchieve.exe 带 QS_DEBUG=1 QS_ALLOW_INJECTED=1 运行
  *      （本脚本用注入的方式模拟输入；**鼠标**注入默认会被钩子过滤，所以要放开）
  *
  *  ⚠ 两种跑法，看你想验什么：
@@ -120,7 +120,7 @@ const pumpMsg = () => {
 };
 
 /* ------------------------------- 日志读取 ------------------------------- */
-const LOG = path.join(process.env.APPDATA, 'QuickSearch', 'log.txt');
+const LOG = path.join(process.env.APPDATA, 'QuickAchieve', 'log.txt');
 let offset = 0;
 try { offset = fs.statSync(LOG).size; } catch (e) { offset = 0; }
 const logTail = () => {
@@ -135,7 +135,7 @@ const logTail = () => {
 };
 const countShowBar = (s) => (s.match(/show_bar:/g) || []).length;
 
-const TEXT = 'Quick Search 选中即弹出横条：这是一段用来验证取词的中文测试文本。';
+const TEXT = 'Quick Achieve 选中即弹出横条：这是一段用来验证取词的中文测试文本。';
 
 const proc = koffi.register((h, m, w, l) => DefWindowProcW(h, m, w, l), koffi.pointer(WNDPROC));
 const inst = GetModuleHandleW(null);
@@ -238,7 +238,7 @@ function drag(from, to) {
     mouse_event(LEFT_UP, 0, 0, 0, 0);
 }
 function barInfo() {
-    const h = FindWindowW(null, 'QuickSearchBar');
+    const h = FindWindowW(null, 'QuickAchieveBar');
     if (!h) return 'none';
     const r = {};
     GetWindowRect(h, r);

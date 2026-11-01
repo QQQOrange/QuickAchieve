@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""QuickSearch 内存泄漏采样器（psutil + ctypes 版）。
+"""QuickAchieve 内存泄漏采样器（psutil + ctypes 版）。
 
-跟踪 QuickSearch.exe 主进程 + 它拉起的全部子进程（WebView2 渲染/GPU 进程），
+跟踪 QuickAchieve.exe 主进程 + 它拉起的全部子进程（WebView2 渲染/GPU 进程），
 按固定间隔记录 WorkingSet / PrivateBytes / 句柄 / 线程 / GDI 对象 / USER 对象，
 最后给出「是否有持续增长趋势」的判定。
 
@@ -17,7 +17,7 @@ import sys, os, csv, time, ctypes
 from ctypes import wintypes
 import psutil
 
-ROOT_NAME = "QuickSearch.exe"
+ROOT_NAME = "QuickAchieve.exe"
 total = float(sys.argv[1]) if len(sys.argv) > 1 else 90.0
 interval = float(sys.argv[2]) if len(sys.argv) > 2 else 2.0
 out_csv = sys.argv[3] if len(sys.argv) > 3 else "memtest.csv"
@@ -80,7 +80,7 @@ def run():
             break
         roots = find_roots()
         if not roots:
-            print("[%6.1fs] QuickSearch 未在运行，结束采样" % el, flush=True)
+            print("[%6.1fs] QuickAchieve 未在运行，结束采样" % el, flush=True)
             break
         root = roots[0]
         ps = tree(root)

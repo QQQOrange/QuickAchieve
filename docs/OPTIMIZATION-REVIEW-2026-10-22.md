@@ -1,4 +1,4 @@
-# Quick Search v1.4.2 全盘审视与优化报告
+# Quick Achieve v1.4.2 全盘审视与优化报告
 
 > 审视日期：2026-10-22 · 代码基线：`bfdc34a`（v1.4.2）· 范围：`src/**`（39,655 行 Rust）
 > 与 `ui/**`（24,419 行 JS/CSS/HTML + 3.94 MB 资产），共 127 个 Tauri 命令

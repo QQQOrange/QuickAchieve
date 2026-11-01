@@ -1,4 +1,4 @@
-# Quick Search v1.5.3
+# Quick Achieve v1.5.3
 
 **两个修复：① 划词取到的字不对（搜出一串垃圾）；② 窗口最大化后右边一大片空白。**
 
@@ -79,7 +79,7 @@
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
-| `QuickSearch.exe` | 13,304,320 字节 | `06FE8BBE7FDF09EAEBEA8F1C398F24AA284920CBDEF9893BE4240E3B3ECAE7CD` |
+| `QuickAchieve.exe` | 13,304,320 字节 | `06FE8BBE7FDF09EAEBEA8F1C398F24AA284920CBDEF9893BE4240E3B3ECAE7CD` |
 
 ---
 

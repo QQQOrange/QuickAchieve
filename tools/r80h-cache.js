@@ -16,7 +16,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -77,8 +77,8 @@ async function freePort() {
 (async () => {
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80h-'));
-    fs.copyFileSync(EXE, path.join(tmp, 'QuickSearch.exe'));
-    const qs = path.join(tmp, 'QuickSearch');
+    fs.copyFileSync(EXE, path.join(tmp, 'QuickAchieve.exe'));
+    const qs = path.join(tmp, 'QuickAchieve');
     const models = path.join(tmp, '抠图模型');
     fs.mkdirSync(qs, { recursive: true });
     fs.mkdirSync(models, { recursive: true });
@@ -99,7 +99,7 @@ async function freePort() {
         WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2'),
         QS_T_WV_ARGS: WV_BASE + PORT,
     });
-    const proc = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
+    const proc = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env, cwd: tmp, stdio: 'ignore' });
     try {
         const sw = await connect('settings.html');
         if (!sw) { console.log('连不上'); return; }
@@ -137,7 +137,7 @@ async function freePort() {
             QS_T_WV_ARGS: WV_BASE + PORT,
             WEBVIEW2_USER_DATA_FOLDER: path.join(tmp, 'wv2b'),
         });
-        const proc2 = spawn(path.join(tmp, 'QuickSearch.exe'), ['--no-elevate', '--settings'], { env: env2, cwd: tmp, stdio: 'ignore' });
+        const proc2 = spawn(path.join(tmp, 'QuickAchieve.exe'), ['--no-elevate', '--settings'], { env: env2, cwd: tmp, stdio: 'ignore' });
         try {
             const sw2 = await connect('settings.html');
             if (sw2) {

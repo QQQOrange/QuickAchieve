@@ -42,11 +42,11 @@ const moveTo = (x, y) => mouse_event(MOVE | ABS,
     Math.round(Math.max(0, Math.min(SH - 1, y)) * 65535 / (SH - 1)), 0, 0);
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const TAG = 'r37ocr';
 const DIR = path.join(os.tmpdir(), 'qs-r37');
 fs.rmSync(DIR, { recursive: true, force: true });
-const QS = path.join(DIR, 'QuickSearch');
+const QS = path.join(DIR, 'QuickAchieve');
 fs.mkdirSync(QS, { recursive: true });
 /* debug=true 是自检的开关（见 ocr.html boot 里 `if (CONF && CONF.debug)`）。
  * auto_start/auto_elevate 关掉：测试实例不许写注册表、不许弹 UAC。 */
@@ -88,7 +88,7 @@ const env = Object.assign({}, process.env, {
     /* CDP：R5 那一段要**在真页面里**改设置、再看本窗口的 CONF / 版式跟没跟上
      * （这是"设置广播发不发 ocr 窗口"唯一的端到端验证手段）。 */
     QS_T_WV_ARGS: '--remote-debugging-port=' + PORT,
-    QS_T_OCR_TEXT: '示例识别结果 QuickSearch 12345\n官网 https://example.com/docs 和 www.test.org/b 都可打开',
+    QS_T_OCR_TEXT: '示例识别结果 QuickAchieve 12345\n官网 https://example.com/docs 和 www.test.org/b 都可打开',
 });
 console.log('启动隔离实例（APPDATA=' + DIR + '）');
 const p = spawn(EXE, ['--no-elevate', '--ocr-demo'], { env, cwd: ROOT, detached: false, stdio: 'ignore' });

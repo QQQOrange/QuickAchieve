@@ -22,7 +22,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r55-help-probe.txt');
 const PORT = 9385;
 const WV_ARGS = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
@@ -97,7 +97,7 @@ async function gotoTab(ws, tab) {
 
 (async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r55help-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({
         debug: true, ocr_enable: true, theme: 'light',
@@ -177,7 +177,7 @@ async function gotoTab(ws, tab) {
     const ioSec = String(await helpBodyBy(/明文导入/));
     check('导入导出那节抓到了正文', ioSec !== 'NO-SECTION', ioSec.slice(0, 40));
     check('导入导出那节把「备份」和「明文导出」分清楚了',
-        /\.QuickSearch/.test(ioSec) && /\.qsconf/.test(ioSec) && /整份覆盖/.test(ioSec));
+        /\.QuickAchieve/.test(ioSec) && /\.qsconf/.test(ioSec) && /整份覆盖/.test(ioSec));
     check('导入导出那节说了默认只勾非隐私项', /默认只勾非隐私项/.test(ioSec) && /API Key/.test(ioSec));
     check('导入导出那节说了导入是合并式', /合并式/.test(ioSec));
     check('导入导出那节说了明文导入不吃加密备份', /只吃明文导出/.test(ioSec));

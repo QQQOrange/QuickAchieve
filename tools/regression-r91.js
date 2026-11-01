@@ -20,7 +20,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target_build', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target_build', 'release', 'QuickAchieve.exe');
 const PORT = 9397;
 const TAG = '-r91';
 
@@ -52,11 +52,11 @@ function cdp(ws, method, params) {
 (async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r91-'));
     const appdata = path.join(tmp, 'appdata');
-    fs.mkdirSync(path.join(appdata, 'QuickSearch'), { recursive: true });
-    fs.writeFileSync(path.join(appdata, 'QuickSearch', 'log.on'), '');
+    fs.mkdirSync(path.join(appdata, 'QuickAchieve'), { recursive: true });
+    fs.writeFileSync(path.join(appdata, 'QuickAchieve', 'log.on'), '');
     try {
-        fs.copyFileSync(path.join(os.homedir(), 'AppData', 'Roaming', 'QuickSearch', 'config.json'),
-            path.join(appdata, 'QuickSearch', 'config.json'));
+        fs.copyFileSync(path.join(os.homedir(), 'AppData', 'Roaming', 'QuickAchieve', 'config.json'),
+            path.join(appdata, 'QuickAchieve', 'config.json'));
     } catch (e) { }
 
     const env = Object.assign({}, process.env, {

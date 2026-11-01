@@ -24,7 +24,7 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const EXE = path.join(ROOT, 'target', 'release', 'QuickSearch.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'QuickAchieve.exe');
 const OUT = path.join(__dirname, 'r80b-probe.txt');
 const WV_BASE = '--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection'
     + ' --disable-gpu-sandbox --remote-debugging-port=';
@@ -178,7 +178,7 @@ function probeSource(url) {
     rec('');
     PORT = await freePort();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80b-'));
-    const qs = path.join(tmp, 'QuickSearch');
+    const qs = path.join(tmp, 'QuickAchieve');
     fs.mkdirSync(qs, { recursive: true });
     fs.writeFileSync(path.join(qs, 'config.json'), JSON.stringify({ debug: true, theme: 'light' }, null, 1), 'utf8');
     const env = Object.assign({}, process.env, {
@@ -270,7 +270,7 @@ function probeSource(url) {
         rec('══ 三、真实下载（--download）：走程序自己的下载链路 ══');
         PORT = await freePort();
         const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'qs-r80bd-'));
-        const qs2 = path.join(tmp2, 'QuickSearch');
+        const qs2 = path.join(tmp2, 'QuickAchieve');
         fs.mkdirSync(qs2, { recursive: true });
         fs.writeFileSync(path.join(qs2, 'config.json'), JSON.stringify({ debug: true }, null, 1), 'utf8');
         const env2 = Object.assign({}, process.env, {
