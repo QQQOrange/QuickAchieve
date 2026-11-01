@@ -567,6 +567,9 @@ fn dismiss_bar_now() {
      *
      * 位置很讲究：下面 `!g.shown && !g.focused` 那条会**提前 return**（横条本来
      * 就是收着的），复位放它后面就永远轮不到 —— 必须放最前面。 */
+    /* 拖动挂起也要在这里复位：正常松手会自己置 false，但页面若在半路崩了
+     * （或被别的窗口抢走），标记会一直挂着 —— 横条就再也不"移远收起"了。 */
+    BAR_DRAG_HOLD.store(false, Ordering::SeqCst);
     if FAV_PINNED.swap(false, Ordering::SeqCst) {
         win::log("dismiss_bar: 收藏面板原本钉着，随收起一并解除");
         let _ = app().emit_to("bar", "qs://fav-pinned", serde_json::json!({ "on": false }));
@@ -3850,6 +3853,14 @@ fn __probe_post_copy() -> String {
 /// 补字期间（最多两三秒）先别收条，做完再让它照常按距离收。
 static CAPTURE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
+/// 正在横条上拖格子（v2.20.0）。
+///
+/// 拖动时指针会离开横条 —— 而「鼠标移远就收起」的守卫（`spawn_bar_away_guard`）
+/// 只认指针到横条的**距离**，一离开就把整个窗口收掉，拖拽当场断在半路。
+/// 用户拖到外面本来是想「把这颗移出横条」，结果窗口先没了，看起来像"拖出去就崩"。
+/// 所以拖动期间让那个守卫闭嘴（收条对拖动来说永远不是想要的结果）。
+static BAR_DRAG_HOLD: AtomicBool = AtomicBool::new(false);
+
 /// `CAPTURE_IN_FLIGHT` 的 RAII 守卫：任何一条提前 return 都会清掉标记。
 struct CaptureInFlight;
 impl Drop for CaptureInFlight {
@@ -5341,6 +5352,10 @@ fn spawn_bar_away_guard() {
             let Some((outer, _)) = bar_rects() else { continue };
             /* 正在补字（复制 / 本地识别）时先别收：见 `CAPTURE_IN_FLIGHT` 的注释。 */
             if CAPTURE_IN_FLIGHT.load(Ordering::SeqCst) {
+                continue;
+            }
+            /* 正在拖格子：指针离开横条是**有意**的（要拖出去），别把窗口收了。 */
+            if BAR_DRAG_HOLD.load(Ordering::SeqCst) {
                 continue;
             }
             let away = cfg_with(|cf| cf.bar_away_px);
@@ -16864,6 +16879,16 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
     config::save(cfg);
 }
 
+/// 拖动期间挂起「鼠标移远就收起」（见 `BAR_DRAG_HOLD`）。
+///
+/// 页面在长按拖起的瞬间置 true、松手/取消时置 false。**前端一定会配对调用**：
+/// 拖起那条路是同一个函数的两个出口（正常收尾 + 异常收尾），不会漏。
+/// 万一页面中途崩了，下一次唤起横条会重新置 false（`dismiss_bar` 里也清一遍）。
+#[crate::t::command]
+fn bar_drag_hold(on: bool) {
+    BAR_DRAG_HOLD.store(on, Ordering::SeqCst);
+}
+
 #[crate::t::command]
 fn toggle_bar_engine(engine: String, on: bool) {
     {
@@ -20562,6 +20587,7 @@ fn main() {
             copy_text,
             clip_read_text,
             toggle_bar_engine,
+            bar_drag_hold,
             move_bar_item,
             bar_hold,
             text_op,

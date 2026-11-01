@@ -5704,6 +5704,10 @@ function orderFromDom() {
 function dragCleanup() {
     if (!barDrag) return;
     clearTimeout(barDrag.timer);
+    if (barDrag.holdOn) {
+        barDrag.holdOn = false;
+        invoke('bar_drag_hold', { on: false }).catch(() => { });
+    }
     if (barDrag.ghost && barDrag.ghost.parentNode) barDrag.ghost.parentNode.removeChild(barDrag.ghost);
     if (barDrag.el) barDrag.el.classList.remove('dragging');
     barDrag = null;
@@ -5729,6 +5733,10 @@ function beginBarDrag(x, y) {
     barDrag.gy = y - r.top;
     document.body.appendChild(g);
     el.setPointerCapture && el.setPointerCapture(barDrag.pointerId);
+    /* v2.20.0：拖动期间挂起「鼠标移远就收起」—— 用户拖出横条是想把它**移出**，
+     * 窗口先被收掉的话，这一拖就断在半路，看起来像"拖出去就崩"。 */
+    barDrag.holdOn = true;
+    invoke('bar_drag_hold', { on: true }).catch(() => { });
     jlogDrag('lift ' + (el.dataset.rkey || el.dataset.engine || 'sep'));
 }
 
@@ -5756,6 +5764,19 @@ document.addEventListener('pointermove', (e) => {
         g.style.transform = 'translate(' + (e.clientX - barDrag.gx - parseFloat(g.style.left))
             + 'px,' + (e.clientY - barDrag.gy - parseFloat(g.style.top)) + 'px)';
     }
+    /* 拖出横条 = 移出：指针离开横条一段距离就把幽灵染红，松手即摘掉这一颗。
+     *
+     * 只在**垂直方向**或横向明显离开时才算 —— 横向在横条内部左右移动是"换位"，
+     * 那颗格子本来就可能被拖到最左/最右，不能用"指针超出最后一颗"当判据。 */
+    const br = barEl.getBoundingClientRect();
+    const out = e.clientY < br.top - 14 || e.clientY > br.bottom + 14
+        || e.clientX < br.left - 24 || e.clientX > br.right + 24;
+    if (out !== !!barDrag.outside) {
+        barDrag.outside = out;
+        if (barDrag.ghost) barDrag.ghost.classList.toggle('qs-will-remove', out);
+        barEl.classList.toggle('qs-removing', out);
+    }
+
     /* 就地换位：拿指针和每颗格子的中点比，插到第一颗"中点在指针右边"的前面 */
     const el = barDrag.el;
     const kids = [...enginesEl.children].filter((x) => x !== el);
@@ -5777,7 +5798,24 @@ document.addEventListener('pointerup', (e) => {
     const key = el.classList.contains('sep') ? window.QS_SEP : (el.dataset.rkey || el.dataset.engine || '');
     const before = (CONF && Array.isArray(CONF.barList)) ? CONF.barList.slice() : [];
     const after = orderFromDom();
+    const droppedOut = !!barDrag.outside;
     dragCleanup();
+    if (droppedOut) {
+        /* 拖出 = 从横条移除。分隔线不给移（它没有名字，移掉之后没法从设置里加回来），
+         * 其余照旧走 `toggle_bar_engine(false)` —— 和右键「从横条移除」同一条命令，
+         * 不另开一套删除逻辑。 */
+        barDragMute = Date.now() + 400;
+        if (key && key !== window.QS_SEP) {
+            invoke('log_msg', { msg: 'bar: 拖出移除 ' + key }).catch(() => { });
+            invoke('toggle_bar_engine', { engine: key, on: false }).then(() => {
+                showBarTip('已从横条移出「' + (window.qsDisplayName ? window.qsDisplayName(key) : key) + '」');
+            }).catch((err) => {
+                showBarTip('移出失败：' + String((err && err.message) || err).slice(0, 40));
+                renderBar(true);
+            });
+        }
+        return;
+    }
     /* 拖完这一下不要再当成"点击"（否则松手就执行、横条当场消失） */
     barDragMute = Date.now() + 400;
 
