@@ -70,8 +70,20 @@
             <div class="rt"><b>选中文字就弹出横条</b><small>在任意软件里用鼠标拖选一段文字，松开即弹（内部会等选区落地、失败自动重试，快速划选也稳）</small></div>
             <label class="sw"><input type="checkbox" id="s-triggerSelect"><i></i></label>
         </div>
+        <!-- v2.14.0：**触发方式二选一**（互斥）。
+             用分段控件而不是两颗勾选框是有意的：后端存的是**一个字符串**，
+             数据结构上就不存在"两种方式同时生效"这种状态；界面上也只有一个
+             按钮会亮，用户一眼看得出当前是哪种。切换即时生效（下一次松手就按
+             新规则判），不需要重启。 -->
+        <div class="row col">
+            <div class="rt"><b>触发方式</b><small>二选一，改完立即生效 · 选「按住 Ctrl 才弹」时，不按 Ctrl 划词不会弹（适合 Ctrl 拖动很常用的软件，比如表格、设计工具）</small></div>
+            <div class="seg" id="s-barTriggerMode">
+                <button type="button" data-v="always">选中即弹</button>
+                <button type="button" data-v="ctrl">按住 Ctrl 才弹</button>
+            </div>
+        </div>
         <div class="row">
-            <div class="rt"><b>按快捷键弹出网格页</b><small>默认 Ctrl+C；快捷键可在下面「网格页」里改。关掉它 = 按这个键什么都不弹</small></div>
+            <div class="rt"><b>按快捷键弹出网格页</b><small>默认 Ctrl+Shift+G；快捷键可在下面「网格页」里改。关掉它 = 按这个键什么都不弹</small></div>
             <label class="sw"><input type="checkbox" id="s-triggerCopy"><i></i></label>
         </div>
         <!-- 右下角"正在使用什么功能"的提示（v2.6.7 起；v2.6.8 改成应用内置提示） -->

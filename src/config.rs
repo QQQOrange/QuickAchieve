@@ -1720,6 +1720,19 @@ pub struct Config {
     /// 拖动到处都是，Ctrl+C 只有真的按了才有。
     #[serde(default = "default_true")]
     pub bar_need_text: bool,
+    /// **横条的触发方式**（v2.14.0）：`always` / `ctrl`，两者互斥。
+    ///
+    /// · `always`（默认，等于老行为）：正常选中文字就弹；
+    /// · `ctrl`：**只有按住 Control 键**选中文字才弹；没按 Ctrl 的拖选一律不弹。
+    ///
+    /// 为什么用一个字符串枚举、而不是两个 bool：用户口径是"两种方式互斥、
+    /// 不能同时启用"。两个独立开关一定能同时为真，之后"谁优先"又是一场扯皮；
+    /// 用一个值表达，从数据结构上就不存在"并行生效"这种状态。
+    ///
+    /// 兼容：老配置里没有这个键 → serde 走 `default_bar_trigger_mode()` =
+    /// `always`，与升级前行为**完全一致**（不会因为升个版本就变成"必须按 Ctrl"）。
+    #[serde(default = "default_bar_trigger_mode")]
+    pub bar_trigger_mode: String,
     /// 生效范围："off" = 全部软件；"blacklist" = 列出的软件里不弹；
     /// "whitelist" = 只在列出的软件里弹。
     pub filter_mode: String,
@@ -2225,6 +2238,7 @@ impl Default for Config {
             // 便携测试版默认不拦（与原版用户的实际设置一致：浏览器里 UIA/OCR 常取不到字，
             // 开着这条就表现为「选中了也不弹」）。正式版仍默认 true。
             bar_need_text: !crate::QS_LITE_PORTABLE,
+            bar_trigger_mode: default_bar_trigger_mode(),
             filter_mode: "off".to_string(),
             filter_list: Vec::new(),
             ocr_enable: true,
@@ -3282,6 +3296,30 @@ fn default_bar_pos() -> String {
     "above".to_string()
 }
 
+/// 横条触发方式的两个合法值（v2.14.0）。互斥 —— 同一时刻只可能是一个。
+pub const BAR_TRIGGER_ALWAYS: &str = "always";
+pub const BAR_TRIGGER_CTRL: &str = "ctrl";
+
+/// 老配置里没有这个键、或值被手改成乱七八糟时，都回到「老行为」。
+///
+/// 默认必须是 `always`：升级上来的用户**没有**按 Ctrl 划字的习惯，
+/// 默认给 `ctrl` 等于"升级完横条就不弹了"，那是灾难级体验。
+fn default_bar_trigger_mode() -> String {
+    BAR_TRIGGER_ALWAYS.to_string()
+}
+
+/// 触发方式的白名单归一：只认 `always` / `ctrl`，其余（含空串、大小写混写、
+/// 手塞的 `true`/`1`）一律回 `always`。
+///
+/// 一条入口两处用：`sanitize`（读配置 / 恢复备份）与 main.rs 的
+/// `apply_one_setting`（设置页点选）—— 两边同一口径，才不会"点了却没生效"。
+pub fn normalize_bar_trigger_mode(s: &str) -> String {
+    match s.trim().to_ascii_lowercase().as_str() {
+        BAR_TRIGGER_CTRL => BAR_TRIGGER_CTRL.to_string(),
+        _ => default_bar_trigger_mode(),
+    }
+}
+
 /// 弹出方向的白名单归一：只认 `above` / `below`，别的（含空串）一律回默认。
 ///
 /// 一条入口给两处用：`sanitize`（读配置/恢复备份时）和 main.rs 的
@@ -3652,6 +3690,16 @@ pub(crate) fn sanitize(mut c: Config) -> Config {
             c.bar_pos
         ));
         c.bar_pos = normalize_bar_pos(&c.bar_pos);
+    }
+    /* 触发方式（v2.14.0）：只认 always / ctrl。手改成别的（`true`、`ctrlDown`、
+     * 空串…）一律回 always —— 回到"老行为"是唯一安全的兜底：用户宁可多弹，
+     * 也不能因为一个脏值让横条**再也不弹**。 */
+    if !matches!(c.bar_trigger_mode.as_str(), BAR_TRIGGER_ALWAYS | BAR_TRIGGER_CTRL) {
+        crate::win::log(&format!(
+            "config: 触发方式 「{}」 不合法，回到「选中即弹」",
+            c.bar_trigger_mode
+        ));
+        c.bar_trigger_mode = normalize_bar_trigger_mode(&c.bar_trigger_mode);
     }
     /* GitHub 令牌（2026-10-24）：粘贴进来的值经常带三种垃圾 ——
      *   ① 首尾空白/换行（从网页上框选复制的典型形态）；
@@ -6563,5 +6611,61 @@ mod sanitize_tests {
             ..Default::default()
         });
         assert_eq!(below.bar_pos, "below", "合法值原样保留");
+    }
+
+    /// v2.14.0：横条触发方式（`always` / `ctrl`）—— 默认、归一、兼容三件事。
+    ///
+    /// 这条测试守着三个"一旦搞错就很难被发现"的点：
+    /// ① 默认必须是 `always`（升级上来的用户没有按 Ctrl 划字的习惯，
+    ///    默认给 ctrl 等于"升级完横条就不弹了"）；
+    /// ② 老配置里**没有这个键**时也必须解析成 `always`（serde 默认），
+    ///    而不是解析失败 → 整份配置退回默认 → 用户设置全丢；
+    /// ③ 脏值（`true` / `1` / 大小写 / 空串）一律回 `always`，不允许出现
+    ///    第三个值 —— 那会让 main.rs 那条判据悄悄变成"两种方式都不弹"。
+    #[test]
+    fn bar_trigger_mode_defaults_and_normalizes() {
+        let _serial = big_lock();
+        assert_eq!(
+            Config::default().bar_trigger_mode,
+            BAR_TRIGGER_ALWAYS,
+            "默认必须是老行为（选中即弹）"
+        );
+
+        // 老配置：整段 JSON 里没有 barTriggerMode 这个键
+        let old: Config = serde_json::from_str(
+            r#"{"ocr_engine":"baidu","bar_need_text":true,"filter_mode":"off"}"#,
+        )
+        .expect("老配置必须能解析（新字段有 serde default）");
+        assert_eq!(
+            old.bar_trigger_mode, BAR_TRIGGER_ALWAYS,
+            "老配置升级上来要保持原来的行为"
+        );
+
+        // 两个合法值
+        assert_eq!(normalize_bar_trigger_mode("always"), "always");
+        assert_eq!(normalize_bar_trigger_mode("ctrl"), "ctrl");
+        assert_eq!(normalize_bar_trigger_mode("  CTRL  "), "ctrl", "大小写/空白要容忍");
+
+        // 脏值一律回 always（宁可多弹，也不能让横条再也不弹）
+        for bad in ["", "true", "1", "ctrlDown", "hold", "下面"] {
+            assert_eq!(
+                normalize_bar_trigger_mode(bad),
+                BAR_TRIGGER_ALWAYS,
+                "非法值「{bad}」必须回到 always"
+            );
+        }
+
+        // sanitize 也走同一条口径（读配置 / 恢复备份）
+        let dirty = sanitize(Config {
+            bar_trigger_mode: "ctrl_down".to_string(),
+            ..Default::default()
+        });
+        assert_eq!(dirty.bar_trigger_mode, BAR_TRIGGER_ALWAYS, "脏值要夹回默认");
+
+        let kept = sanitize(Config {
+            bar_trigger_mode: BAR_TRIGGER_CTRL.to_string(),
+            ..Default::default()
+        });
+        assert_eq!(kept.bar_trigger_mode, BAR_TRIGGER_CTRL, "合法值原样保留");
     }
 }

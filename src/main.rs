@@ -4300,6 +4300,30 @@ fn schedule_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
     });
 }
 
+/// 「划选之后到底弹不弹」这一步的闸门（v2.14.0）。
+///
+/// 只管**这一条判据**：总开关 + 触发方式。返回 `None` = 放行，
+/// `Some(理由)` = 不弹（理由直接进日志，方便用户/我们查"为什么没弹"）。
+///
+/// 为什么单独抽成纯函数：这段逻辑是"两种触发方式互斥"的唯一落点，
+/// 一旦写反（比如 always 也要求 Ctrl、或者两个条件并联），表现是**横条彻底
+/// 不弹**或**两种方式同时生效**，在真机上很难一眼看出来。抽出来之后
+/// `select_trigger_block_*` 那几条单测把四种组合全钉住了。
+fn select_trigger_block(mode: &str, select_on: bool, ctrl_held: bool) -> Option<&'static str> {
+    /* ① 总开关（设置页「选中文字就弹出横条」）：关掉 = 划选这条路整条静音。
+     *    ⚠ 这个键以前设置页里有、后端从没读过（死开关）—— 现在接回主线。 */
+    if !select_on {
+        return Some("「选中文字就弹出横条」已关闭");
+    }
+    /* ② 触发方式互斥：`ctrl` 档只有真按着 Ctrl 才放行；`always` 档不看修饰键。
+     *    值只可能是这两个（config::normalize_bar_trigger_mode 保证），
+     *    所以这里不存在"两种方式都命中"的分支。 */
+    if mode == config::BAR_TRIGGER_CTRL && !ctrl_held {
+        return Some("触发方式是「按住 Ctrl 才弹」，本次没按 Ctrl");
+    }
+    None
+}
+
 /// 一次触发的总闸门（只管**自动**触发那条线）。
 fn trigger_allowed(at: Option<(i32, i32)>) -> bool {
     if is_paused() {
@@ -5387,6 +5411,9 @@ fn spawn_detector() {
             .spawn(move || {
                 let mut down: Option<(i32, i32, u32)> = None;
                 let mut dragging = false;
+                /* v2.14.0：本次手势里"有没有按住 Ctrl"（按下 / 拖动 / 松手任一时刻）。
+                 * 只在触发方式选 `ctrl` 时被消费，判据见 `Ev::Up` 那一段。 */
+                let mut sel_ctrl = false;
                 /* 双击选词：用户 2026-10-30 明确要求「选中就弹，不用拖拽」。
                  * 双击选中一个词时起止坐标只差 1px，`moved_far` 永远是 false，
                  * 于是整条取词被否掉 —— 这就是"点中文字没反应"的直接原因。
@@ -5395,8 +5422,13 @@ fn spawn_detector() {
 
             for ev in rx {
                 match ev {
-                    Ev::Down(x, y, t) => {
+                    Ev::Down(x, y, t, ctrl) => {
                         dragging = false;
+                        /* 这一次"按下"时 Ctrl 是否按着 —— 触发方式选「按住 Ctrl
+                         * 才弹」时的起手判据。松手时还会再取一次（见 `Ev::Up`）：
+                         * 先按 Ctrl 再拖的算、拖完才松开 Ctrl 的也算，两种常见习惯
+                         * 都覆盖到。 */
+                        sel_ctrl = ctrl;
                         if is_bar_inner(x, y) {
                             // 点在横条自己身上，交给网页处理
                             down = None;
@@ -5444,8 +5476,20 @@ fn spawn_detector() {
                             }
                         }
                     }
-                    Ev::Up(x, y, t) => {
+                    Ev::Up(x, y, t, ctrl) => {
                         let d = down.take();
+                        /* 「按住 Ctrl 选中」的判据 = **按下时** 或 **松手时** 按着 Ctrl。
+                         *
+                         * 只用这两个时刻是有意的：
+                         *   · 绝大多数人先按住 Ctrl 再拖 → 按下那一刻就为真；
+                         *   · 也有人松手后才放开 Ctrl → 松手那一刻为真；
+                         *   · 中间的鼠标移动**不采样**：钩子里的 Move 事件密度依赖
+                         *     拖动速度（快拖会被系统合并、甚至一条都不发），拿它当
+                         *     判据会变成"慢慢划能识别、快速划识别不到"的时灵时不灵。
+                         * 两个时刻都在钩子回调里当场取（见 `Ev::Up` 的注释），
+                         * 不依赖消费线程的时序。 */
+                        let ctrl_sel = sel_ctrl || ctrl;
+                        sel_ctrl = false;
                         // v1.5.22：任何一次松手都算"用户又操作了" —— 取词期间
                         // 若有新的 Up，说明他已经去点别处 / 重新划选了。
                         INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
@@ -5522,12 +5566,43 @@ fn spawn_detector() {
                              * "有时候触发有时候不触发"的主观来源之一。
                              * dragging 已经要求位移 >4px，纯点击到不了这里；
                              * 12ms 只是挡掉合成 / 注入的瞬时 Up。 */
+                            /* v2.14.0：**触发方式**（两种互斥，只有一个是生效的）。
+                             *
+                             * · always（默认）：老行为 —— 选中就弹，不看修饰键；
+                             * · ctrl：只有这一次"选中"全程按住 Control 才弹。
+                             *
+                             * 放在 `schedule_capture` 之前、其它判据之后：前面那些
+                             * （黑名单 / 门限 / 横条自身）该拦的照拦，这里只补一条
+                             * "用户到底按没按 Ctrl"。也**不影响别的触发通道**：
+                             * Ctrl+C 取词、Ctrl+A 全选、网格页快捷键都各自独立
+                             * （Ctrl+C 与 Ctrl+A 本来就按着 Ctrl，天然满足这条）。
+                             *
+                             * 判定用 `ctrl_sel`（钩子回调当场取的快照，见 Ev::Up），
+                             * 不用这儿现读 `win::ctrl_down()` —— 消费线程是异步的，
+                             * 排到这条事件时用户可能已经把 Ctrl 松开了，现读会把
+                             * 一次正确的 Ctrl 划选判成"没按 Ctrl"而漏掉。 */
+                            let need_ctrl =
+                                cfg_with(|c| c.bar_trigger_mode == config::BAR_TRIGGER_CTRL);
                             if (was || is_double) && dt >= 12 && !bo_end && !bo_start && ok_sel {
-                                // 把「划词目标属于哪个进程」和「划过的矩形」一路带进
-                                // 取词：前者给剪贴板归属校验用（多进程客户端里负责
-                                // 复制的未必是前台那个进程），后者给 OCR 兜底用
-                                // （对方不肯把选区交出来的客户端，直接读屏幕上那块字）。
-                                schedule_capture(win::window_pid(tgt), (sx, sy, x, y));
+                                let sel_on = cfg_with(|c| c.trigger_select);
+                                match select_trigger_block(
+                                    if need_ctrl {
+                                        config::BAR_TRIGGER_CTRL
+                                    } else {
+                                        config::BAR_TRIGGER_ALWAYS
+                                    },
+                                    sel_on,
+                                    ctrl_sel,
+                                ) {
+                                    Some(why) => win::log(&format!("trigger: {why} —— 不弹")),
+                                    None => {
+                                        // 把「划词目标属于哪个进程」和「划过的矩形」一路带进
+                                        // 取词：前者给剪贴板归属校验用（多进程客户端里负责
+                                        // 复制的未必是前台那个进程），后者给 OCR 兜底用
+                                        // （对方不肯把选区交出来的客户端，直接读屏幕上那块字）。
+                                        schedule_capture(win::window_pid(tgt), (sx, sy, x, y));
+                                    }
+                                }
                             }
                         }
                     }
@@ -5586,7 +5661,12 @@ fn spawn_detector() {
                          * 每按一下都取一次词会把横条刷成幻灯片；用户真要逐字选，
                          * 松手后按 Ctrl+C 那条路仍在（trigger_copy）。 */
                         if !ours && ctrl && !alt && vk == 0x41 {
-                            if trigger_allowed(None) {
+                            /* v2.14.0：与鼠标划选同一条总开关。
+                             * Ctrl+A 是"键盘选全选"，也属于"选中文字"这一类；
+                             * 关掉「选中文字就弹出横条」时它同样不该弹。
+                             * 触发方式这一档不必再判 —— Ctrl+A 天然按着 Ctrl，
+                             * 两种方式在这里的结论一样。 */
+                            if trigger_allowed(None) && cfg_with(|c| c.trigger_select) {
                                 let pid = win::window_pid(win::foreground_window());
                                 let p = win::cursor_pos();
                                 let (px, py) = (p.x, p.y);
@@ -5934,6 +6014,9 @@ fn config_view() -> Value {
         "barAwayPx": cfg.bar_away_px,
         // 没取到文字就不弹（默认开）—— 误触乱弹的主要来源。
         "barNeedText": cfg.bar_need_text,
+        // v2.14.0：横条触发方式（"always" = 选中即弹 / "ctrl" = 按住 Ctrl 才弹）。
+        // 两者互斥，值只有这两个。
+        "barTriggerMode": cfg.bar_trigger_mode,
         "filterMode": cfg.filter_mode,
         "filterList": cfg.filter_list,
         "ocrEnable": cfg.ocr_enable,
@@ -6194,6 +6277,11 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     if let Some(x) = n("barIdleSec") { cfg.bar_idle_sec = x.clamp(0, 300) as u32; }
     if let Some(x) = n("barAwayPx") { cfg.bar_away_px = x.clamp(0, 4000) as i32; }
     if let Some(x) = b("barNeedText") { cfg.bar_need_text = x; }
+    /* v2.14.0：触发方式。老备份里没有这个键 → 保持当前值（= always），
+     * 不要因为恢复一份 2026 年之前的备份就把用户改成"必须按 Ctrl"。 */
+    if let Some(x) = s("barTriggerMode") {
+        cfg.bar_trigger_mode = config::normalize_bar_trigger_mode(&x);
+    }
     if let Some(x) = s("filterMode") {
         cfg.filter_mode = match x.as_str() {
             "blacklist" | "whitelist" => x,
@@ -6563,6 +6651,12 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
             cfg.bar_away_px = value.as_i64().unwrap_or(400).clamp(0, 4000) as i32
         }
         "barNeedText" => cfg.bar_need_text = value.as_bool().unwrap_or(true),
+        /* v2.14.0：触发方式（`always` / `ctrl`，互斥）。
+         * 白名单与 sanitize 同一条口径；值不在白名单里（老页面、探针、手改）
+         * 一律回 `always` —— 宁可多弹，也不能让横条因为这个值再也不弹。 */
+        "barTriggerMode" => {
+            cfg.bar_trigger_mode = config::normalize_bar_trigger_mode(value.as_str().unwrap_or(""))
+        }
         // v1.5.4：弹出位置。白名单和 sanitize 同一条口径（config::normalize_bar_pos），
         // 脏值当场归一成 "above"，不会出现"界面选了下、存进去是别的"。
         "barPos" => {
@@ -24141,6 +24235,42 @@ mod tests {
         assert!(above_y + bar_ph <= 500, "上方：胶囊整体在鼠标点之上");
         assert!(below_y >= 500, "下方：胶囊顶边在鼠标点之下");
         assert!(below_y > above_y, "两个选项不能算出同一个位置");
+    }
+
+    /// v2.14.0：划选触发的两道闸门 —— 总开关 + 触发方式（互斥）。
+    ///
+    /// 这条测试钉的是"互斥"这件事本身：
+    /// · `always` 档**不看** Ctrl（按不按都放行）—— 否则升级上来的用户会觉得横条不弹了；
+    /// · `ctrl` 档**只有**按着 Ctrl 才放行；
+    /// · 总开关关掉时，两档都静音（不存在"关掉了还弹"的旁路）；
+    /// · 任何一种组合都只有"全放行"或"拦下并给理由"，不会出现两个条件互相顶牛。
+    #[test]
+    fn select_trigger_block_两档互斥() {
+        use config::{BAR_TRIGGER_ALWAYS, BAR_TRIGGER_CTRL};
+
+        // always：不看 Ctrl
+        assert_eq!(select_trigger_block(BAR_TRIGGER_ALWAYS, true, false), None);
+        assert_eq!(select_trigger_block(BAR_TRIGGER_ALWAYS, true, true), None);
+
+        // ctrl：必须按着
+        assert_eq!(select_trigger_block(BAR_TRIGGER_CTRL, true, true), None);
+        assert!(
+            select_trigger_block(BAR_TRIGGER_CTRL, true, false).is_some(),
+            "ctrl 档没按 Ctrl 时绝不能放行"
+        );
+
+        // 总开关关掉：两档都静音
+        for m in [BAR_TRIGGER_ALWAYS, BAR_TRIGGER_CTRL] {
+            assert!(
+                select_trigger_block(m, false, true).is_some(),
+                "「选中文字就弹出横条」关掉后，{m} 档也不许弹"
+            );
+        }
+
+        // 拦下时一定要给得出理由（日志里要能说清为什么没弹）
+        assert!(select_trigger_block(BAR_TRIGGER_CTRL, true, false)
+            .unwrap()
+            .contains("Ctrl"));
     }
 
     /// Ctrl+C 的口径（用户 2026-10-24）：「哪怕没有复制到文本，那也得换出横条」。

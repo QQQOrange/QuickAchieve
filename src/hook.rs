@@ -19,8 +19,15 @@ use crate::win;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Ev {
-    Down(i32, i32, u32),
-    Up(i32, i32, u32),
+    /// 左键按下。字段 `(x, y, 时刻, 此刻是否按着 Ctrl)`。
+    ///
+    /// 为什么 ctrl 要在钩子里取：见 `KeyDown` 的注释 —— 消费线程是异步的，
+    /// 等它排到这条鼠标事件时用户可能已经把 Ctrl 松开了。触发方式 =「按住
+    /// Ctrl 才弹」时，这一位就是唯一可靠的判据（v2.14.0）。
+    Down(i32, i32, u32, bool),
+    /// 左键抬起，同上。
+    Up(i32, i32, u32, bool),
+    /// 拖动中的移动。只在左键按着时发（见 `mouse_proc` 里 `WM_MOUSEMOVE` 的注释）。
     Move(i32, i32),
     /// 键盘按下。
     ///
@@ -106,11 +113,15 @@ unsafe extern "system" fn mouse_proc(code: i32, w: WPARAM, l: LPARAM) -> LRESULT
             let msg = w.0 as u32;
             if msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP {
                 win::log(&format!(
-                    "hook: mouse {:?} at ({}, {}) injected={} allow={}",
+                    /* `ctrl=` 是 v2.14.0 加的：触发方式选「按住 Ctrl 才弹」时，
+                     * 用户报"按着 Ctrl 也不弹"第一件要确认的就是**钩子当时读到
+                     * 的修饰键到底是什么** —— 没有这一位只能靠猜。 */
+                    "hook: mouse {:?} at ({}, {}) injected={} ctrl={} allow={}",
                     if msg == WM_LBUTTONDOWN { "DOWN" } else { "UP" },
                     info.pt.x,
                     info.pt.y,
                     info.flags & LLMHF_INJECTED != 0,
+                    win::ctrl_down(),
                     allow_injected()
                 ));
             }
@@ -118,8 +129,18 @@ unsafe extern "system" fn mouse_proc(code: i32, w: WPARAM, l: LPARAM) -> LRESULT
         if allow_injected() || info.flags & LLMHF_INJECTED == 0 {
             let msg = w.0 as u32;
             match msg {
-                WM_LBUTTONDOWN => send(Ev::Down(info.pt.x, info.pt.y, info.time)),
-                WM_LBUTTONUP => send(Ev::Up(info.pt.x, info.pt.y, info.time)),
+                WM_LBUTTONDOWN => send(Ev::Down(
+                    info.pt.x,
+                    info.pt.y,
+                    info.time,
+                    win::ctrl_down(),
+                )),
+                WM_LBUTTONUP => send(Ev::Up(
+                    info.pt.x,
+                    info.pt.y,
+                    info.time,
+                    win::ctrl_down(),
+                )),
                 /* ⚠ 鼠标移动**只在左键按着的时候**才转发。
                  *
                  * 钩子回调跑在系统输入链路上，有 LowLevelHooksTimeout（默认

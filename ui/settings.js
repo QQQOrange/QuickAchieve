@@ -3190,6 +3190,10 @@ const SEGS = [
     // v1.5.4：横条弹出位置（文字上方 / 下方）。字符串值，正好走 SEGS 泛型通路；
     // 后端白名单在 config::normalize_bar_pos（脏值归一成 above）。
     ['s-barPos', 'barPos', 'above'],
+    // v2.14.0：横条触发方式（`always` 选中即弹 / `ctrl` 按住 Ctrl 才弹）。
+    // 值是字符串，正合 SEGS 泛型通路；后端 config::normalize_bar_trigger_mode
+    // 是唯一白名单（脏值一律回 always），两边口径一致。
+    ['s-barTriggerMode', 'barTriggerMode', 'always'],
 ];
 
 /* r56：「最近使用」最多摆几个。**不走 SEGS** —— 那个泛型通路把 data-v 当字符串
