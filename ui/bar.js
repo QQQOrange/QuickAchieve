@@ -113,6 +113,17 @@ function buildIconInner(engineName) {
         qsApplyOpticalScale(img, unifyIcons());
         return { node: img, mono: false, inset: 1 };
     }
+    /* v2.12.4：**内置功能也走统一分发**。
+     *
+     * 横条上 @ocr/@img/@trans/@wrap/@txt/@qr/@qrmake 各有专门分支（在下面的
+     * 渲染循环里），但 `buildIconInner` 还会被网格格子、以及以后新增的功能用到 ——
+     * 一旦某个功能没写专门分支，就会掉到函数末尾的字母徽标（`@xxx` 取首字母），
+     * 于是"横条一个样、设置里一个样"。这里补一道总闸：只要是内置功能，
+     * 一律用 shared.js 那张图。
+     * ⚠ 放在 custom 之后：用户换过图标时，仍走上面那条（带光学缩放）的路径。 */
+    if (window.qsIsFuncSentinel && window.qsIsFuncSentinel(engineName) && window.qsFuncIcon) {
+        return { node: window.qsFuncIcon(engineName), mono: false, inset: 1 };
+    }
     /* #138：icons 目录里「文件名 = 引擎名」的默认图标，优先级夹在
      * 「图库显式挑的」和「引擎自带 iconFile」之间。用户把一张 Baidu.png
      * 丢进那个目录，百度的格子就该用它 —— 不需要每个引擎再挑一次。 */

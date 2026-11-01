@@ -63,8 +63,22 @@ function unifyIcons() {
 }
 
 function iconNode(name, size) {
+    /* ⚠ v2.12.4：**内置功能一律先走 `qsFuncIcon`**，放在最前面。
+     *
+     * 这里是设置页画图标的"总闸"：横条列表、横条外观预览、网格条目、选板……
+     * 最后都落到这个函数。以前它只特判了 `@trans` 一个，其余内置功能靠各调用点
+     * 自己枚举 —— 二维码那两格（`@qr` / `@qrmake`）谁都没枚举到，于是掉进下面的
+     * 字母徽标分支，两个都取首字母 "q"，用户看到的就是"两个 q"。
+     *
+     * 把判据收进这里之后：新增任何内置功能，只要登记进 shared.js 的
+     * `QS_FUNC_BASES`，横条/预览/网格/列表/选板**全部自动**用上同一张图，
+     * 不会再出现"某一处忘了加分支"。 */
+    if (window.qsIsFuncSentinel && window.qsIsFuncSentinel(name) && window.qsFuncIcon) {
+        return window.qsFuncIcon(name);
+    }
     /* 翻译按钮（@trans）不是真引擎，但也有默认图标了（v1.5.17）——
-     * 走共用实现，别落到下面的字母徽标分支去（那会画出一个 "T"）。 */
+     * 走共用实现，别落到下面的字母徽标分支去（那会画出一个 "T"）。
+     * （保留这条是兜底：万一 `qsFuncIcon` 没加载，行为退回旧路径。） */
     if (name === QS_TRANS) return window.qsTransIconNode();
     const eng = BY_NAME.get(name) || {};
     const custom = CONF.overrideIcons && CONF.overrideIcons[name];
@@ -112,46 +126,15 @@ function iconNode(name, size) {
  *  那是 OCR。所以这里单独给它一个「OCR」文字标；用户换过图标就优先用图标。
  *  预览、横条列表、全部引擎列表三处都走这一个函数，样子才不会各处一个样。 */
 function barItemIcon(name, size) {
-    if (name === QS_OCR) {
-        /* v2.11.0：收进 shared.js 的 qsOcrIconNode —— 横条、网格、预览、
-         * 设置列表现在共用同一枚「OCR」徽标（换过图标优先）。
-         * 以前这里自己判一次 overrideIcons、自己造 .ocr-tag，和横条的
-         * .qs-ocr-tag 各长各样。 */
-        if (window.qsOcrIconNode) return window.qsOcrIconNode();
-        const t = document.createElement('span');
-        t.className = 'ocr-tag';
-        t.textContent = 'OCR';
-        return t;
-    }
-    /* r72：识图按钮成了横条成员（`@img`）—— 设置里这张脸要和横条上一致：
-     * 换过图标显示那张图，没换显示内置的「四角取景框 + 放大镜」。 */
-    /* v1.5.19：默认图标从「四角取景框 + 放大镜」内联 SVG 换成用户指定的
-     * 「识图键.png」（base64 内嵌）。实现和横条那颗共用 shared.js 的
-     * qsImgIconNode —— 设置页列表 / 设置页预览 / 横条，三处一模一样。 */
-    if (name === QS_IMG) {
-        if (window.qsImgIconNode) return window.qsImgIconNode();
-        const custom = CONF.overrideIcons && CONF.overrideIcons[QS_IMG];
-        if (custom) {
-            const img = document.createElement('img');
-            img.src = custom;
-            qsApplyOpticalScale(img, unifyIcons());
-            return img;
-        }
-    }
-    /* v1.5.16：翻译按钮（@trans）—— 和 OCR 同一套：换过图标显示图，
-     * 没换显示默认图标。
-     * v1.5.17：默认图标从「译」文字徽标换成用户指定的「翻译.png」
-     * （base64 内嵌在 shared.js 的 QS_TRANS_ICON）。实现挪到 shared.js 的
-     * qsTransIconNode —— 和横条上那颗走同一个函数，三处长得一模一样。 */
-    if (name === QS_TRANS) {
-        return window.qsTransIconNode();
-    }
-    /* 包裹符号 / 文本处理（@txt:<op>）：走 shared.js 那套内置图标。
-     * 不接这一支的话会掉到 `iconNode()` 的字母徽标分支 ——
-     * `@txt:trim` 会显示成一个 "T"，`@wrap` 显示成 "W"（用户看着像乱码）。 */
-    if (name === QS_WRAP || (window.qsTextOpId && window.qsTextOpId(name) !== null)) {
-        if (window.qsFuncIcon) return window.qsFuncIcon(name);
-    }
+    /* v2.12.4：这里原来是**第四份**「内置功能清单」（OCR / 识图 / 翻译 / 包裹 /
+     * 文本处理逐个 if），二维码两格不在名单里 → 掉到字母徽标，`@qr` 与
+     * `@qrmake` 都画出 "q"（用户报的"两个 q"）。
+     *
+     * 现在只做一件事：交给 `iconNode` —— 它开头就判 `qsIsFuncSentinel`，
+     * 内置功能走 `qsFuncIcon`（iconFunc 内部先看 overrideIcons，再按功能分发），
+     * 真引擎走引擎图标/字母徽标。这样"横条上的引擎"列表、横条外观预览、
+     * 网格条目、添加内容选板、真横条，五处是同一套判断。
+     */
     return iconNode(name, size);
 }
 
@@ -3595,7 +3578,10 @@ function renderPreview() {
             const app = qsAppBySentinel(name);
             b.title = name === QS_OCR ? '识别图片文字'
                 : (isFav ? qsFavFindGroup(name.slice(QS_FAV_PREFIX.length)).name + '（收藏夹）'
-                    : (app ? app.name + '（外部软件）' : name));
+                    : (app ? app.name + '（外部软件）'
+                        /* v2.12.4：兜底原来直接用 `name`，鼠标悬停会看到 `@qr`
+                         * 这种内部代号 —— 和上一版"D 不暴露代号"的口径不一致。 */
+                        : ((window.qsSentinelLabel && window.qsSentinelLabel(name)) || name)));
             // ⚠ 收藏夹 / 外部软件的图标都走共用实现 —— 必须和横条上的一模一样
             // （用户报过不一致）
             b.appendChild(isFav ? qsFavIconNode(name)

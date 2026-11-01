@@ -505,6 +505,13 @@ window.qsFuncIcon = function (name) {
         img.src = custom;
         img.alt = '';
         img.draggable = false;
+        /* v2.12.4：和各个 `qsXxxIconNode` 里的自定义图标分支保持同一口径 ——
+         * 带透明留白的图要按「统一图标大小」放大补偿。以前这里漏了，于是
+         * 同一个自定义图标在横条（走节点函数）是放大过的、在网格/设置（走这里）
+         * 是小一号的，看起来"两处图标不一样"。 */
+        if (window.qsApplyOpticalScale) {
+            window.qsApplyOpticalScale(img, conf.unifyIcons !== false);
+        }
         return img;
     }
     if (name === window.QS_TRANS && window.qsTransIconNode) {
