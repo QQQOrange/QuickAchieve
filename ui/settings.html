@@ -1313,43 +1313,24 @@
         </div>
     </section>
 
+    <!-- v2.12.5：这一页**只做配置**。
+         用户口径：二维码生成的设置页里不得存在任何可直接触发生成的操作入口 /
+         快捷方式 / 隐式触发点 —— 生成只能由「横条」或「网格页」上那颗
+         `@qrmake` 触发（它拿的是唤出时抓到的那段选区，和横条上看到的是同一份内容）。
+         所以这里删掉了：输入框、「读取选中内容」、「生成二维码」、「清空」、
+         结果画布、编码内容行、「复制内容」，以及它们的整个结果卡。
+         留下的只有「＋ 加到横条 / ＋ 加到网格页」两颗**配置**按钮。 -->
     <section class="card" data-qrsub="make" hidden>
         <h2>生成 <small>把选中的文字 / 链接变成二维码</small></h2>
         <div class="hint">
-            先在别处选中文字（或复制一段内容），回来点「读取选中内容」，
-            也可以直接在下面框里输入或粘贴；再点<b>生成二维码</b>。
-            生成本机完成，不联网、不上传。
+            生成动作<b>只在横条和网格页上触发</b>：先在任意软件里选中文字（或复制一段内容），
+            再点横条 / 网格里的「二维码生成」那一格 —— 二维码会带着这段内容直接弹出来，
+            窗口里可以一键复制。<br>
+            本页只负责把这个入口摆到你想要的位置，<b>不提供生成按钮</b>：
+            一条功能只保留一条触发路径，行为才不会分叉。
         </div>
-        <div class="row col">
-            <textarea id="qrMakeText" class="ta" rows="5" spellcheck="false"
-                      placeholder="要写进二维码的内容，例如 https://example.com 或一段文字"></textarea>
-        </div>
-        <div class="row">
-            <div class="rt"><b id="qrMakeCount">0 字</b><small>内容越长，二维码越密，扫起来越吃力</small></div>
-            <div class="qract">
-                <button type="button" class="btn ghost" id="btnQrPickSel">读取选中内容</button>
-                <button type="button" class="btn" id="btnQrMake">生成二维码</button>
-                <button type="button" class="btn ghost" id="btnQrClear">清空</button>
-            </div>
-        </div>
-        <div class="hint" id="qrMakeNote">还没有生成。填入内容后点「生成二维码」。</div>
-        <!-- 生成也有自己的「加到哪」：和解析那两颗是**两组**按钮，
-             因为它们进横条/网格后是两格（`@qr` / `@qrmake`），图标也不同。 -->
         <div class="row" id="qrMakeEntryRow"></div>
         <div class="hint" id="qrMakeEntryHint">加到横条或网格后：选中文字再点那一格，二维码会直接弹出来。</div>
-    </section>
-    <section class="card" data-qrsub="make" hidden id="qrOutCard">
-        <h2>二维码 <small>用手机扫一下就能读回下面这段内容</small></h2>
-        <div class="qrout"><canvas id="qrMakeCanvas" width="220" height="220"></canvas></div>
-        <div class="row">
-            <div class="rt">
-                <b>编码内容</b>
-                <small id="qrOutText" class="qrout-text"></small>
-            </div>
-            <div class="qract">
-                <button type="button" class="btn" id="btnQrCopy">复制内容</button>
-            </div>
-        </div>
     </section>
     </div>
 
@@ -2112,12 +2093,9 @@
 <script src="shared.js"></script>
 <script src="i18n.js"></script>
 <script src="i18n.en.js"></script>
-<!-- v2.12.2：二维码「生成」。qrcode-generator（MIT，Kazuhiko Arase）内部实现，
-     已随包内嵌，运行时不联网；`qrcode-utf8.js` 是它的官方补丁 —— 原库按
-     charCode&0xFF 取字节，中文会被截成乱码，补丁把 stringToBytes 换成 UTF-8。
-     ⚠ 顺序不能反：补丁里直接 `qrcode.stringToBytes = ...`，必须在主库之后。 -->
-<script src="vendor/qrcode.min.js"></script>
-<script src="vendor/qrcode-utf8.js"></script>
+<!-- v2.12.5：设置页不再引 qrcode 编码库 —— 这一页已经没有"生成"入口了
+     （生成只在横条/网格的 `qrgen` 弹窗里做，那个窗口自己引这套库）。
+     少引 21KB 的脚本，也少一处"设置页偷偷能生成"的可能。 -->
 <script src="settings.js"></script>
 </body>
 </html>

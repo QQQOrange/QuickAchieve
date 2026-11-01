@@ -11716,129 +11716,20 @@ async function removeFromGrid(name) {
 
 /** 一键切换：在就移除、不在就加。`target` = 'bar' | 'grid'。 */
 /* ------------------------------------------------------------------ */
-/* v2.12.2：二维码页的两个子功能（解析 / 生成）                          */
+/* 二维码页的两个子功能（解析 / 生成）                                  */
+/*                                                                     */
+/* v2.12.5：**这里只留"切换"和"配置"**。                               */
+/* 生成动作已经从设置页彻底移除（用户口径：设置页里不得存在任何可直接   */
+/* 触发二维码生成的操作入口 / 快捷方式 / 隐式触发点），生成只有一条路：   */
+/* 横条 / 网格页上那颗 `@qrmake` —— 它拿的是"唤出时抓到的那段选区"。      */
+/* 于是原先这一大块（输入框 / 读取选中内容 / 生成二维码 / 结果画布 /      */
+/* 复制内容 / selectionchange 缓存 / 字数统计）全部删掉了，连带            */
+/* settings.html 里的 qrcode 库引用也一起去掉（那个库现在只有 qrgen.html 用）。 */
 /* ------------------------------------------------------------------ */
 
 /** 当前子功能：'parse' | 'make'。每次进入这一页都回到「解析」——
  *  和附加功能其它子页一样不记忆（用户口径：每次进来都是默认页）。 */
 let qrMode = 'parse';
-
-/** 页面上最后一次**非空**选中内容。
- *
- *  为什么要缓存：按钮的 mousedown 会先把选区收掉，等 click 回调跑起来，
- *  `getSelection()` 已经是空串了 —— 在回调里直接读必然拿不到东西。
- *  所以在 selectionchange 里随时记一份（只记非空，免得点别处就把要用的内容抹了）。 */
-let qrSelCache = '';
-document.addEventListener('selectionchange', () => {
-    let t = '';
-    try { t = String(window.getSelection ? window.getSelection() : '').trim(); } catch (_) { }
-    if (t) qrSelCache = t.slice(0, 4000);
-});
-
-/** 已经画进二维码的那段内容（「复制内容」用它，而不是输入框的当前值 ——
- *  用户改了输入框还没重新生成时，图和剪贴板必须还是同一份）。 */
-let qrMade = '';
-
-/** 生成页的状态行。`kind` = '' | 'ok' | 'warn'，只影响颜色。 */
-function qrMakeSay(msg, kind) {
-    const el = $('qrMakeNote');
-    if (!el) return;
-    el.textContent = msg || '';
-    el.classList.toggle('ok', kind === 'ok');
-    el.classList.toggle('warn', kind === 'warn');
-}
-
-function syncQrMakeCount() {
-    const el = $('qrMakeCount');
-    const ta = $('qrMakeText');
-    if (!el || !ta) return;
-    const n = (ta.value || '').length;
-    el.textContent = n + ' 字';
-}
-
-/** 把一段文本画成二维码（canvas，按 dpr 取整像素，扫起来才不糊）。
- *  抛错交给调用方 —— 太长 / 组件没加载都要变成一句人话，而不是白屏。 */
-function qrMakeDraw(text) {
-    const canvas = $('qrMakeCanvas');
-    if (!canvas) throw new Error('找不到画布');
-    if (typeof qrcode !== 'function') throw new Error('二维码组件没加载');
-    const qr = qrcode(0, 'M');   // 0 = 按内容自动挑版本（最高 40）
-    qr.addData(text);            // Byte 模式；UTF-8 由 vendor/qrcode-utf8.js 保证
-    qr.make();
-    const n = qr.getModuleCount();
-    const margin = 4;            // 静区：规范要求四周至少 4 个模块，少了扫不出
-    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-    const cell = Math.max(2, Math.floor((220 * dpr) / (n + margin * 2)));
-    const side = cell * (n + margin * 2);
-    canvas.width = side;
-    canvas.height = side;
-    canvas.style.width = Math.round(side / dpr) + 'px';
-    canvas.style.height = canvas.style.width;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, side, side);
-    ctx.fillStyle = '#000';
-    for (let r = 0; r < n; r += 1) {
-        for (let c = 0; c < n; c += 1) {
-            if (qr.isDark(r, c)) {
-                ctx.fillRect((c + margin) * cell, (r + margin) * cell, cell, cell);
-            }
-        }
-    }
-}
-
-/** 「生成二维码」：空内容**不生成**，只给一句明确提示（用户明确要求的）。 */
-function qrMakeGo() {
-    const ta = $('qrMakeText');
-    const out = $('qrOutCard');
-    const text = ((ta && ta.value) || '').trim();
-    if (!text) {
-        qrMade = '';
-        if (out) out.hidden = true;
-        qrMakeSay('还没有内容：先在别处选中文字点「读取选中内容」，或直接在上面输入 —— 空内容不会生成二维码', 'warn');
-        return;
-    }
-    try {
-        qrMakeDraw(text);
-    } catch (e) {
-        qrMade = '';
-        if (out) out.hidden = true;
-        const raw = String((e && e.message) || e || '');
-        qrMakeSay(/overflow|too (big|long)|length/i.test(raw)
-            ? '内容太长，一张二维码放不下（约 700 个汉字 / 2300 个英文字符）—— 换成短一点的内容再试'
-            : ('生成失败：' + raw), 'warn');
-        return;
-    }
-    qrMade = text;
-    const shown = text.length > 120 ? (text.slice(0, 120) + '…') : text;
-    if ($('qrOutText')) $('qrOutText').textContent = shown;
-    if (out) out.hidden = false;
-    qrMakeSay('已生成（' + text.length + ' 字）—— 用手机扫，或点下面的「复制内容」', 'ok');
-}
-
-/** 「读取选中内容」：页面上的选区优先，没有就退到剪贴板。
- *  两条都空就明说没读到，不留下一个空输入框让用户猜。 */
-async function qrPickSelection() {
-    const ta = $('qrMakeText');
-    if (!ta) return;
-    let text = qrSelCache.trim();
-    let from = '页面上选中的文字';
-    if (!text) {
-        try {
-            text = String(await invoke('clip_read_text') || '').trim();
-            from = '剪贴板';
-        } catch (_) { text = ''; }
-    }
-    if (!text) {
-        qrMakeSay('没读到内容：先在要用的地方选中文字并按 Ctrl+C 复制，再回来点这里；也可以直接在上面输入', 'warn');
-        return;
-    }
-    // 用掉一次就清掉，免得下次又拿到很久以前那次选中
-    qrSelCache = '';
-    ta.value = text;
-    syncQrMakeCount();
-    qrMakeSay('已读取' + from + '（' + text.length + ' 字），点「生成二维码」即可', 'ok');
-}
 
 /** 切换子功能：`.seg` 的选中态 + 卡片互斥显隐，一次改齐。 */
 function setQrMode(mode) {
@@ -11855,55 +11746,19 @@ function setQrMode(mode) {
     for (const el of document.querySelectorAll('[data-qrsub]')) {
         el.hidden = el.dataset.qrsub !== m;
     }
-    /* ⚠ 结果卡是特例：它虽然属于「生成」，但**只有真生成过**才该出现。
-     *   上面的循环会把同组卡片一律 `hidden = false`，于是空手切到「生成」时
-     *   会先冒出一个空画布（用户看到的是一块空白方框）。这里按 `qrMade` 再压一次。 */
-    if (m === 'make' && $('qrOutCard')) $('qrOutCard').hidden = !qrMade;
     const hint = $('qrModeHint');
     if (hint) {
         hint.textContent = m === 'make'
-            ? '把选中的文字或链接变成二维码，生成后可一键复制内容'
+            ? '把选中的文字或链接变成二维码：入口只在横条和网格页上'
             : '框选屏幕上的二维码，直接解出里面的链接或文字';
     }
-    if (m === 'make') syncQrMakeCount();
 }
 
-/* 绑定只做一次：脚本在 body 末尾，这些节点一定在。 */
+/* 只绑一个：子功能切换。生成相关按钮已经不存在，这里也就没有别的绑定。 */
 if ($('qrModeSeg')) {
     $('qrModeSeg').addEventListener('click', (e) => {
         const b = e.target.closest('button[data-qrmode]');
         if (b) setQrMode(b.dataset.qrmode);
-    });
-}
-if ($('btnQrMake')) $('btnQrMake').addEventListener('click', qrMakeGo);
-if ($('btnQrPickSel')) $('btnQrPickSel').addEventListener('click', () => { qrPickSelection(); });
-if ($('btnQrClear')) {
-    $('btnQrClear').addEventListener('click', () => {
-        if ($('qrMakeText')) $('qrMakeText').value = '';
-        qrMade = '';
-        if ($('qrOutCard')) $('qrOutCard').hidden = true;
-        syncQrMakeCount();
-        qrMakeSay('还没有生成。填入内容后点「生成二维码」。');
-    });
-}
-if ($('btnQrCopy')) {
-    $('btnQrCopy').addEventListener('click', async () => {
-        if (!qrMade) { qrMakeSay('还没有生成内容，没有可复制的', 'warn'); return; }
-        try {
-            await invoke('copy_text', { text: qrMade });
-            qrMakeSay('已复制到剪贴板（' + qrMade.length + ' 字）', 'ok');
-        } catch (e) {
-            qrMakeSay('复制失败：' + String(e || ''), 'warn');
-        }
-    });
-}
-if ($('qrMakeText')) {
-    $('qrMakeText').addEventListener('input', () => {
-        syncQrMakeCount();
-        const cur = ($('qrMakeText').value || '').trim();
-        if (qrMade && cur !== qrMade) {
-            qrMakeSay('内容改过了，点「生成二维码」换成新的图（现在图里还是上一版）', 'warn');
-        }
     });
 }
 

@@ -4289,65 +4289,19 @@ main {
 }
 
 /* ------------------------------------------------------------------ */
-/* v2.12.2：二维码页（解析 / 生成）                                     */
+/* 二维码页（解析 / 生成）                                              */
 /*                                                                     */
-/* 只有三样东西是新的：动作按钮组 `.qract`、二维码展示区 `.qrout`、       */
-/* 编码内容那行 `.qrout-text`。其余全部复用现成的 .card / .row / .seg /  */
-/* .btn / .hint —— 这一页和旁边几页看起来必须是同一套东西。              */
+/* v2.12.5：生成那一页已经没有"生成"控件了（输入框 / 画布 / 复制按钮全删）， */
+/* 原来给它们配的 `.qract` / `.qrout` / `.qrout-text` / `.hint.ok|warn`     */
+/* 一并删掉 —— 留着就是死样式，以后还会被人照着抄回去。                     */
+/* 现在这一页只有：顶部「解析 / 生成」切换条 + 各子功能的说明卡片，           */
+/* 全部复用现成的 .card / .row / .seg / .hint / .btn。                      */
 /* ------------------------------------------------------------------ */
 
-/* 一排动作按钮靠右对齐。窄窗口（600px 最小宽）下允许换行，不挤成一条。 */
-.qract {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
-/* 二维码展示区：居中的白色方块。
- * 二维码必须**白底**，暗色主题下也不能跟着变 —— 扫描器按反差找码，
- * 深底浅码很多机型直接识别不出来。所以这里写死 #fff，只给边框/阴影跟主题走。 */
-.qrout {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px 0 6px;
-}
-
-.qrout canvas {
-    display: block;
-    width: 220px;
-    height: 220px;
-    padding: 10px;
-    box-sizing: content-box;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
-    /* 模块是整数像素画上去的，缩放时别让浏览器做插值糊成一片 */
-    image-rendering: pixelated;
-}
-
-/* 生成页的状态行三态：默认灰（.hint 自带）、成功绿、提醒红。
- * 颜色只是辅助，文案本身已经把话说全 —— 色弱用户读字也够。 */
-.hint.ok { color: var(--ok); }
-.hint.warn { color: var(--danger); }
-
-/* 编码内容那一行：单行省略，长链接不要把卡片撑开 */
-.qrout-text {
-    display: block;
-    max-width: 380px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* 宽窗口下 `.pane` 会变成两列网格。这两类卡片必须跨满整行：
- *   · 顶部那条「解析 / 生成」切换 —— 它是一页的标题行，缩在左半列既不像标题、
- *     又会让右边的「解析」卡片跑到它旁边去；
- *   · 「生成」那一组（输入卡 + 结果卡）—— 输入框和二维码都该占满宽度，
- *     挤在半列里二维码会显得又小又偏，扫起来费劲。
- * 解析那两张说明卡保持并排（本来就是并列关系，两列更好读）。 */
+/* 宽窗口下 `.pane` 会变成两列网格。「解析 / 生成」那条切换是**标题行**，
+ * 必须跨满整行：缩在左半列既不像标题，还会让右边的卡片跑到它旁边去。
+ * 「生成」那张配置卡同理（里面是一排按钮，半列会挤成两行）。
+ * 解析那两张说明卡保持并排（本来就并列，两列更好读）。 */
 .pane[data-pane="qr"] > .card:first-child,
 .pane[data-pane="qr"] .card[data-qrsub="make"] {
     grid-column: 1 / -1;

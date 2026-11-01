@@ -12390,6 +12390,12 @@ fn open_qrgen_window() {
 /// 用户在别处 Ctrl+C 复制过内容、再点这一格，同样应该能生成。
 #[crate::t::command]
 fn qrgen_show(text: Option<String>) {
+    /* 和 qr_start / ocr_start 同一道权限闸：锁屏期间不许生成 —— 否则"锁着屏
+     * 还能把剪贴板内容变成二维码弹出来"，启动密码就形同虚设。 */
+    if app_locked() {
+        focus_lock_window();
+        return;
+    }
     let given = text.unwrap_or_default().trim().to_string();
     let mut src = "选中的文字";
     let mut body = given;
