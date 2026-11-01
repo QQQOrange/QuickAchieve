@@ -5667,11 +5667,93 @@ enginesEl.addEventListener('click', (e) => {
     if (pickIds.length) pickClear();
 }, true);
 
+/* ================================================================== */
+/* v2.21.0：悬停提示（自绘弹出窗，不是页内气泡）                          */
+/* ================================================================== */
+/* 原生 `title` 要**等约 1 秒**才出来，而横条上那排图标本来就长得像 —— 慢一秒
+ * 等于没提示。这里换成后端自绘的小弹窗（`win::tip`），160ms 就出。
+ *
+ * 为什么不在页内画：横条窗口是按内容紧贴着的（max-content），页内气泡会被窗口
+ * 边缘直接裁掉；要露出一截就得让窗口临时变高，而"悬停中改窗口尺寸"会把指针
+ * 捕获和布局一起抖坏。自绘窗是独立顶层窗，不受横条大小约束，也不占额外进程。
+ *
+ * ⚠ 只认 `.ico`：网格页的格子（`.qs-gcell`）本来就有自己的说明，别混进来。 */
+const HOVER_TIP_MS = 160;
+let hoverTipTimer = 0;
+let hoverTipEl = null;
+let hoverTipShown = false;
+
+/** 跟不跟随深色：横条是 `.stage.qs-dark` 时用深色底，否则浅色底。 */
+function hoverTipDark() {
+    const stage = document.querySelector('.stage');
+    return !!(stage && stage.classList.contains('qs-dark'));
+}
+
+/** 收起提示，并把原生 title **还回去**（我们只是暂时摘掉它防重复）。 */
+function hoverTipHide() {
+    if (hoverTipTimer) {
+        clearTimeout(hoverTipTimer);
+        hoverTipTimer = 0;
+    }
+    if (hoverTipEl) {
+        const t = hoverTipEl.dataset.nativeTip;
+        if (t) {
+            hoverTipEl.setAttribute('title', t);
+            delete hoverTipEl.dataset.nativeTip;
+        }
+        hoverTipEl = null;
+    }
+    /* 没显示过就别发 IPC —— 鼠标扫过一排图标会连着几十次 pointerover/out，
+     * 每次都发一条命令纯属浪费。 */
+    if (hoverTipShown) {
+        hoverTipShown = false;
+        invoke('bar_tip_hide').catch(() => { });
+    }
+}
+
+function hoverTipShow(el) {
+    const text = (el.getAttribute('title') || '').trim();
+    if (!text) return;
+    /* 摘掉原生 title：不摘的话系统提示会在 ~1 秒后再补一条一模一样的，
+     * 用户看到的是"提示闪两次"。离开时 hoverTipHide 会还回去。 */
+    el.dataset.nativeTip = text;
+    el.removeAttribute('title');
+    hoverTipEl = el;
+    const r = el.getBoundingClientRect();
+    hoverTipShown = true;
+    invoke('bar_tip_show', {
+        x1: r.left,
+        y1: r.top,
+        x2: r.right,
+        y2: r.bottom,
+        dpr: window.devicePixelRatio || 1,
+        dark: hoverTipDark(),
+        text: text,
+    }).catch(() => { });
+}
+
+enginesEl.addEventListener('pointerover', (e) => {
+    const el = e.target && e.target.closest ? e.target.closest('.ico') : null;
+    if (!el || el === hoverTipEl) return;
+    hoverTipHide();
+    // 拖动中不弹：提示会挡着看落点
+    if (barDrag) return;
+    hoverTipTimer = setTimeout(() => hoverTipShow(el), HOVER_TIP_MS);
+}, true);
+
+enginesEl.addEventListener('pointerout', (e) => {
+    const el = e.target && e.target.closest ? e.target.closest('.ico') : null;
+    if (!el) return;
+    // 在图标内部挪动（换到子元素）不算离开
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    hoverTipHide();
+}, true);
+
 /* 换了一段文字 = 新一轮：上一段的勾选不该跟过来。
  * （`qs://hidden` 也清 —— 横条重新弹出时必须是干净状态，不然用户会看到
  *   两颗凭空高亮的图标，完全想不起来是自己什么时候点的。） */
 listen('qs://text', () => pickClear());
-listen('qs://hidden', () => pickClear());
+listen('qs://hidden', () => { pickClear(); hoverTipHide(); });
 
 /* ================================================================== */
 /* v2.17.0：长按拖动重排横条                                             */
@@ -5737,6 +5819,7 @@ function beginBarDrag(x, y) {
      * 窗口先被收掉的话，这一拖就断在半路，看起来像"拖出去就崩"。 */
     barDrag.holdOn = true;
     invoke('bar_drag_hold', { on: true }).catch(() => { });
+    hoverTipHide();
     jlogDrag('lift ' + (el.dataset.rkey || el.dataset.engine || 'sep'));
 }
 

@@ -16901,6 +16901,54 @@ fn window_debug() -> String {
     out
 }
 
+/* ================================================================== */
+/* v2.21.0：横条悬停提示                                                */
+/* ================================================================== */
+/// 在某颗图标旁边弹一条提示。参数是**页面客户区**里的图标矩形（CSS px）。
+///
+/// 为什么坐标换算放在这里、而不是页面上算：页面只知道 clientX/clientY，
+/// 不知道横条窗口在屏幕上的位置；`client_to_screen` 只有这边能做。
+///
+/// 为什么不在页内画：横条窗口是按内容紧贴着的（max-content），页内气泡会被
+/// 窗口边缘裁掉。上一版试过系统 tooltip（`TTM_ADDTOOL` 在 Rust 里恒返回 0），
+/// 这一版改成**自绘弹出窗**（见 `win::tip`），彻底绕开工具控件。
+#[crate::t::command]
+fn bar_tip_show(x1: f64, y1: f64, x2: f64, y2: f64, dpr: f64, dark: bool, text: String) {
+    if text.trim().is_empty() {
+        return;
+    }
+    let Some(a) = APP.get().cloned() else { return };
+    let d = if dpr.is_finite() && dpr > 0.0 { dpr } else { 1.0 };
+    // CSS px → 物理 px：先算好再进闭包（闭包要 'static，不能借用外面的 d）
+    let q = |v: f64| (v * d).round() as i32;
+    let (ix1, iy1, ix2, iy2) = (q(x1), q(y1), q(x2), q(y2));
+    /* ⚠ 必须回主线程：窗口是在主线程建的，`WM_PAINT` 也由主线程的消息泵派发。
+     *   在工作线程上 SetWindowPos 虽能成功，但绘制会缺一帧（窗口先空着）。 */
+    let _ = a.run_on_main_thread(move || {
+        let h = bar_hwnd();
+        if h.0.is_null() {
+            return;
+        }
+        let (ax1, ay1) = win::client_to_screen(h, ix1, iy1);
+        let (ax2, ay2) = win::client_to_screen(h, ix2, iy2);
+        win::tip::show(h, ax1, ay1, ax2, ay2, d, dark, &text);
+    });
+}
+
+/// 收起悬停提示（离开图标 / 开始拖动 / 横条收起时都调）。
+#[crate::t::command]
+fn bar_tip_hide() {
+    let Some(a) = APP.get().cloned() else { return };
+    let _ = a.run_on_main_thread(|| win::tip::hide());
+}
+
+/// 当前提示窗状态 `vis=0/1 rect=x,y,w,h`。**只给自检用** —— 探针要靠它证明
+/// "提示真的出来了、在哪个位置、多大"，而不是只看日志里那句 show。
+#[crate::t::command]
+fn bar_tip_rect() -> String {
+    win::tip::debug_state()
+}
+
 #[crate::t::command]
 fn bar_drag_hold(on: bool) {
     BAR_DRAG_HOLD.store(on, Ordering::SeqCst);
@@ -20613,6 +20661,9 @@ fn main() {
             clip_read_text,
             toggle_bar_engine,
             bar_drag_hold,
+            bar_tip_show,
+            bar_tip_hide,
+            bar_tip_rect,
             window_debug,
             move_bar_item,
             bar_hold,

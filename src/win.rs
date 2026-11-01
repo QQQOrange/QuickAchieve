@@ -3956,3 +3956,394 @@ pub fn window_info(h: HWND) -> String {
         )
     }
 }
+
+
+/* ================================================================== */
+/* v2.21.0：悬停提示 —— 自绘弹出窗                                      */
+/* ================================================================== */
+/*
+ * 上一版用系统 tooltip（`tooltips_class32` + `TTM_ADDTOOL`）失败了：Rust 里
+ * `ADDTOOL` **恒返回 0**，而同一份结构体、同一个句柄用 Python/ctypes 走同一路径
+ * 却返回 1（`TTM_SETMAXTIPWIDTH` 也能正常返回 -1，说明消息通路没问题）。
+ * 那说明问题在 windows-rs 那条调用路径与 TTM 的交互上，不在我们的参数。
+ *
+ * 所以这一版**完全绕开 TTM**：自己注册一个窗口类、自己 `WM_PAINT` 里画。
+ *   好处：不依赖任何工具控件的内部语义，出问题也只看得到自己的代码；
+ *   代价：字体、颜色、行高都得自己管（下面这些常量就是）。
+ *
+ * 为什么不用页内气泡：横条窗口是按内容**紧贴**着长的（max-content），页内画的
+ * 气泡会被窗口边缘裁掉；要露出一截就得让窗口临时变高，而"悬停/拖动中改窗口
+ * 尺寸"会把指针捕获和布局一起抖坏。
+ */
+
+/// 把客户区坐标换算成屏幕坐标（提示窗要的是屏幕坐标）。
+pub fn client_to_screen(h: HWND, x: i32, y: i32) -> (i32, i32) {
+    let mut p = POINT { x, y };
+    unsafe {
+        let _ = ClientToScreen(h, &mut p);
+    }
+    (p.x, p.y)
+}
+
+pub mod tip {
+    #![allow(non_snake_case)]
+
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, Ordering};
+    use std::sync::{Mutex, Once};
+    use windows::core::w;
+    use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+    use windows::Win32::Graphics::Gdi::{
+        BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawTextW,
+        EndPaint, FillRect, GetDC, ReleaseDC, SelectObject, SetBkMode, SetTextColor, SetWindowRgn,
+        CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, DEFAULT_CHARSET, DT_CALCRECT, DT_NOPREFIX,
+        DT_WORDBREAK, HDC, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT, TRANSPARENT,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowRect, RegisterClassW,
+        SetWindowPos, ShowWindow,
+        CW_USEDEFAULT, HTTRANSPARENT, HWND_TOPMOST, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE,
+        WM_ERASEBKGND, WM_NCHITTEST, WM_PAINT, WNDCLASSW, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    };
+
+    /// 窗口类名。带前缀避免和别的程序的类名撞车。
+    const CLASS: &str = "QuickAchieveTipWnd";
+
+    static TIP_HWND: AtomicIsize = AtomicIsize::new(0);
+    static TIP_READY: AtomicBool = AtomicBool::new(false);
+    static TIP_TEXT: Mutex<String> = Mutex::new(String::new());
+    static TIP_DARK: AtomicBool = AtomicBool::new(true);
+    /// 缓存字体：每次悬停都新建一个 HFONT 会造成大量 GDI 对象（进程有 10k 上限）。
+    static TIP_FONT: AtomicIsize = AtomicIsize::new(0);
+    static TIP_FONT_PX: AtomicI32 = AtomicI32::new(0);
+
+    fn font_for(px: i32) -> isize {
+        let cur = TIP_FONT.load(Ordering::SeqCst);
+        if cur != 0 && TIP_FONT_PX.load(Ordering::SeqCst) == px {
+            return cur;
+        }
+        unsafe {
+            // 负高度 = 字符高度（不是行高），这样"13px"和网页里的 font-size 对得上
+            let f = CreateFontW(
+                -px,
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY,
+                0,
+                w!("Microsoft YaHei UI"),
+            );
+            if f.0.is_null() {
+                return 0;
+            }
+            if cur != 0 {
+                let _ = DeleteObject(HGDIOBJ(cur as *mut _));
+            }
+            TIP_FONT.store(f.0 as isize, Ordering::SeqCst);
+            TIP_FONT_PX.store(px, Ordering::SeqCst);
+            f.0 as isize
+        }
+    }
+
+    /// 画一帧。`w / h` 是客户区尺寸，全部内容都在这里画完 —— 不留任何底色。
+    unsafe fn paint(hdc: HDC, w: i32, h: i32, pad: i32, font_px: i32) {
+        let dark = TIP_DARK.load(Ordering::SeqCst);
+        // COLORREF 是 0x00BBGGRR；这里三个通道取值相同，所以直接写同一个数
+        let (bg, fg, bd) = if dark {
+            (0x0024_2424u32, 0x00F2_F2F2u32, 0x0045_4545u32)
+        } else {
+            (0x00FF_FFFFu32, 0x001E_2027u32, 0x00DA_DCE2u32)
+        };
+
+        // ① 整块先铺边框色，再往里缩 1px 铺底色 —— 这就是一圈 1px 描边
+        let b1 = CreateSolidBrush(COLORREF(bd));
+        let full = RECT { left: 0, top: 0, right: w, bottom: h };
+        FillRect(hdc, &full, b1);
+        let _ = DeleteObject(HGDIOBJ(b1.0));
+
+        let b2 = CreateSolidBrush(COLORREF(bg));
+        let inner = RECT { left: 1, top: 1, right: w - 1, bottom: h - 1 };
+        FillRect(hdc, &inner, b2);
+        let _ = DeleteObject(HGDIOBJ(b2.0));
+
+        // ② 文字
+        let text = TIP_TEXT.lock().map(|g| g.clone()).unwrap_or_default();
+        if text.is_empty() {
+            return;
+        }
+        let mut buf: Vec<u16> = text.encode_utf16().collect();
+
+        let font = font_for(font_px);
+        let old = if font != 0 {
+            SelectObject(hdc, HGDIOBJ(font as *mut _))
+        } else {
+            HGDIOBJ(std::ptr::null_mut())
+        };
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, COLORREF(fg));
+        let mut rc = RECT {
+            left: pad,
+            top: pad,
+            right: w - pad,
+            bottom: h - pad,
+        };
+        DrawTextW(hdc, &mut buf, &mut rc, DT_WORDBREAK | DT_NOPREFIX);
+        if !old.0.is_null() {
+            SelectObject(hdc, old);
+        }
+    }
+
+    unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        match msg {
+            WM_PAINT => {
+                let mut ps = PAINTSTRUCT::default();
+                let hdc = BeginPaint(hwnd, &mut ps);
+                if !hdc.0.is_null() {
+                    let mut r = RECT::default();
+                    let _ = GetClientRect(hwnd, &mut r);
+                    let (w, h) = (r.right - r.left, r.bottom - r.top);
+                    // 内边距与字号按窗口高度反推：h = 2*pad + 行高
+                    let font_px = TIP_FONT_PX.load(Ordering::SeqCst).max(11);
+                    let pad = ((h - (font_px + font_px / 3)) / 2).max(3);
+                    paint(hdc, w, h, pad, font_px);
+                    let _ = EndPaint(hwnd, &ps);
+                }
+                LRESULT(0)
+            }
+            // 自己整块重画，别让系统再刷一次底（会闪）
+            WM_ERASEBKGND => LRESULT(1),
+            // 鼠标穿透：提示窗永远不该抢点击，也不该让指针"离开图标"而反复闪
+            WM_NCHITTEST => LRESULT(HTTRANSPARENT as isize),
+            _ => DefWindowProcW(hwnd, msg, wp, lp),
+        }
+    }
+
+    fn ensure() -> Option<HWND> {
+        let h = TIP_HWND.load(Ordering::SeqCst);
+        if h != 0 {
+            return Some(HWND(h as *mut core::ffi::c_void));
+        }
+        let mut ok = false;
+        TIP_READY.store(false, Ordering::SeqCst);
+        unsafe {
+            static REG: Once = Once::new();
+            REG.call_once(|| {
+                let hinst = windows::Win32::System::LibraryLoader::GetModuleHandleW(None)
+                    .map(|m| HINSTANCE(m.0))
+                    .unwrap_or_default();
+                let wc = WNDCLASSW {
+                    style: Default::default(),
+                    lpfnWndProc: Some(wndproc),
+                    cbClsExtra: 0,
+                    cbWndExtra: 0,
+                    hInstance: hinst,
+                    hIcon: Default::default(),
+                    hCursor: Default::default(),
+                    hbrBackground: Default::default(),
+                    lpszMenuName: windows::core::PCWSTR::null(),
+                    lpszClassName: w!("QuickAchieveTipWnd"),
+                };
+                let atom = RegisterClassW(&wc);
+                let _ = CLASS;
+                crate::win::log(&format!("tip: RegisterClassW -> {atom}"));
+            });
+
+            let w = CreateWindowExW(
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+                w!("QuickAchieveTipWnd"),
+                w!(""),
+                WS_POPUP,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                10,
+                10,
+                None,
+                None,
+                None,
+                None,
+            );
+            match w {
+                Ok(hwnd) => {
+                    TIP_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
+                    ok = true;
+                }
+                Err(e) => crate::win::log(&format!("tip: 建窗失败 {e}")),
+            }
+        }
+        if ok {
+            Some(HWND(TIP_HWND.load(Ordering::SeqCst) as *mut core::ffi::c_void))
+        } else {
+            None
+        }
+    }
+
+    /// 量一段文字要多大：返回 (宽, 高)（物理像素）。
+    fn measure(text: &str, font_px: i32, max_w: i32) -> (i32, i32) {
+        unsafe {
+            let hdc = GetDC(None);
+            if hdc.0.is_null() {
+                return (max_w, font_px * 2);
+            }
+            let font = font_for(font_px);
+            let old = if font != 0 {
+                SelectObject(hdc, HGDIOBJ(font as *mut _))
+            } else {
+                HGDIOBJ(std::ptr::null_mut())
+            };
+            let mut buf: Vec<u16> = text.encode_utf16().collect();
+            let mut rc = RECT { left: 0, top: 0, right: max_w, bottom: 0 };
+            DrawTextW(hdc, &mut buf, &mut rc, DT_WORDBREAK | DT_NOPREFIX | DT_CALCRECT);
+            if !old.0.is_null() {
+                SelectObject(hdc, old);
+            }
+            ReleaseDC(None, hdc);
+            ((rc.right - rc.left).max(1), (rc.bottom - rc.top).max(1))
+        }
+    }
+
+    /// 在锚点矩形（屏幕坐标，通常是那颗图标的屏幕矩形）旁边显示一条提示。
+    ///
+    /// 摆放规则：**优先放在锚点上方**，上面放不下就翻到下方；水平居中并夹在
+    /// 当前显示器的工作区内。锚点用矩形而不是单点，就是为了能判断"上面还有没有
+    /// 地方"——只给一个点的话，任务栏贴着顶边时提示会被推到屏幕外。
+    pub fn show(
+        owner: HWND,
+        ax1: i32,
+        ay1: i32,
+        ax2: i32,
+        ay2: i32,
+        dpr: f64,
+        dark: bool,
+        text: &str,
+    ) -> bool {
+        let Some(hwnd) = ensure() else { return false };
+        let d = if dpr.is_finite() && dpr > 0.0 { dpr } else { 1.0 };
+        let font_px = ((13.0 * d).round() as i32).max(11);
+        let pad = ((6.0 * d).round() as i32).max(4);
+        let gap = ((8.0 * d).round() as i32).max(4);
+        let radius = ((7.0 * d).round() as i32).max(4);
+
+        TIP_DARK.store(dark, Ordering::SeqCst);
+        if let Ok(mut g) = TIP_TEXT.lock() {
+            *g = text.to_string();
+        }
+        let _ = font_for(font_px);
+
+        /* 工作区：提示不能跑到屏幕外（任务栏/多显示器都要照顾到）。
+         * 用锚点中心所在的显示器 —— 横条在哪个屏，提示就跟着在哪个屏。 */
+        let (mut wa_l, mut wa_t, mut wa_r, mut wa_b) = (0, 0, 1920, 1080);
+        unsafe {
+            let mid = POINT { x: (ax1 + ax2) / 2, y: (ay1 + ay2) / 2 };
+            let mon = MonitorFromPoint(mid, MONITOR_DEFAULTTONEAREST);
+            let mut mi = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            if GetMonitorInfoW(mon, &mut mi).as_bool() {
+                wa_l = mi.rcWork.left;
+                wa_t = mi.rcWork.top;
+                wa_r = mi.rcWork.right;
+                wa_b = mi.rcWork.bottom;
+            }
+        }
+
+        // 最大宽度：不超过工作区的 4/5，也不超过 380 CSS px（太长就折行）
+        let max_text_w = ((380.0 * d).round() as i32).min((wa_r - wa_l) * 4 / 5 - pad * 2);
+        let (tw, th) = measure(text, font_px, max_text_w.max(80));
+        let w = tw + pad * 2;
+        let h = th + pad * 2;
+
+        // 先算水平（后面判"上面放不放得下"要用 h，与水平无关）
+        let cx = (ax1 + ax2) / 2;
+        let mut left = cx - w / 2;
+        left = left.max(wa_l + 2).min((wa_r - 2 - w).max(wa_l + 2));
+
+        /* 垂直：**优先上方**（提示压着图标头顶最像"提示"）。
+         *
+         * 上方放不下时，**不能直接翻到图标下方** —— 横条自己就在图标下面，
+         * 翻下去会正好盖住横条那排图标（用户想看的正是它们）。所以退一步：
+         * 翻到**整个横条窗口的下方**。只有当上下都没有空间时才贴工作区顶。 */
+        let mut bar_r = RECT::default();
+        let bar_ok = unsafe { GetWindowRect(owner, &mut bar_r).is_ok() };
+        let above = ay1 - gap - h;
+        let top = if above >= wa_t + 2 {
+            above
+        } else if bar_ok && bar_r.bottom + gap + h <= wa_b - 2 {
+            bar_r.bottom + gap
+        } else {
+            (wa_t + 2).min((wa_b - 2 - h).max(wa_t + 2))
+        };
+
+        unsafe {
+            // 圆角靠窗口区域裁出来：不裁的话四角会露出方形底色
+            let rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, radius, radius);
+            if !rgn.0.is_null() {
+                SetWindowRgn(hwnd, Some(rgn), true);
+            }
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                left,
+                top,
+                w,
+                h,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+            /* 立刻画一帧，不等 WM_PAINT 排队。
+             * 用 GetDC 直画而不是 UpdateWindow：这条路径不经过消息泵，
+             * 任何时候（哪怕是宿主事件循环正忙）都能保证"窗口一出现就是有内容的"。 */
+            let hdc = GetDC(Some(hwnd));
+            if !hdc.0.is_null() {
+                paint(hdc, w, h, pad, font_px);
+                ReleaseDC(Some(hwnd), hdc);
+            }
+        }
+        crate::win::log(&format!(
+            "tip: show ({left},{top},{w},{h}) font={font_px}px dark={dark} text={}",
+            text.chars().count()
+        ));
+        true
+    }
+
+    /// 收起。窗口不销毁，下次复用（省掉建窗那一下的延迟）。
+    pub fn hide() {
+        let h = TIP_HWND.load(Ordering::SeqCst);
+        if h == 0 {
+            return;
+        }
+        unsafe {
+            let _ = ShowWindow(HWND(h as *mut core::ffi::c_void), SW_HIDE);
+        }
+    }
+
+    /// 自检用：`vis=0/1 rect=x,y,w,h`。
+    pub fn debug_state() -> String {
+        let h = TIP_HWND.load(Ordering::SeqCst);
+        if h == 0 {
+            return "hwnd=0".into();
+        }
+        let hwnd = HWND(h as *mut core::ffi::c_void);
+        unsafe {
+            if !IsWindowVisible(hwnd).as_bool() {
+                return "vis=0".into();
+            }
+            let mut r = RECT::default();
+            let _ = GetWindowRect(hwnd, &mut r);
+            format!(
+                "vis=1 rect={},{},{},{}",
+                r.left,
+                r.top,
+                r.right - r.left,
+                r.bottom - r.top
+            )
+        }
+    }
+}

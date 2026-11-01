@@ -43,6 +43,7 @@ bundled runtime dependencies.
 | **Region action bar** | Releasing the mouse pauses: drag a corner to fine-tune, drag inside to move, then pick **recognize / translate / image search / QR code / copy image** for that region; double-click runs **the one you used last time** (this selection's own action the first time), or click a button (turn the switch off and it runs on release again) |
 | **Shift multi-select** | **Shift+click** a tile on the bar to tick it (nothing runs, the bar stays); a plain click then runs all ticked tiles **as one job** — several results for the same text without selecting it again |
 | **Long-press reorder** | Hold any tile on the bar for ~0.3 s and drag it to a new spot — the other tiles make room and the order is saved on release; separators drag too, and letting go never counts as a click. **Drag it out of the bar** and release to remove that tile (it turns red first) |
+| **Hover hints** | Rest the pointer on a tile for 0.16 s and its name appears (the system tooltip takes about a second); a self-drawn popup window that follows the light/dark theme and stays out of the way while dragging |
 | **Wrap symbols** | Wrap the selection in “” 《》 【】 `[ ]` `{ }` pairs in one click; the same pair unwraps, another pair replaces the outer one, result is copied |
 | **Icon editor** | AI auto-matting (optional models) + brush touch-up + re-run with another model + export |
 | **Custom icons** | Any engine / OCR / translation / favorite item can use your own image, and **your icons carry over across upgrades** |
