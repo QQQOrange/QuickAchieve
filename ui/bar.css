@@ -755,6 +755,28 @@ button.fav-grp-head:focus-visible {
     gap: 3px;
 }
 
+/* v2.17.0：长按拖动重排。
+   被拖的那颗留一个"坑"（半透明 + 虚线环），幽灵跟着鼠标走 ——
+   这样能一眼看出"它会落到哪"，而不是整条横条跟着乱跳。 */
+.ico.dragging {
+    opacity: .32;
+    outline: 1.5px dashed var(--qs-accent, #4C8DFF);
+    outline-offset: -1.5px;
+    transform: none !important;
+}
+/* 幽灵：fixed + 抬起来一点，不参与布局（pointer-events:none，
+   否则它自己会挡住"指针下面是哪颗格子"的判定）。 */
+.qs-drag-ghost {
+    position: fixed;
+    margin: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: .96;
+    transform-origin: center;
+    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .45));
+    will-change: transform;
+}
+
 /* v2.16.0：Shift+点击 进入「本轮并行」的那几颗 —— 描一圈蓝环 + 轻轻抬起。
    用 outline 而不是 border：border 会改变盒子尺寸，横条会跟着跳 1~2px
    （横条宽度是 max-content，任何一颗变宽整条都要重排）。 */

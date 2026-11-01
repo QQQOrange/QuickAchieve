@@ -1427,6 +1427,22 @@ function renderBar(force) {
      * 可用户根本没加过分隔线，凭什么给他画一根。
      * 现在引擎区里的每一根竖线都严格对应用户在设置里加的那一条，
      * 加几根画几根，一根都不多。 */
+
+    /* v2.17.0：给每颗格子盖一个"重排用"的 key。
+     *
+     * 为什么不直接用 `dataset.engine`：有几个内置格子（`@ocr` / `@qr` / 收藏夹…）
+     * 是**故意不填** dataset.engine 的 —— 那个字段是给右键菜单认人的，填上之后
+     * "换图标 / 从横条移除"会突然出现在它们身上。重排只关心"它是 barList 的第几项"，
+     * 所以另开一个字段。
+     *
+     * 取值方式很直接：renderBar 严格按 barList 逐项建一个子节点，所以第 i 个子
+     * 节点就是 barList[i]。用这个对应关系，比在十几个分支里各填一遍靠谱得多
+     * （漏一个分支就少一颗能拖的格子，而且很难发现）。 */
+    const stamp = barList();
+    Array.from(enginesEl.children).forEach((el, idx) => {
+        el.dataset.rkey = el.dataset.engine
+            || (el.classList.contains('sep') ? window.QS_SEP : (stamp[idx] || ''));
+    });
 }
 
 
@@ -5517,6 +5533,12 @@ function pickSync() {
 }
 
 enginesEl.addEventListener('click', (e) => {
+    /* v2.17.0：刚拖完的那一下不是"点击" —— 拦掉，否则松手就执行、横条当场消失 */
+    if (barDragMute && Date.now() < barDragMute) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+    }
     const btn = e.target.closest('.ico');
     if (!btn) return;
     const key = btn.dataset.engine || '';
@@ -5569,6 +5591,134 @@ enginesEl.addEventListener('click', (e) => {
  *   两颗凭空高亮的图标，完全想不起来是自己什么时候点的。） */
 listen('qs://text', () => pickClear());
 listen('qs://hidden', () => pickClear());
+
+/* ================================================================== */
+/* v2.17.0：长按拖动重排横条                                             */
+/* ================================================================== */
+/* 用户口径：「位置不对，我还得进设置里改，太绕了 —— 直接拖一下不就完了」。 */
+/*                                                                     */
+/* 手感与网格页一致（那边早就验证过）：**长按 320ms 才进入拖动**，不是按下就 */
+/* 拖 —— 横条上点一下就执行，如果按下即拖，普通点击会变成"抖一下就换了位置"。 */
+/* 按下后手指/鼠标一动（>5px）就取消长按，保证快速点击仍然干净。            */
+/*                                                                     */
+/* 落点是**真实移动 DOM 节点**（不是在 CSS 里平移）：flex 布局会让其余格子 */
+/* 自然让位，松手时 DOM 顺序就是最终顺序，不需要再算一次"该插到第几位"。    */
+/* 抄顺序时不自己维护数组，而是从 DOM 读（`orderFromDom`）—— 少一份要同步的  */
+/* 状态，就不会出现"眼睛看到的位置"和"存下去的顺序"不一致。                */
+const DRAG_HOLD_MS = 320;
+let barDrag = null;      // { el, sx, sy, timer, active, ghost }
+let barDragMute = 0;     // 拖动刚结束的一小段时间里屏蔽 click
+
+/** 从 DOM 读当前顺序（分隔线 = `|` 哨兵，和 bar_list 里存的是同一个字符串）。 */
+function orderFromDom() {
+    const out = [];
+    for (const el of enginesEl.children) {
+        if (el.classList && el.classList.contains('sep')) { out.push(window.QS_SEP); continue; }
+        const k = el.dataset ? (el.dataset.rkey || el.dataset.engine) : null;
+        if (k) out.push(k);
+    }
+    return out;
+}
+
+function dragCleanup() {
+    if (!barDrag) return;
+    clearTimeout(barDrag.timer);
+    if (barDrag.ghost && barDrag.ghost.parentNode) barDrag.ghost.parentNode.removeChild(barDrag.ghost);
+    if (barDrag.el) barDrag.el.classList.remove('dragging');
+    barDrag = null;
+}
+
+function beginBarDrag(x, y) {
+    if (!barDrag) return;
+    const el = barDrag.el;
+    barDrag.active = true;
+    barDrag.el.classList.add('dragging');
+    /* 幽灵：克隆一份跟着鼠标走。用 fixed + 只在 pointermove 里改 transform，
+     * 不碰 top/left —— 每帧只换一个合成层属性，拖起来才不抖。 */
+    const r = el.getBoundingClientRect();
+    const g = el.cloneNode(true);
+    g.classList.add('qs-drag-ghost');
+    g.classList.remove('dragging');
+    g.style.width = r.width + 'px';
+    g.style.height = r.height + 'px';
+    g.style.left = r.left + 'px';
+    g.style.top = r.top + 'px';
+    barDrag.ghost = g;
+    barDrag.gx = x - r.left;
+    barDrag.gy = y - r.top;
+    document.body.appendChild(g);
+    el.setPointerCapture && el.setPointerCapture(barDrag.pointerId);
+    jlogDrag('lift ' + (el.dataset.rkey || el.dataset.engine || 'sep'));
+}
+
+function jlogDrag(msg) {
+    try { invoke('log_msg', { msg: 'bar: 拖动 ' + msg }); } catch (_) { }
+}
+
+enginesEl.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.shiftKey) return;      // Shift 是"打勾"，不是拖动
+    const el = e.target.closest('.ico.engine, .sep');
+    if (!el) return;
+    barDrag = { pointerId: e.pointerId, el, sx: e.clientX, sy: e.clientY, timer: 0, active: false, ghost: null };
+    barDrag.timer = setTimeout(() => beginBarDrag(barDrag && barDrag.sx, barDrag && barDrag.sy), DRAG_HOLD_MS);
+}, true);
+
+document.addEventListener('pointermove', (e) => {
+    if (!barDrag) return;
+    if (!barDrag.active) {
+        /* 还没到长按时长就动了 → 这是一次正常点击/轻微抖动，别再等 */
+        if (Math.abs(e.clientX - barDrag.sx) > 5 || Math.abs(e.clientY - barDrag.sy) > 5) dragCleanup();
+        return;
+    }
+    const g = barDrag.ghost;
+    if (g) {
+        g.style.transform = 'translate(' + (e.clientX - barDrag.gx - parseFloat(g.style.left))
+            + 'px,' + (e.clientY - barDrag.gy - parseFloat(g.style.top)) + 'px)';
+    }
+    /* 就地换位：拿指针和每颗格子的中点比，插到第一颗"中点在指针右边"的前面 */
+    const el = barDrag.el;
+    const kids = [...enginesEl.children].filter((x) => x !== el);
+    const at = kids.findIndex((x) => {
+        const r = x.getBoundingClientRect();
+        return e.clientX < r.left + r.width / 2;
+    });
+    if (at < 0) {
+        if (enginesEl.lastElementChild !== el) enginesEl.appendChild(el);
+    } else if (kids[at] !== el.nextElementSibling) {
+        enginesEl.insertBefore(el, kids[at]);
+    }
+}, true);
+
+document.addEventListener('pointerup', (e) => {
+    if (!barDrag) return;
+    if (!barDrag.active) { dragCleanup(); return; }
+    const el = barDrag.el;
+    const key = el.classList.contains('sep') ? window.QS_SEP : (el.dataset.rkey || el.dataset.engine || '');
+    const before = (CONF && Array.isArray(CONF.barList)) ? CONF.barList.slice() : [];
+    const after = orderFromDom();
+    dragCleanup();
+    /* 拖完这一下不要再当成"点击"（否则松手就执行、横条当场消失） */
+    barDragMute = Date.now() + 400;
+
+    if (!key) return;
+    if (after.length !== before.length) {
+        /* 理论上不该发生（分隔线也算在 after 里）。真发生了就以配置为准重画，
+         * 绝不把一份"长度对不上"的顺序写回后端。 */
+        invoke('log_msg', { msg: 'bar: 拖动后长度不一致 ' + after.length + ' vs ' + before.length + '，已回滚' }).catch(() => { });
+        renderBar(true);
+        return;
+    }
+    const from = before.indexOf(key);
+    const to = after.indexOf(key);
+    if (from < 0 || to < 0 || from === to) return;
+    const same = before.every((x, i) => x === after[i]);
+    if (same) return;
+    invoke('log_msg', { msg: 'bar: 移动到 ' + from + ' -> ' + to + '（' + key + '）' }).catch(() => { });
+    invoke('move_bar_item', { from, to }).catch((err) => {
+        invoke('log_msg', { msg: 'bar: move_bar_item 失败 ' + ((err && err.message) || err) }).catch(() => { });
+        renderBar(true);
+    });
+}, true);
 
 inputQ.addEventListener('keydown', (e) => {
     /* ⚠ 输入法保护：中文/日文输入法在**上屏候选词**时也会发 Enter
