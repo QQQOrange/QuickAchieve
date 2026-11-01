@@ -2703,37 +2703,66 @@ button.fav-grp-head:focus-visible {
     z-index: 4;
 }
 
-/* v2.13.0：编辑态下**有内容的格子点了不执行功能**（要先退出编辑）——
- * 光标给成默认箭头，别让用户以为还能点开。空格的 "+" 仍然是手型（能加）。 */
-.bar.qs-grid.qs-gedit .qs-gcell:not(.qs-gempty) {
-    cursor: default;
-}
+/* v2.13.2 起，编辑态有内容的格子光标由下面的拖拽样式统一给 grab —— */
+/* 唯一来源是那段 .qs-gedit .qs-gcell:not(.qs-gempty){cursor:grab}。 */
 
-/* v2.13.1：编辑态「长按选中 → 拖动换位」。
- *   · 选中：实线强调色描边 + 淡底（和编辑态默认的虚线区分开，一眼看出"这一格
- *     现在跟着鼠标走"）；光变成抓手，松手前一直是 grabbing。
- *   · 落点：目标格加一圈强调色虚线 —— 用户要能看到"会落到哪"，不然一松手
- *     顺序变了却不知道变成了什么。 */
-.bar.qs-grid.qs-gedit .qs-gcell.qs-gsel {
-    border-style: solid;
-    border-color: var(--qs-accent, #0E7490);
-    background: var(--qs-accent-soft, rgba(14, 116, 144, .10));
-    box-shadow: 0 0 0 2px rgba(14, 116, 144, .22);
-    cursor: grab;
-}
-.bar.qs-grid.qs-gdragging .qs-gcell.qs-gsel {
-    cursor: grabbing;
-    opacity: .9;
-}
-.bar.qs-grid.qs-gedit .qs-gcell.qs-gdrop {
-    border-color: var(--qs-accent, #0E7490);
-    background: var(--qs-accent-soft, rgba(14, 116, 144, .18));
-}
-/* 拖动中别让格子里的文字被选中（长按会触发文本选择，看着像选中了半个字） */
-.bar.qs-grid.qs-gdragging,
-.bar.qs-grid.qs-gedit .qs-gcell {
+/* v2.13.2：长按拖拽换位。
+ *
+ * 三块视觉：
+ *   · `.qs-gghost`  —— 跟着指针走的"幽灵"：放大 6%、投影加深、背景不透明，
+ *                      看上去像被手指拎起来一层；
+ *   · `.qs-gph`     —— 原位置留下的"槽位"：内容隐藏、只剩强调色虚线框；
+ *                      它会被搬到插入点，所以用户看到的空位就是"松手会落到哪"；
+ *   · `.qs-gdragging` —— 拖拽期间关掉格子的 CSS transition：
+ *                      格子本来有 `transform .06s` 过渡，会和 FLIP 动画抢，
+ *                      表现就是"追着跑、抖一下"。
+ */
+.bar.qs-grid .qs-gcell {
+    /* 触屏上按住拖动时不要触发滚动 / 长按菜单：Pointer Events 才不会被系统抢走 */
+    touch-action: none;
     -webkit-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.bar.qs-grid.qs-gdragging .qs-gcell {
+    transition: none;
+}
+
+/* 幽灵：被拎起来的那一份 */
+.qs-gghost {
+    position: fixed;
+    margin: 0;
+    z-index: 999;
+    pointer-events: none;
+    opacity: .98;
+    border-radius: var(--gr, 12px);
+    /* 不透明底：不然拖过别的格子会"透底"，看不出它在上面。
+     * `--qs-bg` 是 .stage 上的不透明底色（浅色 #FFFFFF / 深色 #1E1F24），
+     * 幽灵就挂在 .stage 里，所以这两套都能取到。 */
+    background: var(--qs-bg, #ffffff);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, .28), 0 3px 8px rgba(0, 0, 0, .18);
+    will-change: transform;
+    transform-origin: 50% 50%;
+    overflow: hidden;
+}
+
+/* 槽位：松手会落在这里。
+ * 底色用 `color-mix` 从强调色算出来 —— 不用 `--qs-accent-soft`：
+ * 那个变量在有些主题里不存在，会退回一个**固定青色**，和边框的蓝色对不上
+ * （实测槽位"蓝框青底"）。color-mix 在 WebView2(Chromium 156) 上完全支持。 */
+.bar.qs-grid .qs-gcell.qs-gph {
+    background: rgba(14, 116, 144, .14);
+    background: color-mix(in srgb, var(--qs-accent, #0E7490) 14%, transparent);
+    border: 1px dashed var(--qs-accent, #0E7490);
+    box-shadow: none;
+}
+.bar.qs-grid .qs-gcell.qs-gph > * {
+    visibility: hidden;
+}
+/* 编辑态下"有内容的格子"不再是"点了没反应"的箭头：现在长按能拖，光标直接给抓手 */
+.bar.qs-grid.qs-gedit .qs-gcell:not(.qs-gempty) {
+    cursor: grab;
 }
 
 .bar.qs-grid .qs-gdel {

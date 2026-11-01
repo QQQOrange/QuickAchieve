@@ -4720,68 +4720,243 @@ function gridCellClick(fn) {
     };
 }
 
-/* ---------------- 编辑模式：长按选中 + 拖动换位（v2.13.1） ----------------
+/* ---------------- 网格：长按拖拽换位（v2.13.2） ----------------
  *
- * 用户口径：「在编辑模式下支持长按某一项进行选中，选中后可拖动调整该项的顺序，
- * 松手后正确更新并保存新位置。」
+ * 用户口径：
+ *   ① 长按某一项拖动时，**被按的那一项实时跟着鼠标/手指走**，有悬浮抬起的感觉；
+ *   ② 其余项随插入位置**自动让位**，带平滑过渡，能看清会插到哪儿；
+ *   ③ 长按到阈值就**自动进编辑模式**，不用先点 ✏️；
+ *   ④ 松手平滑归位到最终位置，并落库。
  *
- * 为什么用"长按"而不是直接拖动：
- *   · 编辑态下点格子本来就有事做（提示"先退出编辑"），短按/长按必须能区分开，
- *     否则用户想点一下看看就会被判定成拖动；
- *   · 横条窗口很窄，格子之间没有空隙，从按下那一刻就跟随指针会让人手一抖就把
- *     相邻格子换了位置（误操作代价是"内容顺序被悄悄改了"）。
+ * 做法（一套 DOM 就够，不做虚拟层）：
+ *   · 按下 → 起一个 380ms 计时器（期间移动超过 8px 就取消 = 用户不是想拖）；
+ *   · 计时器到点 → 若是只读态，**不重画地**切进编辑态（重画会把被按的那颗换掉）；
+ *   · 克隆一份 `.qs-gghost` 挂到 body，`position:fixed` 定位在原格子上，
+ *     之后只改 transform 跟指针（rAF 合帧，1:1 跟随，不卡）；
+ *   · 原格子变成"槽位"（`.qs-gph`，内容隐藏 + 虚线框）：它在文档流里被搬来搬去，
+ *     于是**其余格子自动重新排列**（这是最省事也最稳的让位方式）；
+ *   · 每次搬动前后各量一次兄弟格子的位置 → 用 FLIP 反向位移 + 150ms 动画补间，
+ *     就是"平滑让位"；
+ *   · 松手 → 幽灵从指针位置补间到槽位，落定后移除幽灵、恢复槽位内容、
+ *     把顺序写回 `set_grid_items`，最后重画一次（这时才补上编辑态的 × 按钮）。
  *
- * 交互：
- *   · 按住 420ms 不动 → 该格**选中**（虚线高亮 + 抬起手感），进入可拖动状态；
- *     松手不移动 = 只是选中，什么都不保存；
- *   · 拖动经过别的格子时，目标格出现"落到这里"的高亮；
- *   · 松手 → 把这一项移到目标位置，`set_grid_items` 落库，重画；
- *   · 选中态下再按住同一格可以**立刻**拖动（不用再等 420ms）；
- *   · 退出编辑 / 切页 / 关网格都会清掉选中与拖动状态。
+ * 触屏与鼠标走同一套 Pointer Events；`touch-action:none` 保证触摸拖动时不滚动，
+ * 不会半路被手势打断（那是"错位/跳变"最常见的来源）。
  */
-const GRID_LONGPRESS_MS = 420;
-/** 长按照判定前允许的抖动（px）：超过就认为是"想滚动/手滑"，不进入拖动。 */
+const GRID_LONGPRESS_MS = 380;
+/** 长按成立前允许的抖动（px）：超过就当成"想点/想划"，不进入拖拽。 */
 const GRID_PRESS_SLOP = 8;
+/** 其余格子让位、幽灵归位的动画时长。 */
+const GRID_FLIP_MS = 150;
 
-/** 当前的按下/拖动状态；null = 没按。 */
+/** 按下候选（还没到长按阈值）：{ cell, idx, x0, y0, pointerId, timer } */
+let gridPress = null;
+/** 正在拖拽：{ cell, ghost, from, cur, baseL, baseT, offX, offY, x, y, raf, pointerId } */
 let gridDrag = null;
-/** 拖动刚结束时抑制一次 click —— 否则松手会再弹一句"编辑中：先退出编辑"。 */
+/** 拖拽刚结束的那一下 click 要吞掉，否则会再弹一句"编辑中：先退出编辑"。 */
 let gridDragAteClick = false;
 
-function gridDragClearVisual() {
-    for (const el of barEl.querySelectorAll('.qs-gdrop')) el.classList.remove('qs-gdrop');
-    barEl.classList.remove('qs-gdragging');
+/** 幽灵挂哪儿：`.stage` 里有主题变量；退路才是 body。 */
+function gridGhostHost() {
+    return document.querySelector('.stage') || document.body || document.documentElement;
 }
 
-/** 清掉选中/拖动（退出编辑、切页、关网格时调）。 */
+/** 网格里"有内容"的格子（DOM 顺序 = items 顺序）。 */
+function gridDragCells() {
+    return Array.prototype.slice.call(enginesEl.querySelectorAll('.qs-gcell'))
+        .filter((c) => !c.classList.contains('qs-gempty'));
+}
+
+/** 切进编辑态但**不重画** —— 拖拽途中重画会把被按住的那颗格子换掉，拖拽当场断。 */
+function gridEnterEditSilent() {
+    if (gridEdit) return;
+    gridEdit = true;
+    barEl.classList.add('qs-gedit');
+    const b = document.getElementById('qsGridEdit');
+    if (b) {
+        b.classList.add('on');
+        b.title = '退出编辑（回到只读）';
+    }
+    win_log('grid: 长按进入编辑模式（拖拽换位）');
+}
+
+/** 清掉按下/拖拽的一切痕迹（退出编辑、切页、关网格、配置重画时都要调）。 */
 function gridDragReset() {
-    if (gridDrag && gridDrag.timer) clearTimeout(gridDrag.timer);
-    gridDrag = null;
-    gridDragClearVisual();
-    for (const el of barEl.querySelectorAll('.qs-gsel')) el.classList.remove('qs-gsel');
+    if (gridPress) {
+        if (gridPress.timer) clearTimeout(gridPress.timer);
+        gridPress = null;
+    }
+    if (gridDrag) {
+        if (gridDrag.raf) cancelAnimationFrame(gridDrag.raf);
+        try { gridDrag.ghost.remove(); } catch (_) { /* 已经不在树上 */ }
+        try { gridDrag.cell.classList.remove('qs-gph'); } catch (_) { }
+        gridDrag = null;
+    }
+    barEl.classList.remove('qs-gdragging');
+    for (const el of barEl.querySelectorAll('.qs-gph,.qs-gsel,.qs-gdrop')) {
+        el.classList.remove('qs-gph', 'qs-gsel', 'qs-gdrop');
+    }
 }
 
-/** 把第 from 项挪到第 to 项的位置并保存（顺序 = 网格里的阅读顺序）。 */
-async function gridMoveItem(from, to) {
+/** 把幽灵挪到指针处（只改 transform，rAF 合帧）。 */
+function gridDragPaint() {
+    const st = gridDrag;
+    if (!st) return;
+    st.raf = 0;
+    const dx = st.x - st.offX - st.baseL;
+    const dy = st.y - st.offY - st.baseT;
+    st.ghost.style.transform = 'translate3d(' + dx + 'px,' + dy + 'px,0) scale(1.06)';
+}
+
+function gridDragQueuePaint() {
+    const st = gridDrag;
+    if (!st || st.raf) return;
+    st.raf = requestAnimationFrame(gridDragPaint);
+}
+
+/** 开始拖拽：造幽灵 + 把原格子变成槽位。 */
+function gridDragStart() {
+    const p = gridPress;
+    if (!p) return;
+    gridPress = null;
+    const cell = p.cell;
+    if (!cell || !document.contains(cell)) return;
+    // ③ 长按即自动进编辑态（不重画）
+    gridEnterEditSilent();
+    const rect = cell.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const ghost = cell.cloneNode(true);
+    ghost.classList.remove('qs-gsel', 'qs-gdrop', 'qs-gph');
+    ghost.classList.add('qs-gghost');
+    ghost.removeAttribute('data-idx');
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = rect.top + 'px';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.height = rect.height + 'px';
+    ghost.style.transform = 'translate3d(0,0,0) scale(1)';
+    /* ⚠ 挂在 `.stage` 里，不能挂 body：主题色（--qs-bg / --qs-accent…）都定义在
+     * `.stage` 上，挂到 body 外面这些变量全是空值 —— 深色主题下幽灵会是白底。 */
+    gridGhostHost().appendChild(ghost);
+
+    cell.classList.add('qs-gph');           // 内容隐藏，只剩一个虚线槽位
+    barEl.classList.add('qs-gdragging');
+
+    gridDrag = {
+        cell,
+        ghost,
+        from: p.idx,
+        cur: p.idx,
+        baseL: rect.left,
+        baseT: rect.top,
+        // 抓取点相对格子左上角的偏移：幽灵按这个偏移跟手，手指不会"粘"在格子中心
+        offX: Math.max(0, Math.min(rect.width, p.x0 - rect.left)),
+        offY: Math.max(0, Math.min(rect.height, p.y0 - rect.top)),
+        x: p.x0,
+        y: p.y0,
+        pointerId: p.pointerId,
+        raf: 0,
+    };
+    gridDragQueuePaint();
+    showBarTip('拖动到目标位置，松手保存顺序');
+}
+
+/** 拖拽中：跟手 + 实时让位（FLIP 动画）。 */
+function gridDragMove(x, y) {
+    const st = gridDrag;
+    if (!st) return;
+    st.x = x;
+    st.y = y;
+    gridDragQueuePaint();
+
+    const el = document.elementFromPoint(x, y);
+    const over = el && el.closest ? el.closest('.qs-gcell') : null;
+    if (!over) return;                      // 拖到面板空白处：保持当前槽位
+    const cells = gridDragCells();
+    let target = cells.indexOf(over);
+    if (target < 0) {
+        // 落在空格子上 = 放到有内容的最后一位
+        if (!over.classList.contains('qs-gempty')) return;
+        target = cells.length - 1;
+        if (target < 0) return;
+    }
+    if (target === st.cur) return;
+    if (!document.contains(st.cell)) return;
+
+    // ② FLIP：先量旧位置，搬完再量新位置，用反向位移补间
+    const before = new Map();
+    for (const c of cells) before.set(c, c.getBoundingClientRect());
+
+    const ph = st.cell;
+    const ref = cells[target];
+    if (!ref || ref === ph) return;
+    if (target > st.cur) ref.after(ph);
+    else ref.before(ph);
+    st.cur = gridDragCells().indexOf(ph);
+
+    for (const c of gridDragCells()) {
+        if (c === ph) continue;
+        const b = before.get(c);
+        if (!b) continue;
+        const a = c.getBoundingClientRect();
+        const mx = b.left - a.left;
+        const my = b.top - a.top;
+        if (Math.abs(mx) < 0.5 && Math.abs(my) < 0.5) continue;
+        c.animate(
+            [{ transform: 'translate3d(' + mx + 'px,' + my + 'px,0)' }, { transform: 'none' }],
+            { duration: GRID_FLIP_MS, easing: 'cubic-bezier(.2,.7,.3,1)' }
+        );
+    }
+}
+
+/** 松手：幽灵补间到槽位 → 落定 → 落库 → 重画。 */
+function gridDragFinish() {
+    const st = gridDrag;
+    gridDrag = null;
+    if (!st) return;
+    barEl.classList.remove('qs-gdragging');
+
+    const phRect = st.cell.getBoundingClientRect();
+    const g = st.ghost;
+    const dx = phRect.left - st.baseL;
+    const dy = phRect.top - st.baseT;
+    /* ④ 归位：从指针处补间到槽位。用 transform + opacity（合成层上的属性），
+     *    不会触发布局，也就不会在动画期间抖。 */
+    g.style.transition = 'transform ' + GRID_FLIP_MS + 'ms cubic-bezier(.2,.7,.3,1), opacity 110ms linear';
+    g.style.transform = 'translate3d(' + dx + 'px,' + dy + 'px,0) scale(1)';
+    g.style.opacity = '0';
+
+    const moved = st.cur !== st.from;
+    const done = () => {
+        try { g.remove(); } catch (_) { }
+        try { st.cell.classList.remove('qs-gph'); } catch (_) { }
+        renderGrid(gridPayloadNow());     // 重画一次：补上编辑态的 × / 数据游标
+    };
+    if (!moved) {
+        // 只是长按了没挪：原样归位，不动数据
+        setTimeout(done, GRID_FLIP_MS + 20);
+        return;
+    }
+    // 先落库（不等动画）：顺序是用户的真实意图，动画只是表现层
+    gridPersistOrder(st.from, st.cur).then(() => {
+        setTimeout(done, GRID_FLIP_MS + 20);
+    });
+}
+
+/** 只把顺序写回配置（不重画），返回是否真的改了。 */
+async function gridPersistOrder(from, to) {
     const pg = gridPageNow();
     const cur = (Array.isArray(pg.items) ? pg.items : []).slice();
     if (from < 0 || from >= cur.length) return false;
     const dst = Math.max(0, Math.min(to, cur.length - 1));
     if (dst === from) return false;
-    const [it] = cur.splice(from, 1);
+    const it = cur.splice(from, 1)[0];
     cur.splice(dst, 0, it);
     try {
         await invoke('set_grid_items', { items: cur, page: pg.id || null });
         pg.items = cur;
-        renderGrid(gridPayloadNow());
         const name = (window.qsSentinelLabel && window.qsSentinelLabel(it))
             || (window.qsDisplayName ? window.qsDisplayName(it) : it);
-        /* 重画之后把"选中"落到新位置的那一格上 —— 刚拖完手还没松多久，
-         * 选中态突然消失会让人以为没生效（虽然顺序已经变了）。 */
-        try {
-            const cell = enginesEl.querySelector('.qs-gcell[data-idx="' + dst + '"]');
-            if (cell) cell.classList.add('qs-gsel');
-        } catch (_) { /* 重画异常不影响已经落库的顺序 */ }
         showBarTip('已把「' + name + '」移到第 ' + (dst + 1) + ' 格');
         return true;
     } catch (e) {
@@ -4790,102 +4965,65 @@ async function gridMoveItem(from, to) {
     }
 }
 
-/** 给一个格子挂上"长按选中 / 拖动换位"。只在编辑态调用。 */
+/** 给一颗有内容的格子挂上"长按拖拽"。只读态也要挂 —— 长按本身就是进编辑的入口。 */
 function bindGridDrag(cell, i) {
     cell.dataset.idx = String(i);
     cell.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0) return;
-        // 右上角 × 是"移出"，不参与拖动
-        if (e.target.closest && e.target.closest('.qs-gdel')) return;
-        if (gridDrag) return;   // 已经有一次按下在处理
-        const wasSel = cell.classList.contains('qs-gsel');
+        if (gridDrag) return;                         // 已经在拖了
+        if (e.button !== undefined && e.button !== 0) return;   // 只认左键 / 触摸
+        if (e.target.closest && e.target.closest('.qs-gdel')) return;   // × 是移出
+        if (gridPress) gridDragReset();
         const st = {
-            from: i,
-            to: i,
-            sx: e.clientX,
-            sy: e.clientY,
-            active: false,
-            timer: 0,
             cell,
+            idx: i,
+            x0: e.clientX,
+            y0: e.clientY,
+            pointerId: e.pointerId,
+            timer: 0,
         };
-        gridDrag = st;
-        const arm = () => {
-            if (gridDrag !== st) return;
-            st.active = true;
-            st.timer = 0;
-            // 单选：选中新的一格时，把别的选中态清掉
-            for (const el of barEl.querySelectorAll('.qs-gsel')) {
-                if (el !== cell) el.classList.remove('qs-gsel');
-            }
-            cell.classList.add('qs-gsel');
-            barEl.classList.add('qs-gdragging');
-            showBarTip('已选中：拖到目标位置松手即可换位置');
-        };
-        if (wasSel) arm();
-        else st.timer = setTimeout(arm, GRID_LONGPRESS_MS);
+        st.timer = setTimeout(() => {
+            if (gridPress === st) gridDragStart();
+        }, GRID_LONGPRESS_MS);
+        gridPress = st;
     });
 }
 
 window.addEventListener('pointermove', (e) => {
-    const st = gridDrag;
-    if (!st) return;
-    if (!st.active) {
-        // 还没到长按时长就动了 → 不是长按，直接放弃（交给正常点击）
-        if (Math.abs(e.clientX - st.sx) > GRID_PRESS_SLOP || Math.abs(e.clientY - st.sy) > GRID_PRESS_SLOP) {
-            if (st.timer) clearTimeout(st.timer);
-            gridDrag = null;
+    /* 还没到阈值：动了就取消长按 ——「按住不动」才是拖拽意图，
+     * 否则用户想点一下/滑一下手指就会被判成拖拽（误触发编辑模式）。 */
+    if (gridPress) {
+        const d = Math.hypot(e.clientX - gridPress.x0, e.clientY - gridPress.y0);
+        if (d > GRID_PRESS_SLOP) {
+            clearTimeout(gridPress.timer);
+            gridPress = null;
         }
         return;
     }
-    e.preventDefault();
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const target = el && el.closest ? el.closest('.qs-gcell') : null;
-    if (!target || !target.dataset.idx) return;
-    const to = parseInt(target.dataset.idx, 10);
-    if (!Number.isFinite(to)) return;
-    if (st.to !== to) st.to = to;
-    for (const x of barEl.querySelectorAll('.qs-gdrop')) {
-        if (x !== target) x.classList.remove('qs-gdrop');
-    }
-    if (to !== st.from) target.classList.add('qs-gdrop');
-    else target.classList.remove('qs-gdrop');
-}, { passive: false });
+    if (!gridDrag) return;
+    if (e.pointerId !== undefined && gridDrag.pointerId !== undefined
+        && e.pointerId !== gridDrag.pointerId) return;
+    gridDragMove(e.clientX, e.clientY);
+}, { passive: true });
 
-window.addEventListener('pointerup', async (e) => {
-    const st = gridDrag;
-    gridDrag = null;
-    if (!st) return;
-    if (st.timer) { clearTimeout(st.timer); st.timer = 0; }
-    if (!st.active) return;      // 只是普通点击（交给 click 那条路）
-    gridDragAteClick = true;
-    setTimeout(() => { gridDragAteClick = false; }, 0);
-    gridDragClearVisual();
-    const from = st.from;
-    const to = st.to;
-    // 松手时再取一次落点：指针可能停在格子边缘外（比如拖到面板空白处）
-    try {
-        const el = document.elementFromPoint(e.clientX, e.clientY);
-        const t = el && el.closest ? el.closest('.qs-gcell') : null;
-        if (t && t.dataset.idx) {
-            const n = parseInt(t.dataset.idx, 10);
-            if (Number.isFinite(n)) st.to = n;
-        }
-    } catch (_) { /* 取不到就用拖动过程中记下的目标 */ }
-    if (st.to === from) {
-        // 只选中、没移动：保持选中态，等用户下一步
-        st.cell.classList.add('qs-gsel');
-        return;
+window.addEventListener('pointerup', () => {
+    if (gridPress) {
+        clearTimeout(gridPress.timer);
+        gridPress = null;
+        return;                                  // 普通点击，交给 click 那条路
     }
-    await gridMoveItem(from, st.to);
+    if (!gridDrag) return;
+    gridDragAteClick = true;
+    /* 300ms 兜底清掉：鼠标的 click 一般在 pointerup 后紧接着派发，
+     * 但万一晚到，这个标记还得在（否则会误执行一次"打开这一项"）。 */
+    setTimeout(() => { gridDragAteClick = false; }, 300);
+    gridDragFinish();
 }, { capture: true });
 
-/** 编辑模式下短按落点之外的地方 → 取消选中（网格头部、空白、面板上都算）。 */
-document.addEventListener('pointerdown', (e) => {
-    if (!gridEdit) return;
-    const t = e.target;
-    if (t && t.closest && (t.closest('.qs-gcell') || t.closest('.qs-gpick') || t.closest('.qs-ghead'))) return;
-    for (const el of barEl.querySelectorAll('.qs-gsel')) el.classList.remove('qs-gsel');
-}, true);
+/* 触摸被系统抢走（来电、手势返回、切窗）→ 干净地放弃，别留半截幽灵。 */
+window.addEventListener('pointercancel', () => {
+    if (gridPress) { clearTimeout(gridPress.timer); gridPress = null; }
+    if (gridDrag) { gridDragReset(); showBarTip('拖拽已取消'); }
+});
 
 /* ---------------- 编辑模式下拖动调尺寸 ---------------- */
 
@@ -5259,9 +5397,10 @@ function renderGrid(g) {
             cell.appendChild(del);
         }
         cell.classList.add('qs-gmode-' + gridCellMode(name, g));
-        /* v2.13.1：编辑态下这一格可以"长按选中 → 拖动换位"（见 bindGridDrag）。
-         * 只在编辑态挂：只读时拖格子没有任何意义，挂了反而会让点击多一次判断。 */
-        if (gridEdit) bindGridDrag(cell, i);
+        /* v2.13.2：**只读态也挂**长按拖拽 —— 长按本身就是"进入编辑 + 开始换位"
+         * 的入口（用户要求不必先点 ✏️）。真正的编辑动作要等长按成立后才发生，
+         * 短按仍然走原来的点击（打开/搜索）。 */
+        bindGridDrag(cell, i);
         enginesEl.appendChild(cell);
     }
     /* 编辑模式下给面板挂三个"拖边调尺寸"抓手（v2.8.0，用户要求"换出的网格页
