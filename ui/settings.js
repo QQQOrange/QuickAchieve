@@ -2925,6 +2925,8 @@ const SWITCHES = [
     // 2026-10-23：划选没取到文字就不弹（误触乱弹的主要来源，默认开）
     // 2026-10-24：只管划选 —— Ctrl+C 一定弹，见 main.rs 的 ctrl_copy_bar
     ['s-barNeedText', 'barNeedText'],
+    // v2.16.0：框选后停留（可微调 + 换用途），默认开
+    ['s-regionHold', 'regionHold'],
     ['s-anchorAtMouse', 'anchorAtMouse'],
     ['s-autoStart', 'autoStart'],
     ['s-autoElevate', 'autoElevate'],

@@ -6014,6 +6014,8 @@ fn config_view() -> Value {
         "barAwayPx": cfg.bar_away_px,
         // 没取到文字就不弹（默认开）—— 误触乱弹的主要来源。
         "barNeedText": cfg.bar_need_text,
+        // v2.16.0：框选之后先停一下（可拖角微调 + 换用途）。关掉 = 松手立即执行。
+        "regionHold": cfg.region_hold,
         // v2.14.0：横条触发方式（"always" = 选中即弹 / "ctrl" = 按住 Ctrl 才弹）。
         // 两者互斥，值只有这两个。
         "barTriggerMode": cfg.bar_trigger_mode,
@@ -6277,6 +6279,8 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     if let Some(x) = n("barIdleSec") { cfg.bar_idle_sec = x.clamp(0, 300) as u32; }
     if let Some(x) = n("barAwayPx") { cfg.bar_away_px = x.clamp(0, 4000) as i32; }
     if let Some(x) = b("barNeedText") { cfg.bar_need_text = x; }
+    // v2.16.0：老备份没有这个键 → 保持当前值（默认 true）
+    if let Some(x) = b("regionHold") { cfg.region_hold = x; }
     /* v2.14.0：触发方式。老备份里没有这个键 → 保持当前值（= always），
      * 不要因为恢复一份 2026 年之前的备份就把用户改成"必须按 Ctrl"。 */
     if let Some(x) = s("barTriggerMode") {
@@ -6651,6 +6655,8 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
             cfg.bar_away_px = value.as_i64().unwrap_or(400).clamp(0, 4000) as i32
         }
         "barNeedText" => cfg.bar_need_text = value.as_bool().unwrap_or(true),
+        // v2.16.0：框选后停留（默认开）。关掉 = 松手立即执行（老行为）。
+        "regionHold" => cfg.region_hold = value.as_bool().unwrap_or(true),
         /* v2.14.0：触发方式（`always` / `ctrl`，互斥）。
          * 白名单与 sanitize 同一条口径；值不在白名单里（老页面、探针、手改）
          * 一律回 `always` —— 宁可多弹，也不能让横条因为这个值再也不弹。 */
@@ -14822,6 +14828,111 @@ fn ocr_warm() {
     ocr_say("token 已预热，下次识别少一段网络等待");
 }
 
+/* ================================================================== */
+/* v2.16.0：框选动作条                                                  */
+/* ================================================================== */
+
+/// 框选之后**按用户点的那个动作**执行（动作条按钮 / 双击的默认动作都走这里）。
+///
+/// 为什么不复用那三条命令各自的前端入口：框选页现在松手后要停一下给人调整，
+/// 真正"执行"发生在**第二下**（点动作条、或双击选区）。那一刻页面只知道
+/// "用户选了哪个动作"，不知道这轮该调哪条命令 —— 由这里统一分发。
+/// 分发出去的仍然是原来那两个函数（一行没改），老路径的行为完全不变。
+#[crate::t::command]
+fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
+    match parse_region_action(&action) {
+        RegionAction::Img => img_region(x, y, w, h, dpr),
+        RegionAction::Qr => qr_region(x, y, w, h, dpr),
+        RegionAction::Copy => region_copy_image(x, y, w, h, dpr),
+        RegionAction::Ocr => {
+            /* 不认识的 action 也走这里 —— 宁可多识别一次，也不能让用户
+             * 框完之后「什么都没发生」（那才是最糟的失败形态）。 */
+            if action != "ocr" {
+                win::log(&format!(
+                    "region_action: 不认识的 action={action:?}，按识别处理"
+                ));
+            }
+            ocr_region(x, y, w, h, dpr);
+        }
+    }
+}
+
+/// 动作条上的四个动作。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum RegionAction {
+    Ocr,
+    Img,
+    Qr,
+    Copy,
+}
+
+/// 字符串 → 动作。**白名单之外一律当 OCR**：这是"点了一定有反应"的兜底，
+/// 而不是让它静默什么都不做。
+fn parse_region_action(s: &str) -> RegionAction {
+    match s {
+        "img" => RegionAction::Img,
+        "qr" => RegionAction::Qr,
+        "copy" => RegionAction::Copy,
+        _ => RegionAction::Ocr,
+    }
+}
+
+/// 框选的那块区域直接**当图片进剪贴板**（v2.16.0）。
+///
+/// 场景：截一段表格 / 一张图要贴进聊天窗口或文档 —— 以前只能另开系统截图工具，
+/// 或者先识别成文字再复制（格式全丢）。这里走的是和 OCR 完全一样的抓图链路，
+/// 只是最后一步把字节塞进剪贴板而不是送去识别。
+#[crate::t::command]
+fn region_copy_image(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
+    if !(x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite()) {
+        win::log(&format!(
+            "region_copy: 非法坐标 x={x} y={y} w={w} h={h}，已退出框选"
+        ));
+        close_window("region");
+        ui_say("框选坐标不对，再框一次试试", 2400);
+        return;
+    }
+    let d = if dpr.is_finite() && dpr > 0.0 { dpr } else { 1.0 };
+    let (vx, vy, _, _) = win::virtual_screen();
+    let px = vx + (x * d).round() as i32;
+    let py = vy + (y * d).round() as i32;
+    let pw = ((w * d).round() as i32).max(1);
+    let ph = ((h * d).round() as i32).max(1);
+    win::log(&format!(
+        "region_copy: css=({x:.0},{y:.0},{w:.0},{h:.0}) dpr={d} -> phys=({px},{py},{pw},{ph})"
+    ));
+
+    // 先收遮罩再截图，否则那层压暗会被一起截进去（与 ocr_region 同一顺序）
+    close_window("region");
+    std::thread::spawn(move || {
+        win::wait_until(1200, || app().get_webview_window("region").is_none());
+        std::thread::sleep(Duration::from_millis(50));
+        let Some((cw, ch, pixels)) = win::grab_region(px, py, pw, ph) else {
+            ui_say("截图失败，再框一次试试", 2400);
+            return;
+        };
+        let Some(img) = image::RgbaImage::from_raw(cw, ch, pixels) else {
+            ui_say("截图数据异常，再试一次", 2400);
+            return;
+        };
+        let mut cur = std::io::Cursor::new(Vec::new());
+        if image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut cur, image::ImageFormat::Png)
+            .is_err()
+        {
+            win::log("region_copy: PNG 编码失败");
+            ui_say("图片编码失败，再试一次", 2400);
+            return;
+        }
+        let png = cur.into_inner();
+        if clip::set_image(&png) {
+            ui_say("已复制为图片", 1400);
+        } else {
+            ui_say("复制失败：剪贴板被别的程序占着", 2400);
+        }
+    });
+}
+
 /// 框选完成 → 截图 → 识别。
 ///
 /// `dpr` 是前端报上来的 devicePixelRatio；物理坐标 = 虚拟屏原点 + CSS 坐标 × dpr。
@@ -20273,6 +20384,9 @@ fn main() {
             /* v2.12.0：二维码解析（交互与 OCR 同一套） */
             qr_start,
             qr_region,
+            /* v2.16.0：框选动作条 —— 松手后由用户点的那一下决定干什么 */
+            region_action,
+            region_copy_image,
             qr_ready,
             qr_take_image,
             qr_restart,
@@ -24287,6 +24401,27 @@ mod tests {
         // 下一轮开始要能把上一轮的完成态清掉（否则新的一开就显示"已完成"）
         ocr_run_begin(&["windows".to_string()], &[]);
         assert!(!ocr_run_json()["finished"].as_bool().unwrap_or(true));
+    }
+
+    /// v2.16.0：框选动作条的分发口径。
+    ///
+    /// 关键不是"四个词都能认"，而是**认不出来的时候必须有事发生** ——
+    /// 框选页会把用户点的那一格拼成字符串发过来，一旦哪天前端多了一个动作
+    /// 而后端没跟上，静默什么都不做 = 用户框完一片死寂（最糟的失败形态）。
+    #[test]
+    fn region_action_falls_back_to_ocr() {
+        assert_eq!(parse_region_action("ocr"), RegionAction::Ocr);
+        assert_eq!(parse_region_action("img"), RegionAction::Img);
+        assert_eq!(parse_region_action("qr"), RegionAction::Qr);
+        assert_eq!(parse_region_action("copy"), RegionAction::Copy);
+        // 脏值 / 空串 / 大小写不对 —— 全部按识别处理，绝不静默
+        for bad in ["", "translate", "OCR", " img", "copy2"] {
+            assert_eq!(
+                parse_region_action(bad),
+                RegionAction::Ocr,
+                "action {bad:?} 应该回落到 OCR"
+            );
+        }
     }
 
     /// v2.14.0：划选触发的两道闸门 —— 总开关 + 触发方式（互斥）。

@@ -13,7 +13,6 @@
   "这份配置是加密的": "This config is encrypted",
   "输入导出它时用的密码": "Enter the password used when it was exported",
   "导入": "Import",
-
   "存常用文字 / 图片，点一下就复制；目录可以放进横条": "Save text and images you use often and copy them with one click; folders can be put on the bar",
   "二级目录": "subfolder",
   "放进横条": "put on the bar",
@@ -26,7 +25,6 @@
   "＋ 添加一级目录": "＋ Add top-level folder",
   "全部展开": "Expand all",
   "全部折叠": "Collapse all",
-
   "备份里有 Key / 密码 / 令牌 / 收藏内容": "Backups contain keys, passwords, tokens and favorites",
   "备份加密与跨设备恢复": "Backup encryption and cross-device restore",
   "都会加密": "are always encrypted",
@@ -96,7 +94,6 @@
   "全不选": "Select none",
   "删除选中": "Delete selected",
   "完成": "Done",
-
   "主要能力": "Capabilities",
   "划词横条 · 网格页 · 780+ 引擎 · 软件直达 · 文字识别（本地 + 多在线引擎并行） · 翻译 · 截图识图 · 收藏夹 · 二维码 · 加密备份 · WebDAV 同步": "Selection bar · Grid page · 780+ engines · App launch · OCR (local + several online engines in parallel) · Translation · Image search · Favorites · QR codes · Encrypted backup · WebDAV sync",
   "常用快捷键": "Hotkeys",
@@ -114,7 +111,6 @@
   "自动更新 每次打开软件时自动检查新版本；发现新版会提示你下载。 取消勾选后不再自动检查（仍可点右边的「检查更新」）。": "Automatic updates — check for a new version every time Quick Achieve starts and prompt you to download it. Uncheck to stop checking automatically (Check for updates still works).",
   "GitHub 个人访问令牌": "GitHub personal access token",
   "验证": "Verify",
-  "清除": "Clear",
   "60 次/小时": "60/hour",
   "5000 次/小时": "5000/hour",
   "程序内自动下载": "In-app download",
@@ -132,5 +128,7 @@
   "分享给别人是安全的": "Safe to share",
   "分享给别人是安全的：软件本体里不含任何账号信息 —— OCR 的 API Key / Secret Key、WebDAV 的账号密码都只写在本机那份 config.json 里，跟着配置走、不跟着软件走。 对方拿到的是一份「干净」的程序，第一次打开时各项凭据都是空的。": "Safe to share: the executable contains no account information. OCR API keys and WebDAV credentials live only in your local config.json, so they travel with your settings, not with the app. Whoever receives it gets a clean copy with every credential empty.",
   "想退出软件：右键托盘图标 → 退出。设置页不再放退出按钮 （没有账号体系，「退出」纯属多余入口）。": "To quit: right-click the tray icon → Quit. There is no Quit button here — without accounts it would be a redundant entry point.",
-  "第一次用？切到「帮助」页，从第一条开始看。": "New here? Open the Help tab and start from the first item."
+  "第一次用？切到「帮助」页，从第一条开始看。": "New here? Open the Help tab and start from the first item.",
+  "框选后先停一下": "Pause after selecting a region",
+  "开着：松开鼠标先不执行，四角出现手柄、旁边浮出动作条 —— 可以拖角微调，也能临时换成识别 / 识图 / 二维码 / 复制图片，双击或按回车才真正执行。关掉：松手就按当前用途直接跑（老行为）": "On: releasing the mouse does not run anything yet — corner handles appear and an action bar shows up beside the region, so you can drag a corner to fine-tune it or switch to recognize / image search / QR code / copy image; <b>double-click</b> or press Enter to run it. Off: releasing runs the current action straight away (the old behaviour)"
 }

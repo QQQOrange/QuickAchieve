@@ -52,6 +52,12 @@
                     under “<b>General → Preview</b>” and the real thing updates immediately.</li>
                 <li>Move the pointer to a tile's edge, or hold Space and drag, to move the bar; press <b>Esc</b>
                     to put it away.</li>
+                <li><b>Shift+click = run several engines in one go</b>: holding Shift while clicking a tile only
+                    <b>ticks</b> it (a blue ring appears, nothing runs, the bar stays put); once you have ticked
+                    some, a plain click on any tile runs the ticked ones <b>plus that one as a single job</b> —
+                    several results for the same text, with no need to select it again. This works for tiles
+                    bound to a model (text recognition / image search / translation); Shift+click again to
+                    untick.</li>
             </ul>
         </div>
     </details>
@@ -152,12 +158,22 @@
         <summary>⑤ Text recognition (OCR): lift text off the screen as copyable text</summary>
         <div class="help-body">
             <p>Press <b>Ctrl+Alt+O</b> (or the OCR tile on the bar) → the screen dims, drag a box around an
-               area → release and it's recognized. The result window shows the image on top and the text below;
-               when the text contains a link an “Open link” appears. To switch engines, click one in the engine
-               list on the “Text recognition” page (that one becomes the default engine).</p>
+               area → on release it <b>pauses</b>: handles appear at the corners and an action bar pops up beside
+               the region, so you can drag a corner to resize it or drag inside to move it, and switch the action
+               (recognize / image search / QR code / copy image); <b>double-click</b> or press Enter to actually
+               run it. The result window shows the image on top and the text below; when the text contains a link
+               an “Open link” appears. To switch engines, click one in the engine list on the “Text recognition”
+               page (that one becomes the default engine).</p>
+            <p>Think the extra step is a waste? Turn off “<b>Pause after selecting a region</b>” under
+               <b>General → Trigger</b> and it goes back to running the moment you release the mouse.</p>
             <p>Dragging a box around an <b>image</b> rather than around text you want to read? That's a
                different feature — see <b>⑤b Image search</b>.</p>
             <ul>
+                <li><b>The region action bar</b> is what lets one selection do several jobs: <b>recognize</b>
+                    (the current default engine / the multi-engine list), <b>image search</b>, <b>QR code</b>
+                    (decode a code inside that region) and <b>copy image</b> (straight to the clipboard, ready to
+                    paste into a chat window or a document with no loss of formatting). No need to leave, change
+                    a setting and select again just to do something else with the same region;</li>
                 <li><b>Windows built-in</b> (default): uses the OCR that ships with the system — offline, free,
                     fastest, and it needs no account. <b>Environment checks are manual</b> — to find out whether
                     this machine can use it, click “Check local OCR environment” on the “Text recognition” page;

@@ -5,8 +5,8 @@
 <meta name="color-scheme" content="light dark">
 <title>框选识别区域</title>
 <style>
-/* 这个页面的样式故意内联：整个窗口就一个遮罩 + 一个方框，不值得再拆一个 css 文件，
-   而且少一个文件就少一种「打包漏了导致一片空白」的可能。 */
+/* 这个页面的样式故意内联：整个窗口就一个遮罩 + 一个方框 + 一条动作条，
+   不值得再拆一个 css 文件，而且少一个文件就少一种「打包漏了导致一片空白」的可能。 */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -39,6 +39,24 @@ html, body {
     pointer-events: none;
 }
 
+/* 调整手柄层。**故意不接鼠标事件**（pointer-events:none）：命中判定全在 JS 里
+   按坐标算（见 hitTest）。DOM 命中会被 1.5px 的边框、半像素对齐、以及选框
+   与手柄的层叠顺序反复坑，坐标判定只有一套真值，改起来也不会自相矛盾。 */
+#frame {
+    position: fixed;
+    display: none;
+    pointer-events: none;
+}
+#frame .h {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    margin: -3.5px 0 0 -3.5px;
+    background: #4C8DFF;
+    border: 1px solid #fff;
+    border-radius: 1px;
+}
+
 #size {
     position: fixed;
     display: none;
@@ -67,12 +85,65 @@ html, body {
     white-space: nowrap;
 }
 #tip b { color: #7FB0FF; font-weight: 600; }
+
+/* ---------------- 动作条（v2.16.0） ----------------
+   松手之后浮出来，一行按钮决定「这块区域拿去干什么」。
+   位置贴着选区右下角外侧，放不下就自动翻到别的边（见 placeBar）。 */
+#actbar {
+    position: fixed;
+    display: none;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 9px;
+    background: rgba(16, 18, 24, .94);
+    box-shadow: 0 10px 26px -8px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .08) inset;
+    white-space: nowrap;
+    z-index: 10;
+}
+#actbar button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #E8EDF6;
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+#actbar button:hover { background: rgba(255, 255, 255, .12); }
+/* 默认动作（= 这次框选本来的用途）高亮：不想换用途的人直接双击就行，
+   想换的人一眼能看到「现在按下去会发生什么」。 */
+#actbar button.on { background: #4C8DFF; color: #fff; }
+#actbar button.on:hover { background: #5C99FF; }
+#actbar button .k {
+    font-size: 10.5px;
+    opacity: .72;
+    font-variant-numeric: tabular-nums;
+}
+#actbar .sep { width: 1px; align-self: stretch; margin: 2px 3px; background: rgba(255, 255, 255, .16); }
+#actbar .hint {
+    color: #9FB0C8;
+    font-size: 11.5px;
+    padding: 0 8px 0 2px;
+}
+#actbar .hint b { color: #C9D7EA; font-weight: 600; }
 </style>
 </head>
 <body>
 <div id="dim"></div>
 <div id="sel"></div>
+<div id="frame">
+    <div class="h" data-h="nw"></div><div class="h" data-h="n"></div><div class="h" data-h="ne"></div>
+    <div class="h" data-h="w"></div><div class="h" data-h="e"></div>
+    <div class="h" data-h="sw"></div><div class="h" data-h="s"></div><div class="h" data-h="se"></div>
+</div>
 <div id="size"></div>
+<div id="actbar"></div>
 <div id="tip">拖拽框选要识别的区域 · <b>Esc</b> 取消</div>
 
 <script src="i18n.js"></script>
@@ -93,14 +164,14 @@ window.addEventListener('unhandledrejection', (e) =>
 const hasTauri = !!(window.__TAURI__ && window.__TAURI__.core);
 jlog('page script start, tauri=' + hasTauri + ' dpr=' + (window.devicePixelRatio || 1));
 
-/* r54：这一轮框选是要**识图**还是要**OCR**。
+/* 这一轮框选是要**识图** / **二维码** / **OCR**。
  *
  * 靠 URL 参数区分（`region.html?mode=img`），而不是让 Rust 塞全局变量 ——
- * 同一个遮罩窗口复用两套用途，页面按参数分流到 img_region / ocr_region 两条
- * 命令。框选交互（拖框、Esc、右键、看门狗）对两者完全一样，所以只差这一句。
+ * 同一个遮罩窗口复用多套用途，页面按参数决定"默认动作"是哪一个。
+ * 框选交互（拖框、调整、Esc、右键、看门狗）对三者完全一样。
  *
- * 为什么不复制一份遮罩页面：两套要并行维护的代码迟早会对不上（这一版 OCR
- * 那边还有"失焦兜底故意不做"的实测结论），共用一份反而更不容易走样。 */
+ * v2.16.0：以前这个参数决定"唯一用途"（且不可改）；现在只决定**默认动作** ——
+ * 动作条上还能临时换成另外几种，不用退出去改设置再重框。 */
 const MODE = (function () {
     try {
         const m = /[?&]mode=([a-z]+)/.exec(window.location.search || '');
@@ -136,8 +207,13 @@ const $ = (id) => document.getElementById(id);
 
 const dim = $('dim');
 const sel = $('sel');
+const frame = $('frame');
 const sizeEl = $('size');
 const tip = $('tip');
+const actbar = $('actbar');
+
+/* 各用途的人话名字：动作条按钮、日志、出错提示共用一份，改文案只改这里。 */
+const ACT_NAME = { ocr: '识别', img: '识图', qr: '二维码', copy: '复制图片' };
 
 /* 顶部提示按用途换一句话：识图是"框完去搜图"，OCR 是"框完去认字"，
    app 是"点一下某个程序"（r59 的十字准星点选）。
@@ -148,91 +224,437 @@ tip.innerHTML = MODE === 'img'
         ? '点一下要绑定的那个程序窗口（鼠标移到目标上点左键） · <b>Esc</b> 取消'
         : '拖拽框选要识别的区域 · <b>Esc</b> 取消';
 
-let sx = 0, sy = 0, cx = 0, cy = 0;
-let dragging = false;
-let done = false;
+/* 取消阶段的提示统一走这里，免得几处各写一句、下次改文案漏掉一处 */
+const TIP_IDLE = tip.innerHTML;
 
-/** 起点/终点都换成「左上 + 宽高」，这样从右下往左上拖也一样。
+/* ------------------------------------------------------------------ */
+/* 状态                                                                */
+/* ------------------------------------------------------------------ */
+/* 阶段：
+ *   idle    —— 等用户按下鼠标开新框
+ *   drag    —— 正在拖出新框（首次按下 → 抬起）
+ *   adjust  —— 框好了、**还没执行**：可以拖角改大小、拖内部平移、选动作（v2.16.0）
+ *   committed —— 已经交给 Rust 了，页面等窗口被关掉
+ */
+let phase = 'idle';
+/* 选区几何，CSS 像素（= 屏幕上看到的位置，Rust 侧再乘 dpr）
  *
- *  ⚠ 以前这里写成 `Math.min(a, b)`，而 a/b 是 {x,y} 对象 —— 对对象求 min
- *  得到 NaN，而且返回里压根没有 h。于是发给 Rust 的是 NaN，JSON 里没有 NaN，
- *  命令反序列化直接失败、根本没执行，遮罩窗口也就永远不会关 ——
- *  用户看到的就是「点啥都没反应」。改成逐分量取。 */
-function rectOf(a, b) {
-    return {
-        x: Math.min(a.x, b.x),
-        y: Math.min(a.y, b.y),
-        w: Math.abs(a.x - b.x),
-        h: Math.abs(a.y - b.y)
-    };
-}
+ * ⚠ 只有这一份真值：绘制、命中判定、发给后端的坐标全部由它派生。
+ *   以前这里有 sx/sy/cx/cy 四个变量 + rectOf() 临时算，加"调整"之后
+ *   再这么干就会两套坐标打架（拖角时改哪几个？），所以收成一个 rect。 */
+let rect = { x: 0, y: 0, w: 0, h: 0 };
 
-/** 兜底退出：无论哪里出错，都必须把这个铺满全屏的遮罩窗口关掉。
- *  它一旦留下，用户满屏都点不动，是最糟糕的失败形态。 */
-function bail(msg) {
-    done = true;
-    dragging = false;
+/* 本次交互的起点（drag / move / resize 三种模式共用） */
+let gesture = {
+    mode: '',          // '' | new | move | nw | n | ne | w | e | sw | s | se
+    ox: 0, oy: 0,      // 按下时的指针
+    start: null,       // 按下时的 rect 快照
+};
+
+/* 框选后是否"先停一下"（配置项，默认开）。
+ *
+ * 为什么要有开关：这一版默认改成"松手先停"，好处是能微调 + 换用途；
+ * 但一定有人就喜欢"松手即走"，所以给一个开关让它能退回老行为。
+ * 读配置失败一律当 true（新行为），因为这是主路径。 */
+let holdMode = true;
+
+/* 真正执行：把这块区域交给后端，按 action 分流。 */
+let committed = false;
+function commit(action) {
+    if (committed) return;
+    committed = true;
+    phase = 'committed';
     stopBeat();
+    actbar.style.display = 'none';
+    frame.style.display = 'none';
     sel.style.display = 'none';
     sizeEl.style.display = 'none';
+
+    const r = {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        w: Math.round(rect.w),
+        h: Math.round(rect.h),
+    };
+    /* 数字必须都是有限值才敢发 —— 带着 NaN/Infinity 过去，Rust 那边
+     * 反序列化会失败，命令等于没执行，遮罩就会一直留着。 */
+    if (![r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n)) || r.w < 1 || r.h < 1) {
+        bail('框选坐标算不出来，已退出');
+        return;
+    }
+    jlog('commit action=' + action + ' ' + JSON.stringify(r));
+    tip.textContent = '正在' + (ACT_NAME[action] || '处理') + '…';
+    tip.style.display = '';
+    invoke('region_action', {
+        action: action,
+        x: r.x,
+        y: r.y,
+        w: r.w,
+        h: r.h,
+        dpr: window.devicePixelRatio || 1
+    }).catch((e) => {
+        jlog('region_action failed: ' + ((e && e.message) || e));
+        bail('没能开始' + (ACT_NAME[action] || '处理') + '，已退出框选');
+    });
+
+    // 看门狗：正常情况下 Rust 收到命令会立刻关掉这个窗口，页面随之销毁，
+    // 这个定时器也就不会跑。要是 6 秒后页面还活着，说明那条命令根本没到，
+    // 那就自己退场，绝不把用户困在满屏点不动的状态里。
+    setTimeout(() => {
+        if (committed) invoke('ocr_cancel').catch(() => { });
+    }, 6000);
+}
+
+/* 兜底退出：无论哪里出错，都必须把这个铺满全屏的遮罩窗口关掉。
+   它一旦留下，用户满屏都点不动，是最糟糕的失败形态。
+
+   ⚠ 守卫用 `bailing` 而不是 `done`：`app` 模式点一下之后会先把 done 立起来
+   （防重复识别），随后 pick_app_at 失败还要走这里报错 —— 拿 done 当守卫的话
+   那条报错就永远弹不出来，用户只看到遮罩一闪而过。 */
+let done = false;
+let bailing = false;
+function bail(msg) {
+    if (bailing) return;
+    bailing = true;
+    done = true;
+    committed = true;
+    phase = 'committed';
+    gesture.mode = '';
+    stopBeat();
+    sel.style.display = 'none';
+    frame.style.display = 'none';
+    sizeEl.style.display = 'none';
+    actbar.style.display = 'none';
     if (msg) {
         tip.textContent = msg;
         tip.style.display = '';
     }
     jlog('bail' + (msg ? ': ' + msg : ''));
-    invoke('ocr_cancel').catch(() => {});
+    invoke('ocr_cancel').catch(() => { });
+}
+
+/* ------------------------------------------------------------------ */
+/* 绘制                                                                */
+/* ------------------------------------------------------------------ */
+/* 顶到屏幕边缘就跟屏幕对齐：拖到离边 8px 以内自动贴上去。
+   截图工具的老习惯 —— 用户想框"一整块面板"时，手抖那几像素就该被吃掉。 */
+const SNAP = 8;
+function snap(v, max) {
+    if (v <= SNAP) return 0;
+    if (v >= max - SNAP) return max;
+    return v;
 }
 
 function paint() {
-    const a = { x: sx, y: sy };
-    const b = { x: cx, y: cy };
-    const rx = Math.min(a.x, b.x), ry = Math.min(a.y, b.y);
-    const rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
-
+    const r = rect;
     sel.style.display = 'block';
-    sel.style.left = rx + 'px';
-    sel.style.top = ry + 'px';
-    sel.style.width = rw + 'px';
-    sel.style.height = rh + 'px';
+    sel.style.left = r.x + 'px';
+    sel.style.top = r.y + 'px';
+    sel.style.width = r.w + 'px';
+    sel.style.height = r.h + 'px';
 
-    if (rw > 40 && rh > 24) {
+    /* 手柄：8 个，位置由 rect 算（不靠 CSS 百分比，边框宽度一变也不会偏） */
+    if (phase === 'adjust') {
+        frame.style.display = 'block';
+        frame.style.left = r.x + 'px';
+        frame.style.top = r.y + 'px';
+        frame.style.width = r.w + 'px';
+        frame.style.height = r.h + 'px';
+        for (const el of frame.children) {
+            const h = el.dataset.h;
+            const cx = (h === 'nw' || h === 'w' || h === 'sw') ? 0
+                : (h === 'ne' || h === 'e' || h === 'se') ? r.w : r.w / 2;
+            const cy = (h === 'nw' || h === 'n' || h === 'ne') ? 0
+                : (h === 'sw' || h === 's' || h === 'se') ? r.h : r.h / 2;
+            el.style.left = cx + 'px';
+            el.style.top = cy + 'px';
+            el.style.display = (r.w < 24 || r.h < 24) ? 'none' : 'block';
+        }
+    } else {
+        frame.style.display = 'none';
+    }
+
+    if (r.w > 20 && r.h > 20) {
         sizeEl.style.display = 'block';
-        sizeEl.textContent = Math.round(rw) + ' × ' + Math.round(rh);
+        sizeEl.textContent = Math.round(r.w) + ' × ' + Math.round(r.h);
         // 贴着选框上方，顶到屏幕边就挪到里面
-        const above = ry - 26;
-        sizeEl.style.left = rx + 'px';
-        sizeEl.style.top = (above > 4 ? above : ry + 6) + 'px';
+        const above = r.y - 26;
+        sizeEl.style.left = r.x + 'px';
+        sizeEl.style.top = (above > 4 ? above : r.y + 6) + 'px';
     } else {
         sizeEl.style.display = 'none';
     }
+
+    if (phase === 'adjust') placeBar();
 }
 
-document.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || done) return;
-    dragging = true;
-    sx = cx = e.clientX;
-    sy = cy = e.clientY;
+/* 动作条摆位：优先选区**右下角外侧**（不压住刚框住的内容），
+   四个方向都试一遍，哪儿放得下就放哪儿；实在都放不下就贴在视口内。 */
+function placeBar() {
+    actbar.style.display = 'flex';
+    const bw = actbar.offsetWidth || 240;
+    const bh = actbar.offsetHeight || 34;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const gap = 8;
+    const cands = [
+        [rect.x + rect.w - bw, rect.y + rect.h + gap],   // 正下方（右对齐）
+        [rect.x + rect.w + gap, rect.y + rect.h - bh],   // 右下
+        [rect.x + rect.w + gap, rect.y],                 // 右上
+        [rect.x, rect.y - bh - gap],                     // 正上方
+    ];
+    let bx = cands[0][0], by = cands[0][1], ok = false;
+    for (const [x, y] of cands) {
+        if (x >= gap && y >= gap && x + bw <= vw - gap && y + bh <= vh - gap) {
+            bx = x; by = y; ok = true; break;
+        }
+    }
+    if (!ok) {
+        // 选区几乎占满整屏（框一整页）：贴着视口右下角，别跑出屏幕
+        bx = Math.min(Math.max(gap, rect.x + rect.w - bw), vw - bw - gap);
+        by = Math.min(rect.y + rect.h + gap, vh - bh - gap);
+        if (by < gap) by = Math.min(vh - bh - gap, Math.max(gap, rect.y + 6));
+    }
+    actbar.style.left = Math.round(bx) + 'px';
+    actbar.style.top = Math.round(by) + 'px';
+}
+
+/* 光标随"指到哪儿"变：手柄上是 resize 光标，框内是 move，
+   其它地方是 crosshair（= 重新框）。这是调整阶段唯一的"可操作性提示"。 */
+const CURSOR = {
+    nw: 'nwse-resize', se: 'nwse-resize',
+    ne: 'nesw-resize', sw: 'nesw-resize',
+    n: 'ns-resize', s: 'ns-resize',
+    w: 'ew-resize', e: 'ew-resize',
+    move: 'move',
+    new: 'crosshair',
+};
+function hitTest(x, y) {
+    if (phase !== 'adjust') return 'new';
+    const { x: rx, y: ry, w: rw, h: rh } = rect;
+    const T = 7;   // 手柄吸附半径（px）
+    const nearL = Math.abs(x - rx) <= T;
+    const nearR = Math.abs(x - (rx + rw)) <= T;
+    const nearT = Math.abs(y - ry) <= T;
+    const nearB = Math.abs(y - (ry + rh)) <= T;
+    // 只有落在"选区外扩 T"的范围内，才可能是手柄
+    if (x >= rx - T && x <= rx + rw + T && y >= ry - T && y <= ry + rh + T) {
+        if (nearL && nearT) return 'nw';
+        if (nearR && nearT) return 'ne';
+        if (nearL && nearB) return 'sw';
+        if (nearR && nearB) return 'se';
+        if (nearL) return 'w';
+        if (nearR) return 'e';
+        if (nearT) return 'n';
+        if (nearB) return 's';
+        if (rw >= 24 && rh >= 24) return 'move';
+    }
+    return 'new';
+}
+
+/* ------------------------------------------------------------------ */
+/* 调整阶段的动作条                                                    */
+/* ------------------------------------------------------------------ */
+function buildBar() {
+    actbar.textContent = '';
+    const list = ['ocr', 'img', 'qr', 'copy'];
+    for (const a of list) {
+        const b = document.createElement('button');
+        b.dataset.act = a;
+        b.textContent = ACT_NAME[a];
+        // 默认动作 = 这次框选本来的用途（?mode=），高亮它
+        if (a === MODE) b.classList.add('on');
+        b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            commit(a);
+        });
+        actbar.appendChild(b);
+    }
+    const sep = document.createElement('span');
+    sep.className = 'sep';
+    actbar.appendChild(sep);
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.innerHTML = '拖角调整 · 双击<b>执行</b> · <b>Esc</b> 取消';
+    actbar.appendChild(hint);
+}
+
+/* ------------------------------------------------------------------ */
+/* 鼠标                                                                */
+/* ------------------------------------------------------------------ */
+/* 这里全部用 pointer 事件：鼠标与触屏/笔一套代码，Windows 上
+   WebView2 的 pointer 事件也走同一套命中。 */
+
+document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || done || phase === 'committed') return;
+    // 点在动作条上：交给按钮自己处理，别在这里开新框
+    if (actbar.contains(e.target)) return;
+
+    const x = e.clientX, y = e.clientY;
+    const kind = hitTest(x, y);
+
+    if (kind === 'move' || (kind !== 'new' && phase === 'adjust')) {
+        /* 调整既有选区：记下按下时的快照，后面按"指针位移"算新几何
+         * （不在 rect 上累加 —— 累加会随着取整误差一路漂移）。 */
+        gesture = { mode: kind, ox: x, oy: y, start: { ...rect } };
+        phase = 'adjust';
+        jlog('grab ' + kind + ' at ' + Math.round(x) + ',' + Math.round(y));
+        return;
+    }
+
+    /* 新框：从零开始（adjust 阶段点空白处 = 重来，符合截图工具习惯） */
+    gesture = { mode: 'new', ox: x, oy: y, start: null };
+    phase = 'drag';
+    rect = { x, y, w: 0, h: 0 };
     tip.style.display = 'none';
-    jlog('mousedown at ' + e.clientX + ',' + e.clientY);
+    actbar.style.display = 'none';
+    jlog('pointerdown at ' + Math.round(x) + ',' + Math.round(y));
     paint();
 });
 
-document.addEventListener('mousemove', (e) => {
-    if (!dragging || done) return;
-    cx = e.clientX;
-    cy = e.clientY;
-    paint();
+document.addEventListener('pointermove', (e) => {
+    if (done) return;
+    const x = e.clientX, y = e.clientY;
+
+    if (phase === 'idle' || phase === 'adjust') {
+        // 只改光标，不画任何东西（idle 时鼠标划过不该有任何反馈）
+        const kind = phase === 'adjust' ? hitTest(x, y) : 'new';
+        document.body.style.cursor = CURSOR[kind] || 'crosshair';
+        if (phase === 'adjust') {
+            // 指着动作条时别把光标改成 move
+            if (actbar.contains(e.target)) document.body.style.cursor = 'default';
+        }
+        if (!gesture.mode) return;
+    }
+    if (phase === 'drag') {
+        const sx0 = gesture.ox, sy0 = gesture.oy;
+        const x1 = snap(x, window.innerWidth), y1 = snap(y, window.innerHeight);
+        rect = {
+            x: Math.min(sx0, x1), y: Math.min(sy0, y1),
+            w: Math.abs(x1 - sx0), h: Math.abs(y1 - sy0),
+        };
+        paint();
+        return;
+    }
+    if (phase === 'adjust' && gesture.mode) {
+        const dx = x - gesture.ox, dy = y - gesture.oy;
+        const s = gesture.start;
+        const m = gesture.mode;
+        let nx = s.x, ny = s.y, nw = s.w, nh = s.h;
+        const minW = 8, minH = 8;
+        if (m === 'move') {
+            /* 整块拖出屏幕很常见（用户想挪个位置），这里只做软限制：
+             * 至少留 40px 在视口里，免得拖丢了找不回来。 */
+            nx = Math.min(Math.max(-s.w + 40, s.x + dx), window.innerWidth - 40);
+            ny = Math.min(Math.max(-s.h + 40, s.y + dy), window.innerHeight - 40);
+            rect = { x: nx, y: ny, w: s.w, h: s.h };
+        } else {
+            // 八个方向：改动哪条边由 m 里的字母决定
+            if (m.includes('w')) {
+                const left = Math.min(s.x + dx, s.x + s.w - minW);
+                nw = s.x + s.w - left; nx = left;
+            }
+            if (m.includes('e')) {
+                nw = Math.max(minW, s.w + dx);
+            }
+            if (m.includes('n')) {
+                const top = Math.min(s.y + dy, s.y + s.h - minH);
+                nh = s.y + s.h - top; ny = top;
+            }
+            if (m.includes('s')) {
+                nh = Math.max(minH, s.h + dy);
+            }
+            /* 边吸附：只吸附**被拖动的那条边**（拖右边时左边不该跟着动） */
+            if (m.includes('w') && Math.abs(nx) <= SNAP) { const right = nx + nw; nx = 0; nw = right; }
+            if (m.includes('n') && Math.abs(ny) <= SNAP) { const bottom = ny + nh; ny = 0; nh = bottom; }
+            if (m.includes('e') && Math.abs(nx + nw - window.innerWidth) <= SNAP) nw = window.innerWidth - nx;
+            if (m.includes('s') && Math.abs(ny + nh - window.innerHeight) <= SNAP) nh = window.innerHeight - ny;
+            rect = { x: nx, y: ny, w: nw, h: nh };
+        }
+        paint();
+    }
 });
 
-document.addEventListener('mouseup', (e) => {
-    if (!dragging || done) return;
-    dragging = false;
-    /* r59：`app` 模式**点一下就够了**，不要拖框 —— 在它之前分流，
-     * 否则下面"太小当误点"那段会把这个单击直接吞掉（app 模式永远触发不了）。 */
-    if (MODE === 'app') {
+document.addEventListener('pointerup', (e) => {
+    if (done || e.button !== 0 || phase === 'committed') return;
+
+    if (phase === 'drag') {
+        gesture.mode = '';
+        // 太小的框基本是误点，直接当没框过
+        if (rect.w < 8 || rect.h < 8) {
+            rect = { x: 0, y: 0, w: 0, h: 0 };
+            phase = 'idle';
+            sel.style.display = 'none';
+            frame.style.display = 'none';
+            sizeEl.style.display = 'none';
+            tip.innerHTML = TIP_IDLE;
+            tip.style.display = '';
+            return;
+        }
+        if (holdMode) {
+            // v2.16.0：停下来 —— 可以拖角微调、也能换用途
+            phase = 'adjust';
+            buildBar();
+            tip.textContent = '还能调整：拖角改大小 · 双击执行 · Esc 取消';
+            paint();
+            document.body.style.cursor = 'move';
+            jlog('adjust: ' + JSON.stringify(rect));
+        } else {
+            // 关掉「框选后停留」→ 老行为：松手就走
+            phase = 'adjust';
+            commit(MODE);
+        }
+        return;
+    }
+
+    if (phase === 'adjust') {
+        // 松手 = 结束这次移动/改大小，继续留在 adjust
+        if (gesture.mode) jlog('adjust end ' + JSON.stringify(rect));
+        gesture.mode = '';
+        paint();
+    }
+});
+
+/* 双击执行默认动作：手已经停在选区上，这一下几乎是零成本 ——
+   比"移动鼠标去找动作条按钮"快，也比按回车自然（纯鼠标）。 */
+document.addEventListener('dblclick', (e) => {
+    if (done || phase !== 'adjust') return;
+    if (actbar.contains(e.target)) return;
+    if (hitTest(e.clientX, e.clientY) === 'new') return;  // 双击空白 = 重新框，不执行
+    commit(MODE);
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        jlog('ESC pressed -> cancel');
+        bail();
+        return;
+    }
+    if (e.key === 'Enter' && phase === 'adjust') {
+        commit(MODE);
+    }
+});
+
+// 右键也当取消，符合截图工具的肌肉记忆
+document.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (done) return;
+    bail();
+});
+
+/* ------------------------------------------------------------------ */
+/* 启动：读配置 → 决定"松手是否停留"                                    */
+/* ------------------------------------------------------------------ */
+if (MODE === 'app') {
+    /* r59：`app` 模式是"点一下窗口"，跟动作条无关 —— 保持老逻辑：
+       单击直接 pick_app_at，不做停留。 */
+    document.addEventListener('pointerup', (e) => {
+        if (done || e.button !== 0) return;
+        if (phase !== 'drag' && phase !== 'idle') return;
         done = true;
+        phase = 'committed';
         stopBeat();
         sel.style.display = 'none';
+        frame.style.display = 'none';
         sizeEl.style.display = 'none';
         tip.innerHTML = '正在识别这个窗口…';
         jlog('app click at ' + e.clientX + ',' + e.clientY);
@@ -244,77 +666,16 @@ document.addEventListener('mouseup', (e) => {
             jlog('pick_app_at failed: ' + ((err && err.message) || err));
             bail('点选失败，已退出');
         });
-        return;
-    }
-    const r = rectOf({ x: sx, y: sy }, { x: e.clientX, y: e.clientY });
-    if (e.clientX === sx && e.clientY === sy) {
-        // ⚠ 只是点了一下没拖动 —— 直接 return 的话，mousedown 时已经显出来的 #sel
-        //   连同它 9999px 的暗色阴影会一直留在屏幕上（再暗一层 34%），提示条也
-        //   再也回不来（除按 Esc）。这里把三样都复位。
-        sel.style.display = 'none';
-        sizeEl.style.display = 'none';
-        tip.style.display = '';
-        return;
-    }
-
-    // 太小的框基本是误点，直接当没框过
-    if (r.w < 8 || r.h < 8) {
-        sel.style.display = 'none';
-        sizeEl.style.display = 'none';
-        tip.style.display = '';
-        return;
-    }
-
-    // 数字必须都是有限值才敢发 —— 带着 NaN/Infinity 过去，Rust 那边
-    // 反序列化会失败，命令等于没执行，遮罩就会一直留着。
-    if (![r.x, r.y, r.w, r.h].every((n) => Number.isFinite(n))) {
-        bail('框选坐标算不出来，已退出');
-        return;
-    }
-
-    done = true;
-    stopBeat();
-    /* r54：按用途分流到 img_region（识图）或 ocr_region（OCR）。
-     * 两条命令收同一组坐标（css 坐标 + dpr，物理像素换算在 Rust 侧）。 */
-    /* r54：img_region（识图） / ocr_region（OCR） / qr_region（二维码解析）。
-     * 三条命令收同一组坐标；v2.12.0 起二维码复用这套遮罩，交互一个像素都没变。 */
-    const cmd = MODE === 'img' ? 'img_region'
-        : (MODE === 'qr' ? 'qr_region' : 'ocr_region');
-    jlog('mouseup -> ' + cmd + ' ' + JSON.stringify(r));
-    // 交给 Rust 去算物理像素：那边知道虚拟屏原点，也知道 dpr
-    invoke(cmd, {
-        x: r.x,
-        y: r.y,
-        w: r.w,
-        h: r.h,
-        dpr: window.devicePixelRatio || 1
+    }, true);   // capture：要比上面那套拖框逻辑先拿到事件
+} else {
+    invoke('get_config').then((c) => {
+        holdMode = !c || c.regionHold !== false;
+        jlog('regionHold=' + holdMode);
     }).catch((e) => {
-        jlog(cmd + ' invoke failed: ' + ((e && e.message) || e));
-        bail(MODE === 'img' ? '识图没能开始，已退出框选'
-            : (MODE === 'qr' ? '二维码解析没能开始，已退出框选' : '识别没能开始，已退出框选'));
+        // 读不到就按默认（新行为）走 —— 新行为才是主路径
+        jlog('get_config failed: ' + ((e && e.message) || e) + ' -> 按停留处理');
     });
-
-    // 看门狗：正常情况下 Rust 收到命令会立刻关掉这个窗口，页面随之销毁，
-    // 这个定时器也就不会跑。要是 6 秒后页面还活着，说明那条命令根本没到，
-    // 那就自己退场，绝不把用户困在满屏点不动的状态里。
-    setTimeout(() => {
-        if (done) invoke('ocr_cancel').catch(() => {});
-    }, 6000);
-});
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        jlog('ESC pressed -> cancel');
-        bail();
-    }
-});
-
-// 右键也当取消，符合截图工具的肌肉记忆
-document.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    if (done) return;
-    bail();
-});
+}
 
 /* 失焦兜底 —— **故意不做**，这里只留一段说明，免得后人再把它加回来。
  *

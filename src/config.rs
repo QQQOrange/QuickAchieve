@@ -1733,6 +1733,18 @@ pub struct Config {
     /// `always`，与升级前行为**完全一致**（不会因为升个版本就变成"必须按 Ctrl"）。
     #[serde(default = "default_bar_trigger_mode")]
     pub bar_trigger_mode: String,
+    /// 框选之后**先停一下**（v2.16.0）。
+    ///
+    /// · true（默认）：松开鼠标 = 选区留着、四角出现手柄、旁边浮出动作条，
+    ///   这时还能拖角改大小 / 拖内部平移，双击（或点动作条）才真正执行；
+    /// · false：松开就立刻按当前用途执行 —— 也就是 v2.15.0 之前的老行为。
+    ///
+    /// 为什么默认开：框选这一步**定位成本最高**（手要在屏幕上精确对位），
+    /// 可老实现里框歪 5 像素就只能整段重来。给一个"停下来还能改"的窗口，
+    /// 顺带让一次框选能换用途（识别/识图/二维码/复制图），比省那一次点击值。
+    /// 嫌慢的人可以在「通用 → 触发」里关掉，行为立刻退回老样子。
+    #[serde(default = "default_true")]
+    pub region_hold: bool,
     /// 生效范围："off" = 全部软件；"blacklist" = 列出的软件里不弹；
     /// "whitelist" = 只在列出的软件里弹。
     pub filter_mode: String,
@@ -2239,6 +2251,8 @@ impl Default for Config {
             // 开着这条就表现为「选中了也不弹」）。正式版仍默认 true。
             bar_need_text: !crate::QS_LITE_PORTABLE,
             bar_trigger_mode: default_bar_trigger_mode(),
+            // 框选后停留（可调整 + 换用途），见字段文档
+            region_hold: true,
             filter_mode: "off".to_string(),
             filter_list: Vec::new(),
             ocr_enable: true,

@@ -755,6 +755,17 @@ button.fav-grp-head:focus-visible {
     gap: 3px;
 }
 
+/* v2.16.0：Shift+点击 进入「本轮并行」的那几颗 —— 描一圈蓝环 + 轻轻抬起。
+   用 outline 而不是 border：border 会改变盒子尺寸，横条会跟着跳 1~2px
+   （横条宽度是 max-content，任何一颗变宽整条都要重排）。 */
+.ico.picked {
+    outline: 2px solid var(--qs-accent, #4C8DFF);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--qs-accent, #4C8DFF) 18%, transparent);
+    color: var(--qs-fg);
+    transform: translateY(-1px);
+}
+
 /* ---------------------------- 图标按钮 ---------------------------- */
 .ico {
     display: inline-flex;

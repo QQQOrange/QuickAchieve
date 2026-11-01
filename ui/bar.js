@@ -5474,6 +5474,102 @@ panelBody.addEventListener('click', (e) => {
     activatePanelCell(cell);
 });
 
+/* ================================================================== */
+/* v2.16.0：横条上的「Shift+点击 = 本轮并行多选」                        */
+/* ================================================================== */
+/* 要解决的那句话是：「同一段字，想同时看两家的结果，别让我再划一次词」。 */
+/*                                                                     */
+/* 老交互里横条只有一种点击语义 —— 执行 + 收条，一颗图标绑一家。于是想对比 */
+/* 百度翻译和另一家，得「跑一次 → 再把同一段字选一遍 → 点第二家」，划选那 */
+/* 一步是纯浪费（手要重新在屏幕上对位）。                                */
+/*                                                                     */
+/* 现在：**Shift+点击** 只是"打勾"（不执行、不收条），普通点击任意一颗就把 */
+/* 已勾的 + 这一颗**合并成一次**跑（`@ocr:a+b` 这套后端早就支持，网格页的  */
+/* 「多选模型并行」用的就是它）。                                          */
+/*                                                                     */
+/* 只对绑定模型的图标生效（`@ocr:x` / `@img:x` / `@trans:x`）：普通搜索引擎 */
+/* 没有"合并"这个概念，Shift 点它们照旧执行，不参与打勾。                  */
+let pickKind = '';
+let pickIds = [];
+
+/** 清空本轮勾选（换文字、收起横条、执行完都要调）。 */
+function pickClear() {
+    pickKind = '';
+    pickIds = [];
+    for (const el of enginesEl.querySelectorAll('.ico.picked')) el.classList.remove('picked');
+}
+
+/** 把 DOM 上的高亮同步成 pickIds 的样子。
+ *
+ *  为什么要"按 id 反查"而不是记住被点的那颗按钮：`renderBar` 会因为配置广播、
+ *  图标尺寸、主题等原因整条重建，记住的节点引用立刻就失效了；而 id 是稳定的。
+ *  一轮里同一个模型只可能出现一次，所以"这颗图标的 id 全在勾选里"就够。 */
+function pickSync() {
+    for (const el of enginesEl.querySelectorAll('.ico.engine')) {
+        const b = window.qsFuncBound ? window.qsFuncBound(el.dataset.engine || '') : null;
+        if (!b || b.kind !== pickKind) {
+            el.classList.remove('picked');
+            continue;
+        }
+        const on = b.ids.every((id) => pickIds.includes(id));
+        el.classList.toggle('picked', on);
+    }
+}
+
+enginesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ico');
+    if (!btn) return;
+    const key = btn.dataset.engine || '';
+    const bound = window.qsFuncBound ? window.qsFuncBound(key) : null;
+    // 只有「绑定模型」的三类能合并跑（后端 split_model_ids 同一个口径）
+    const mergeable = bound && (bound.kind === 'ocr' || bound.kind === 'img' || bound.kind === 'trans');
+
+    if (e.shiftKey && mergeable) {
+        /* 打勾：不执行任何东西，横条也不收。
+         * ⚠ 必须在 **capture** 阶段拦下 —— 每颗图标自己都挂了 click（会直接
+         * 开跑），冒泡阶段再拦就晚了。 */
+        e.stopPropagation();
+        e.preventDefault();
+        if (pickKind && pickKind !== bound.kind) pickClear();
+        pickKind = bound.kind;
+        const all = bound.ids.every((id) => pickIds.includes(id));
+        if (all) {
+            pickIds = pickIds.filter((id) => !bound.ids.includes(id));
+            if (!pickIds.length) pickKind = '';
+        } else {
+            for (const id of bound.ids) if (!pickIds.includes(id)) pickIds.push(id);
+        }
+        pickSync();
+        invoke('log_msg', {
+            msg: 'bar: shift 多选 ' + (pickKind || '空') + ' = [' + pickIds.join('+') + ']',
+        }).catch(() => { });
+        return;
+    }
+
+    if (mergeable && pickIds.length && pickKind === bound.kind) {
+        /* 普通点击 = 「把已勾的 + 这一颗」合并成一次跑。
+         * 合并后立刻清空：下一段字应该是新的一次选择，不该带着上一次的勾。 */
+        e.stopPropagation();
+        e.preventDefault();
+        const ids = pickIds.slice();
+        for (const id of bound.ids) if (!ids.includes(id)) ids.push(id);
+        const merged = '@' + bound.kind + ':' + ids.join('+');
+        pickClear();
+        invoke('log_msg', { msg: 'bar: 并行执行 ' + merged }).catch(() => { });
+        runGridFunc(merged);
+        return;
+    }
+
+    // 普通点击（没勾过东西 / 不是同一类）：清掉残留勾选，走原来的路
+    if (pickIds.length) pickClear();
+}, true);
+
+/* 换了一段文字 = 新一轮：上一段的勾选不该跟过来。
+ * （`qs://hidden` 也清 —— 横条重新弹出时必须是干净状态，不然用户会看到
+ *   两颗凭空高亮的图标，完全想不起来是自己什么时候点的。） */
+listen('qs://text', () => pickClear());
+listen('qs://hidden', () => pickClear());
+
 inputQ.addEventListener('keydown', (e) => {
     /* ⚠ 输入法保护：中文/日文输入法在**上屏候选词**时也会发 Enter
      *   （`isComposing` 为真，或旧内核给 keyCode 229）。不拦的话，用户打拼音
