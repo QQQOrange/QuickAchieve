@@ -213,7 +213,8 @@ const tip = $('tip');
 const actbar = $('actbar');
 
 /* 各用途的人话名字：动作条按钮、日志、出错提示共用一份，改文案只改这里。 */
-const ACT_NAME = { ocr: '识别', img: '识图', qr: '二维码', copy: '复制图片' };
+/* v2.18.0 多了「翻译」：识别完直接把文字送进翻译窗（省掉"复制→开翻译→粘贴"）。 */
+const ACT_NAME = { ocr: '识别', trans: '翻译', img: '识图', qr: '二维码', copy: '复制图片' };
 
 /* 顶部提示按用途换一句话：识图是"框完去搜图"，OCR 是"框完去认字"，
    app 是"点一下某个程序"（r59 的十字准星点选）。
@@ -456,7 +457,7 @@ function hitTest(x, y) {
 /* ------------------------------------------------------------------ */
 function buildBar() {
     actbar.textContent = '';
-    const list = ['ocr', 'img', 'qr', 'copy'];
+    const list = ['ocr', 'trans', 'img', 'qr', 'copy'];
     for (const a of list) {
         const b = document.createElement('button');
         b.dataset.act = a;

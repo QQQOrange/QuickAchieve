@@ -14841,6 +14841,7 @@ fn ocr_warm() {
 #[crate::t::command]
 fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
     match parse_region_action(&action) {
+        RegionAction::Trans => region_translate(x, y, w, h, dpr),
         RegionAction::Img => img_region(x, y, w, h, dpr),
         RegionAction::Qr => qr_region(x, y, w, h, dpr),
         RegionAction::Copy => region_copy_image(x, y, w, h, dpr),
@@ -14861,6 +14862,8 @@ fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum RegionAction {
     Ocr,
+    /// 识别 → 直接开翻译窗（v2.18.0）
+    Trans,
     Img,
     Qr,
     Copy,
@@ -14870,11 +14873,92 @@ enum RegionAction {
 /// 而不是让它静默什么都不做。
 fn parse_region_action(s: &str) -> RegionAction {
     match s {
+        "trans" => RegionAction::Trans,
         "img" => RegionAction::Img,
         "qr" => RegionAction::Qr,
         "copy" => RegionAction::Copy,
         _ => RegionAction::Ocr,
     }
+}
+
+/// 框选 → 识别 → **直接开翻译窗**（v2.18.0）。
+///
+/// 场景：截一段外文（文档 / 报错 / 网页），想要的是**译文**而不是原文。
+/// 以前是「识别 → 全选复制 → 打开翻译 → 粘贴」四步，这里一步到位：识别出来的
+/// 文字直接当翻译窗的输入，用户看到的第一个东西就是译文。
+///
+/// 用哪家 OCR：**走 `ocr_plan_with_local_fallback` 的第一家**，也就是
+/// 「用户默认引擎，缺凭据时临时补本地」。不在这里另开一套选择逻辑 ——
+/// 否则"翻译里的识别"和"识别里的识别"会跑出两种结果，用户没法解释。
+#[crate::t::command]
+fn region_translate(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
+    if !(x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite()) {
+        win::log(&format!(
+            "region_trans: 非法坐标 x={x} y={y} w={w} h={h}，已退出框选"
+        ));
+        close_window("region");
+        ui_say("框选坐标不对，再框一次试试", 2400);
+        return;
+    }
+    let d = if dpr.is_finite() && dpr > 0.0 { dpr } else { 1.0 };
+    let (vx, vy, _, _) = win::virtual_screen();
+    let px = vx + (x * d).round() as i32;
+    let py = vy + (y * d).round() as i32;
+    let pw = ((w * d).round() as i32).max(1);
+    let ph = ((h * d).round() as i32).max(1);
+    win::log(&format!(
+        "region_trans: css=({x:.0},{y:.0},{w:.0},{h:.0}) dpr={d} -> phys=({px},{py},{pw},{ph})"
+    ));
+
+    // 先收遮罩再截图（那层压暗会被截进去，与 ocr_region 同一顺序）
+    close_window("region");
+    std::thread::spawn(move || {
+        win::wait_until(1200, || app().get_webview_window("region").is_none());
+        std::thread::sleep(Duration::from_millis(50));
+        let Some((cw, ch, pixels)) = win::grab_region(px, py, pw, ph) else {
+            ui_say("截图失败，再框一次试试", 2400);
+            return;
+        };
+        let Some(img) = image::RgbaImage::from_raw(cw, ch, pixels) else {
+            ui_say("截图数据异常，再试一次", 2400);
+            return;
+        };
+        let mut cur = std::io::Cursor::new(Vec::new());
+        if image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut cur, image::ImageFormat::Png)
+            .is_err()
+        {
+            ui_say("图片编码失败，再试一次", 2400);
+            return;
+        }
+        let png = cur.into_inner();
+
+        let cfg = cfg_snapshot();
+        let (plan, fell_back) = ocr_plan_with_local_fallback(&cfg);
+        let engine = plan.first().cloned().unwrap_or_else(|| "windows".to_string());
+        if fell_back {
+            win::log("trans-region: 名单里的引擎缺凭据，这一轮临时用本地识别");
+        }
+        // 先给一句反馈：在线引擎要几秒，没有提示就是"点了没反应"
+        ui_say("正在识别并翻译…", 1600);
+        match run_ocr(&png, &engine) {
+            Ok((text, _raw, label)) => {
+                let t = text.trim().to_string();
+                if t.is_empty() {
+                    ui_say("这块区域里没识别到文字，换一块试试", 2600);
+                    return;
+                }
+                win::log(&format!(
+                    "trans-region: {} 字 via {} → 打开翻译窗",
+                    t.chars().count(),
+                    label
+                ));
+                // engine 传 None：翻译用**设置里的默认翻译引擎**，不跟着 OCR 走
+                trans_start(Some(t), None);
+            }
+            Err(e) => ui_say(format!("识别失败：{e}"), 3000),
+        }
+    });
 }
 
 /// 框选的那块区域直接**当图片进剪贴板**（v2.16.0）。
@@ -20387,6 +20471,7 @@ fn main() {
             /* v2.16.0：框选动作条 —— 松手后由用户点的那一下决定干什么 */
             region_action,
             region_copy_image,
+            region_translate,
             qr_ready,
             qr_take_image,
             qr_restart,
@@ -24414,6 +24499,7 @@ mod tests {
         assert_eq!(parse_region_action("img"), RegionAction::Img);
         assert_eq!(parse_region_action("qr"), RegionAction::Qr);
         assert_eq!(parse_region_action("copy"), RegionAction::Copy);
+        assert_eq!(parse_region_action("trans"), RegionAction::Trans);
         // 脏值 / 空串 / 大小写不对 —— 全部按识别处理，绝不静默
         for bad in ["", "translate", "OCR", " img", "copy2"] {
             assert_eq!(
