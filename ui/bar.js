@@ -4756,15 +4756,22 @@ let gridDrag = null;
 /** 拖拽刚结束的那一下 click 要吞掉，否则会再弹一句"编辑中：先退出编辑"。 */
 let gridDragAteClick = false;
 
-/** 幽灵挂哪儿：`.stage` 里有主题变量；退路才是 body。 */
+/* ⚠ 幽灵必须挂在**网格容器里**（`#engines`），不能挂 body / .stage。
+ *
+ * v2.13.2 把它挂到了 `.stage`：`.qs-gcell` 的样式全是 `.bar.qs-grid .qs-gcell`
+ * 这种**带祖先限定**的选择器，挂到 `.bar` 外面它们一条都不生效 ——
+ * 结果就是"浮起来的是一颗没有样式的白按钮/一串裸文字"，看起来像**另一个元素**
+ * （用户报的"浮起的并非长按的那个项目"就是这个）。内部 `.qs-gicon/.qs-glabel`
+ * 同理。挂进网格后所有样式天然命中，`position:fixed` 又让它脱开网格布局，
+ * 祖先上没有 transform/filter，所以仍是视口坐标，跟手不受影响。 */
 function gridGhostHost() {
-    return document.querySelector('.stage') || document.body || document.documentElement;
+    return enginesEl;
 }
 
 /** 网格里"有内容"的格子（DOM 顺序 = items 顺序）。 */
 function gridDragCells() {
     return Array.prototype.slice.call(enginesEl.querySelectorAll('.qs-gcell'))
-        .filter((c) => !c.classList.contains('qs-gempty'));
+        .filter((c) => !c.classList.contains('qs-gempty') && !c.classList.contains('qs-gghost'));
 }
 
 /** 切进编辑态但**不重画** —— 拖拽途中重画会把被按住的那颗格子换掉，拖拽当场断。 */
@@ -4869,6 +4876,14 @@ function gridDragMove(x, y) {
     st.y = y;
     gridDragQueuePaint();
 
+    /* ⚠ 防抖两道（"拖动时抖动"的根因就在这儿）：
+     *   · 命中测试用的是**最终布局**位置，而格子还在 150ms 的 FLIP 补间里走 ——
+     *     指针卡在两格交界处时，一次移动可能算出 A、下一帧算出 B，来回换位就是抖动；
+     *   · 所以①换位后 90ms 内不再换（冷却），②指针必须真正落进目标格内部
+     *     （四边各让出一小块），压着边线不算。 */
+    const now = performance.now();
+    if (st.lastSwap && now - st.lastSwap < 90) return;
+
     const el = document.elementFromPoint(x, y);
     const over = el && el.closest ? el.closest('.qs-gcell') : null;
     if (!over) return;                      // 拖到面板空白处：保持当前槽位
@@ -4882,6 +4897,13 @@ function gridDragMove(x, y) {
     }
     if (target === st.cur) return;
     if (!document.contains(st.cell)) return;
+
+    // ② 指针得在目标格"内部"（边线附近不算），避免在两个格子之间反复横跳
+    const mid = over.getBoundingClientRect();
+    const ix = Math.min(10, mid.width * 0.18);
+    const iy = Math.min(10, mid.height * 0.18);
+    if (x < mid.left + ix || x > mid.right - ix || y < mid.top + iy || y > mid.bottom - iy) return;
+    st.lastSwap = now;
 
     // ② FLIP：先量旧位置，搬完再量新位置，用反向位移补间
     const before = new Map();
@@ -5267,6 +5289,9 @@ function renderGrid(g) {
         }
     }
 
+    /* 拖拽/长按途中被重画（配置广播等）→ 先把拖拽收干净：否则
+     * `textContent=''` 会连幽灵一起清掉，而 gridDrag 还拿着它的引用。 */
+    if (gridDrag || gridPress) gridDragReset();
     enginesEl.textContent = '';
     const total = rows * cols;
     for (let i = 0; i < total; i++) {

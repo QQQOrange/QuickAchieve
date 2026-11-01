@@ -9958,6 +9958,157 @@ fn ocr_plan_now() -> Value {
     json!(ocr_round_plan())
 }
 
+/* ------------------------------------------------------------------ */
+/* 一轮识别里**每家引擎跑到哪一步**（v2.13.3）                          */
+/*                                                                     */
+/* 用户口径：「从网格页触发的多引擎 OCR，会先弹出本地识别窗口，数秒后才 */
+/* 弹出其他模型的窗口，等待期间没有任何提示」—— 因为老实现是"谁先回结果 */
+/* 谁开窗"，其余几家静默在后台跑。现在改成：开跑就把结果窗口打开，窗口里 */
+/* 有一条**每家引擎的状态条**（排队 / 识别中 / 完成·用时 / 失败），全部结  */
+/* 束再给一句总结；设置面板开着的话同步一份。                          */
+/* ------------------------------------------------------------------ */
+
+/// 一家的运行状态。`state`：`queued` / `running` / `done` / `failed` / `skip`。
+#[derive(Clone)]
+struct OcrRunRow {
+    id: String,
+    name: String,
+    state: &'static str,
+    ms: u64,
+    note: String,
+}
+
+static OCR_RUN: std::sync::Mutex<Vec<OcrRunRow>> = std::sync::Mutex::new(Vec::new());
+
+/// 这一轮从哪一刻开始算（给"已用时"用）。
+static OCR_RUN_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+fn ocr_run_rows() -> Vec<OcrRunRow> {
+    OCR_RUN.lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+fn ocr_run_json() -> Value {
+    let rows = ocr_run_rows();
+    let total = rows.len();
+    let done = rows.iter().filter(|r| r.state == "done").count();
+    let failed = rows.iter().filter(|r| r.state == "failed" || r.state == "skip").count();
+    let running = rows.iter().filter(|r| r.state == "running").count();
+    let queued = rows.iter().filter(|r| r.state == "queued").count();
+    let elapsed = OCR_RUN_AT
+        .lock()
+        .ok()
+        .and_then(|g| *g)
+        .map(|t| t.elapsed().as_millis() as u64)
+        .unwrap_or(0);
+    json!({
+        "total": total,
+        "done": done,
+        "failed": failed,
+        "running": running,
+        "queued": queued,
+        "elapsed": elapsed,
+        // finished = 没有还在排队/跑的
+        "finished": running == 0 && queued == 0,
+        "engines": rows.iter().map(|r| json!({
+            "id": r.id, "name": r.name, "state": r.state, "ms": r.ms, "note": r.note,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn ocr_run_emit() {
+    let Some(a) = APP.get() else { return };
+    let v = ocr_run_json();
+    // 设置面板开着也能看到同一份进度（和 `ocr_tell` 的双投一致）
+    if a.get_webview_window("ocr").is_some() {
+        let _ = a.emit_to("ocr", "qs://ocr-run", v.clone());
+    }
+    if a.get_webview_window("settings").is_some() {
+        let _ = a.emit_to("settings", "qs://ocr-run", v);
+    }
+}
+
+/// 开跑：把这一轮的名单摆成"全部排队"，并把计时起点定在此刻。
+fn ocr_run_begin(engines: &[String], skipped: &[String]) {
+    let mut rows: Vec<OcrRunRow> = engines
+        .iter()
+        .map(|id| OcrRunRow {
+            id: id.clone(),
+            name: engine_display(id).to_string(),
+            state: "queued",
+            ms: 0,
+            note: String::new(),
+        })
+        .collect();
+    for id in skipped {
+        rows.push(OcrRunRow {
+            id: id.clone(),
+            name: engine_display(id).to_string(),
+            state: "skip",
+            ms: 0,
+            note: "还没配凭据，本次跳过".to_string(),
+        });
+    }
+    if let Ok(mut g) = OCR_RUN.lock() {
+        *g = rows;
+    }
+    if let Ok(mut g) = OCR_RUN_AT.lock() {
+        *g = Some(std::time::Instant::now());
+    }
+    ocr_run_emit();
+}
+
+/// 改一家状态并广播。`ms` 只在完成/失败时有意义。
+fn ocr_run_set(id: &str, state: &'static str, ms: u64, note: &str) {
+    if let Ok(mut g) = OCR_RUN.lock() {
+        if let Some(r) = g.iter_mut().find(|r| r.id == id) {
+            r.state = state;
+            if ms > 0 {
+                r.ms = ms;
+            }
+            if !note.is_empty() {
+                r.note = note.to_string();
+            }
+        } else {
+            return;
+        }
+    }
+    ocr_run_emit();
+}
+
+/// 结果页初始化时拉一次（窗口可能是开跑前就建好的，事件早发过去了）。
+#[crate::t::command]
+fn ocr_run_now() -> Value {
+    ocr_run_json()
+}
+
+/// 收尾：给一句人话总结（窗口里有状态条，这里只在"值得提醒"时额外弹一条提示）。
+fn ocr_run_finish(rounds: usize) {
+    let v = ocr_run_json();
+    let total = v["total"].as_u64().unwrap_or(0);
+    let ok = v["done"].as_u64().unwrap_or(0);
+    let bad = v["failed"].as_u64().unwrap_or(0);
+    let msg = if bad == 0 {
+        if total <= 1 {
+            format!("文字识别完成（{ok} 家）")
+        } else {
+            format!("文字识别完成：{ok}/{total} 家都出了结果")
+        }
+    } else if ok == 0 {
+        "文字识别失败：参与的几个引擎都没出结果".to_string()
+    } else {
+        format!("文字识别完成：{ok} 家成功，{bad} 家失败/跳过")
+    };
+    win::log(&format!("ocr: 本轮结束 —— {msg}"));
+    /* ⚠ 只在**多引擎**或**有失败**时额外弹右下角提示：
+     * 单引擎本地识别 200ms 就完事，每次都弹一条反而吵。 */
+    if rounds > 1 || bad > 0 {
+        if let Some(a) = APP.get() {
+            crate::toast::show(a, &msg, 2600);
+        }
+    }
+    ocr_run_emit();
+}
+
 /// 写/清翻译的强制引擎（`@trans:a+b` = 这几家一起翻）。
 fn set_trans_force_engine(engines: Option<String>) {
     let mut v: Vec<String> = engines
@@ -10910,7 +11061,28 @@ fn img_start(engines: Option<String>) {
 fn img_tell(msg: impl Into<String>) {
     let msg = msg.into();
     win::log(&format!("img: {msg}"));
-    let _ = APP.get().map(|a| a.emit_to("settings", "qs://toast", msg));
+    let _ = APP.get().map(|a| a.emit_to("settings", "qs://toast", msg.clone()));
+    /* v2.13.3：**同一条提示也要让"没开设置页"的人看见**。
+     * 以前只发给设置面板 —— 而识图根本不要求打开设置，于是成功/失败都静默，
+     * 用户只看到浏览器里冒出（或没冒出）几个标签页。右下角的提示窗是常驻的，
+     * 用它兜住"这一步到底成没成"。 */
+    crate::ui_say(&msg, 2600);
+}
+
+/// v2.13.3：**统一的"看得见的状态提示"**。
+///
+/// 各功能的耗时环节（识图上传、二维码解析、OCR 多引擎排队…）都要有
+/// "等待 / 成功 / 失败"三态。以前每个功能各写一套：OCR 发 `qs://ocr`，
+/// 识图发设置面板，二维码只写日志 —— 于是"设置页没开就什么都看不到"。
+///
+/// 现在统一走这里：写日志 + 右下角提示窗（`toast`）。样式与时长由提示窗自己
+/// 决定（和「已使用：xxx」同一张卡片），所以各功能看起来是一致的。
+fn ui_say(msg: impl Into<String>, ms: u64) {
+    let msg = msg.into();
+    win::log(&format!("ui: {msg}"));
+    if let Some(a) = APP.get() {
+        crate::toast::show(a, &msg, ms.max(1200));
+    }
 }
 
 /// 识图引擎注册表给前端（设置页那一栏的列表、勾选框、说明文字全由它生成）。
@@ -11753,6 +11925,8 @@ fn img_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
             return;
         }
         win::log(&format!("img: 这一轮要搜 {} 家：{:?}", plan.len(), plan.len()));
+        /* v2.13.3：上传/开页要几秒，期间原来一点动静都没有。 */
+        ui_say(format!("识图：正在上传并打开 {} 个站点…", plan.len()), 2400);
 
         /* r59：**先清上一轮的临时文件，再写这一轮的**。
          *
@@ -12454,11 +12628,11 @@ fn qr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
         std::thread::sleep(Duration::from_millis(50));
 
         let Some((cw, ch, pixels)) = win::grab_region(px, py, pw, ph) else {
-            win::log("qr: 截图失败");
+            ui_say("二维码：截图失败，再框一次试试", 2400);
             return;
         };
         let Some(img) = image::RgbaImage::from_raw(cw, ch, pixels) else {
-            win::log("qr: 像素数据异常");
+            ui_say("二维码：截图数据异常，再试一次", 2400);
             return;
         };
         let mut cur = std::io::Cursor::new(Vec::new());
@@ -13684,15 +13858,21 @@ where
             // 每个引擎的耗时单独记一笔：并行下「慢」到底是慢在哪一边，
             // 光看总时长看不出来（本地走 CPU、百度走网络，量级差很远）。
             let t0 = std::time::Instant::now();
+            ocr_run_set(&eng, "running", 0, "");      // 状态条：排队 → 识别中
             let r = run_ocr(&png, &eng);
+            let used = t0.elapsed().as_millis() as u64;
             win::log(&format!(
-                "ocr: 并行 {eng} 用时 {} ms{}",
-                t0.elapsed().as_millis(),
+                "ocr: 并行 {eng} 用时 {used} ms{}",
                 match &r {
                     Ok(_) => "",
                     Err(_) => "（失败）",
                 }
             ));
+            // 状态条：识别中 → 完成(用时) / 失败(原因)
+            match &r {
+                Ok(_) => ocr_run_set(&eng, "done", used, ""),
+                Err(e) => ocr_run_set(&eng, "failed", used, &e.to_string()),
+            }
             // 收件人可能已经超闸走了，send 失败无所谓
             let _ = tx.send((eng, r));
         });
@@ -14670,6 +14850,19 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                 ocr_tell("参与识别的引擎都没配凭据，去设置页填一下", true);
                 return;
             }
+            /* v2.13.3：把"这一轮跑哪几家、每家跑到哪一步"登记下来，**并且立刻开窗**。
+             *
+             * 老实现是"谁先回来谁开窗"：本地 200ms 就出结果 → 先把窗口弹出来，
+             * 其余几家（像硅基流动要 2~7 秒）静默在后台跑，用户看着只有一个引擎的
+             * 结果，还以为"多选没生效"。现在开跑就开窗，窗口里先摆一条状态条
+             * （排队 / 识别中 / 完成·用时 / 失败），结果到了就往同一个窗口补。 */
+            let skipped: Vec<String> = run
+                .iter()
+                .filter(|e| !engines.iter().any(|x| x == *e))
+                .cloned()
+                .collect();
+            ocr_run_begin(&engines, &skipped);
+            open_ocr_window(String::new());
             // 提示语：名单里只有本地时才点明"本地"（免得用户以为在跑网络那家）
             ocr_say(if engines.iter().any(|e| e != "windows") {
                 "正在识别…"
@@ -14690,12 +14883,11 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                     if first { "先出" } else { "补齐" },
                     text.chars().count()
                 ));
-                if first {
-                    open_ocr_window(text.to_string());
-                } else {
-                    // 后到的结果：窗口已经开着，增量推过去（前端直接替换展示）
-                    emit_ocr_result(&png, text);
-                }
+                /* 窗口在开跑时就已建好，所以这里**总是**推一次给页面；
+                 * `open_ocr_window` 仍然调（它负责把 OCR_LAST 写好，
+                 * 页面首帧 pull 时能拿到文字）。 */
+                open_ocr_window(text.to_string());
+                emit_ocr_result(&png, text);
             });
             if ok == 0 {
                 /* 一家都没成：把结果窗也打开，让「哪一家、为什么」看得见。
@@ -14709,6 +14901,8 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                     ocr_tell(format!("识别失败：{why}"), true);
                 }
             }
+            // 收尾：状态条定稿 + 值得提醒时弹一条总结
+            ocr_run_finish(engines.len());
             return;
         }
 
@@ -14722,6 +14916,15 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
             .first()
             .cloned()
             .unwrap_or_else(|| cfg.ocr_engine.clone());
+        /* v2.13.3：单引擎也走同一套"运行中"反馈 —— 但只在**这家可能慢**时提前开窗：
+         * 本地识别 200ms 就回来，为它先弹一个空窗口纯属闪烁；在线引擎要点网络，
+         * 那几秒没有任何提示才是用户抱怨的那个"等了半天不知道在干嘛"。 */
+        ocr_run_begin(&[ocr_engine.clone()], &[]);
+        if ocr_engine != "windows" {
+            open_ocr_window(String::new());
+        }
+        ocr_run_set(&ocr_engine, "running", 0, "");
+        let t_single = std::time::Instant::now();
         match run_ocr(&png, &ocr_engine) {
             Ok((text, raw, label)) => {
                 win::log(&format!(
@@ -14737,7 +14940,17 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                 if let Ok(mut g) = OCR_LAST_RAW.lock() {
                     *g = raw;
                 }
-                open_ocr_window(text);
+                ocr_run_set(
+                    &ocr_engine,
+                    "done",
+                    t_single.elapsed().as_millis() as u64,
+                    "",
+                );
+                open_ocr_window(text.clone());
+                // 窗口可能是"提前开好"的（在线引擎），页面已经加载过了 ——
+                // 只 show 一发是拿不到文字的，必须再推一次结果。
+                emit_ocr_result(&png, &text);
+                ocr_run_finish(1);
             }
             Err(e) => {
                 /* 失败时也把结果窗口叫起来：让用户看到框选的图 + 失败原因，
@@ -14745,12 +14958,19 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                  * v2.11.2：**绑定了引擎的那一路一定开窗** —— 失败原因必须挂在
                  * "你选的那一家"上，否则用户只会觉得"点了跟没点一样"。 */
                 let why = format!("{}：{e}", engine_display(&ocr_engine));
+                ocr_run_set(
+                    &ocr_engine,
+                    "failed",
+                    t_single.elapsed().as_millis() as u64,
+                    &e.to_string(),
+                );
                 if !ocr_forced_engines().is_empty() {
                     set_ocr_note(why.clone());
                     open_ocr_window(String::new());
                 } else {
                     ocr_tell(format!("识别失败：{why}"), true);
                 }
+                ocr_run_finish(1);
             }
         }
     });
@@ -19974,6 +20194,7 @@ fn main() {
             ocr_take_note,
             ocr_take_parts,
             ocr_plan_now,
+            ocr_run_now,
             close_ocr_window,
             ocr_rerun,
             ocr_rescan,

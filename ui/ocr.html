@@ -43,6 +43,116 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     border-radius: 3px;
 }
 
+/* ---------------------------- 运行状态条 ---------------------------- */
+.runbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--accent, #2563EB) 6%, var(--card));
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--fg);
+}
+.runbar.done-ok {
+    background: color-mix(in srgb, #16A34A 8%, var(--card));
+}
+.runbar.done-bad {
+    background: color-mix(in srgb, #DC2626 8%, var(--card));
+}
+.rb-head {
+    flex: none;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.rb-head::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--accent, #2563EB);
+    vertical-align: 1px;
+    animation: rb-pulse 1s ease-in-out infinite;
+}
+.runbar.done-ok .rb-head::before,
+.runbar.done-bad .rb-head::before {
+    animation: none;
+}
+.runbar.done-ok .rb-head::before { background: #16A34A; }
+.runbar.done-bad .rb-head::before { background: #DC2626; }
+@keyframes rb-pulse {
+    0%, 100% { opacity: .30; }
+    50% { opacity: 1; }
+}
+.rb-list {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+.rb-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 9px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: transparent;
+    color: var(--fg-dim);
+    white-space: nowrap;
+    max-width: 46vw;
+    overflow: hidden;
+}
+.rb-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.rb-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: .55;
+}
+.rb-st { flex: none; opacity: .75; }
+/* 识别中：转圈（只动 transform，不掉帧） */
+.rb-chip.st-running {
+    color: var(--accent, #2563EB);
+    border-color: color-mix(in srgb, var(--accent, #2563EB) 45%, transparent);
+    background: color-mix(in srgb, var(--accent, #2563EB) 10%, transparent);
+}
+.rb-chip.st-running .rb-dot {
+    width: 9px;
+    height: 9px;
+    background: transparent;
+    border: 2px solid color-mix(in srgb, var(--accent, #2563EB) 30%, transparent);
+    border-top-color: var(--accent, #2563EB);
+    border-radius: 50%;
+    opacity: 1;
+    animation: rb-spin .7s linear infinite;
+}
+@keyframes rb-spin { to { transform: rotate(360deg); } }
+.rb-chip.st-done {
+    color: #16A34A;
+    border-color: color-mix(in srgb, #16A34A 40%, transparent);
+}
+.rb-chip.st-failed {
+    color: #DC2626;
+    border-color: color-mix(in srgb, #DC2626 40%, transparent);
+}
+.rb-chip.st-skip {
+    color: var(--fg-dim);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
+
 .eng {
     flex: none;
     display: flex;
@@ -505,6 +615,11 @@ textarea.ghost { color: var(--fg-dim); }
 <body>
 
 <div class="engines" id="engines"></div>
+
+<!-- v2.13.3：本轮识别的**运行状态条**（每家引擎排队 / 识别中 / 完成·用时 / 失败）。
+     以前多引擎是"谁先回来谁开窗"，本地 200ms 就弹窗、其余几家静默在后台跑，
+     用户看到只有一个引擎的结果还以为"多选没生效"；现在开跑就开窗并显示这条。 -->
+<div class="runbar" id="runbar" hidden></div>
 
 <div class="panes" id="panes">
     <!-- 截图对照区：Rust 把那一次框选的图推过来就显示，没有就整块藏起来 -->
@@ -1563,14 +1678,17 @@ document.addEventListener('keydown', (e) => {
 
 // 前端就绪后主动拉一次，避免错过 Rust 建窗口时发的那几次 push
 async function pull() {
-    const [t, img, note, parts, plan] = await Promise.all([
+    const [t, img, note, parts, plan, run] = await Promise.all([
         invoke('ocr_take_text').catch(() => ''),
         invoke('ocr_take_image').catch(() => ''),
         invoke('ocr_take_note').catch(() => ''),
         invoke('ocr_take_parts').catch(() => null),
         // v2.11.2：失败轮次没有任何 push（parts 也是空的），名单只能从这里拿
         invoke('ocr_plan_now').catch(() => null),
+        // v2.13.3：开跑就开窗，那一批 running/queued 事件比页脚本还早 —— 这里补一次
+        invoke('ocr_run_now').catch(() => null),
     ]);
+    if (run && Array.isArray(run.engines) && run.engines.length) renderRun(run);
     if (Array.isArray(plan) && plan.length) planReal = plan.slice();
     if (Array.isArray(parts) && parts.length) {
         ocrParts = parts;
@@ -1637,6 +1755,101 @@ listen('qs://ocr', (ev) => {
         syncLinkControls();   // 失败提示里一般没链接，顺手把按钮收掉
     }
 });
+
+/* ------------------------- 本轮运行状态（v2.13.3） -------------------------
+ *
+ * 这块回答的是：「我点的那几家到底跑到哪了？」
+ *   · 排队（queued）—— 名单里有它，但线程还没真正开跑；
+ *   · 识别中（running）—— 转圈；本地几毫秒、在线可能好几秒；
+ *   · 完成（done）—— 带这一家的用时；
+ *   · 失败（failed）/ 跳过（skip，缺凭据）—— 带原因（hover 可见）。
+ * 全部结束再把这一条定稿成「识别完成 / 部分失败」，配色由蓝转绿/红。
+ */
+let ocrRun = null;
+/* 计时：后端只在"状态变化"时推一次，两次之间界面上的秒数得自己走，
+ * 否则会停在那儿（用户会以为卡死了）。 */
+let runBaseMs = 0;
+let runBaseAt = 0;
+let runTick = 0;
+
+function runElapsed() {
+    if (!ocrRun) return 0;
+    if (ocrRun.finished) return runBaseMs;
+    return runBaseMs + (Date.now() - runBaseAt);
+}
+
+function startRunTick() {
+    if (runTick) return;
+    runTick = setInterval(() => {
+        if (!ocrRun || ocrRun.finished) { clearInterval(runTick); runTick = 0; return; }
+        const head = document.querySelector('#runbar .rb-head');
+        if (!head) return;
+        const total = ocrRun.total || (ocrRun.engines || []).length;
+        head.textContent = '正在识别 ' + (ocrRun.done || 0) + '/' + total + ' · ' + fmtSec(runElapsed());
+    }, 200);
+}
+
+function fmtSec(ms) {
+    const n = Number(ms) || 0;
+    if (n < 1000) return n + 'ms';
+    return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 's';
+}
+
+function renderRun(st) {
+    ocrRun = st || null;
+    const bar = $('runbar');
+    if (!bar) return;
+    const rows = (st && st.engines) || [];
+    if (!rows.length) { bar.hidden = true; return; }
+    bar.hidden = false;
+    const total = st.total || rows.length;
+    const done = st.done || 0;
+    const bad = st.failed || 0;
+    const finished = !!st.finished;
+    bar.classList.toggle('done-ok', finished && bad === 0);
+    bar.classList.toggle('done-bad', finished && bad > 0);
+    runBaseMs = Number(st.elapsed) || 0;
+    runBaseAt = Date.now();
+    if (!finished) startRunTick();
+
+    bar.textContent = '';
+    const head = document.createElement('span');
+    head.className = 'rb-head';
+    head.textContent = finished
+        ? (bad === 0
+            ? '识别完成 · ' + total + ' 家 · ' + fmtSec(runElapsed())
+            : (done === 0 ? '识别失败 · ' + bad + ' 家没出结果' : '识别结束 · ' + done + ' 家成功、' + bad + ' 家失败/跳过'))
+        : '正在识别 ' + done + '/' + total + ' · ' + fmtSec(runElapsed());
+    bar.appendChild(head);
+
+    const list = document.createElement('span');
+    list.className = 'rb-list';
+    for (const e of rows) {
+        const chip = document.createElement('span');
+        const stt = String(e.state || '');
+        chip.className = 'rb-chip st-' + stt;
+        chip.title = (e.name || e.id) + (e.note ? '\n' + e.note : '');
+        const dot = document.createElement('i');
+        dot.className = 'rb-dot';
+        chip.appendChild(dot);
+        const nm = document.createElement('span');
+        nm.className = 'rb-name';
+        nm.textContent = e.name || e.id;
+        chip.appendChild(nm);
+        const tx = document.createElement('span');
+        tx.className = 'rb-st';
+        tx.textContent = stt === 'queued' ? '排队'
+            : stt === 'running' ? '识别中'
+                : stt === 'done' ? fmtSec(e.ms)
+                    : stt === 'skip' ? '跳过'
+                        : '失败';
+        chip.appendChild(tx);
+        list.appendChild(chip);
+    }
+    bar.appendChild(list);
+}
+
+listen('qs://ocr-run', (ev) => renderRun(ev && ev.payload));
 
 /** 页面自检：真 WebView 起来之后，直接检查几条用户看得见的事实。
  *
