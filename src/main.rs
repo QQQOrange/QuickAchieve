@@ -16884,6 +16884,23 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
 /// 页面在长按拖起的瞬间置 true、松手/取消时置 false。**前端一定会配对调用**：
 /// 拖起那条路是同一个函数的两个出口（正常收尾 + 异常收尾），不会漏。
 /// 万一页面中途崩了，下一次唤起横条会重新置 false（`dismiss_bar` 里也清一遍）。
+/// 诊断：横条句柄到底指到哪个窗口（类名 / 标题 / 可见 / 屏幕矩形）。
+///
+/// 这条路是为"给横条做原生悬停提示"准备的 —— TTM_ADDTOOL 需要一个**真实的
+/// owner 窗口**，而项目用的是自建宿主垫层，`bar_hwnd()` 拿到的句柄语义不能想当然。
+/// 打印类名是最快的判别法：类名不对，说明它根本不是那个顶层窗。
+#[crate::t::command]
+fn window_debug() -> String {
+    let bar = bar_hwnd();
+    let mut out = format!("bar: {}", win::window_info(bar));
+    // 桌面窗口的类名对照一下，确认枚举/取值方式本身没写错
+    unsafe {
+        let d = windows::Win32::UI::WindowsAndMessaging::GetDesktopWindow();
+        out.push_str(&format!(" | desktop: {}", win::window_info(d)));
+    }
+    out
+}
+
 #[crate::t::command]
 fn bar_drag_hold(on: bool) {
     BAR_DRAG_HOLD.store(on, Ordering::SeqCst);
@@ -20282,6 +20299,14 @@ fn main() {
         }
     }));
 
+    /* v2.20.1：提权重启回来的实例带 `--takeover` —— 它要**等父进程把单实例互斥体
+     * 让出来**再继续（父进程此时还没退完）。ShellExecuteW 传不了环境变量，
+     * 所以由命令行参数在这里翻译成 QS_TAKEOVER=1（`already_running` 认这个）。 */
+    if flag("--takeover") {
+        std::env::set_var("QS_TAKEOVER", "1");
+        win::log("takeover: 提权重启实例，等上一个进程让出单实例互斥体");
+    }
+
     // 1. 已经有一个在跑就直接退，避免出现两个托盘图标
     if win::already_running() {
         win::log_sync("another instance is running, exit");
@@ -20588,6 +20613,7 @@ fn main() {
             clip_read_text,
             toggle_bar_engine,
             bar_drag_hold,
+            window_debug,
             move_bar_item,
             bar_hold,
             text_op,

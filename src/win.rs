@@ -435,12 +435,22 @@ pub fn relaunch_as_admin() -> bool {
     };
     let wexe = wide(&exe.to_string_lossy());
     let wverb = wide("runas");
+    /* ⚠ v2.20.1：必须带 `--takeover`。
+     *
+     * 提权重启是"自己拉起自己"：父进程这时**还握着单实例互斥体**（它在
+     * `already_running()` 里创建的），子进程一启动就撞上它，判成"已经有一个在跑"
+     * 直接 exit(0)；父进程那边则因为"已经拉起提权实例"也 exit(0)。
+     * 结果：双击图标，什么都没发生 —— 用户只会以为程序坏了。
+     *
+     * `ShellExecuteW` 只传得了**命令行**、传不了环境变量，所以这里用参数把
+     * "交班"意图带过去（main 里再翻译成 QS_TAKEOVER=1，让它等父进程让出互斥体）。 */
+    let wparams = wide("--takeover");
     unsafe {
         let r = ShellExecuteW(
             None,
             PCWSTR(wverb.as_ptr()),
             PCWSTR(wexe.as_ptr()),
-            PCWSTR::null(),
+            PCWSTR(wparams.as_ptr()),
             PCWSTR::null(),
             SW_SHOWNORMAL,
         );
@@ -3910,5 +3920,39 @@ fn icon_size(hicon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<i3
             let _ = windows::Win32::Graphics::Gdi::DeleteObject(HGDIOBJ(ii.hbmMask.0));
         }
         if w > 0 { Some(w) } else { None }
+    }
+}
+
+/// 把一个窗口的"身份信息"打成一行，用于排查"句柄到底指到哪去了"。
+///
+/// 会回答三个问题：类名是什么（是不是我们以为的那个窗）、可不可见、
+/// 屏幕矩形在哪。排查 HWND 语义时这三个比句柄数值本身有用得多。
+pub fn window_info(h: HWND) -> String {
+    if h.0.is_null() {
+        return "hwnd=null".into();
+    }
+    unsafe {
+        if !IsWindow(Some(h)).as_bool() {
+            return format!("hwnd=0x{:X} not-window", h.0 as usize);
+        }
+        let mut cls = [0u16; 256];
+        let n = GetClassNameW(h, &mut cls);
+        let class = String::from_utf16_lossy(&cls[..n.max(0) as usize]);
+        let mut buf = vec![0u16; 512];
+        let t = GetWindowTextW(h, &mut buf);
+        let title = String::from_utf16_lossy(&buf[..t.max(0) as usize]);
+        let mut r = RECT::default();
+        let _ = GetWindowRect(h, &mut r);
+        format!(
+            "hwnd=0x{:X} class={} title={} vis={} rect=({},{},{},{})",
+            h.0 as usize,
+            class,
+            title,
+            IsWindowVisible(h).as_bool(),
+            r.left,
+            r.top,
+            r.right - r.left,
+            r.bottom - r.top
+        )
     }
 }
