@@ -12315,6 +12315,119 @@ fn close_qr_window() {
     close_window("qr");
 }
 
+/* ------------------------------------------------------------------ */
+/* v2.12.2：二维码**生成**（横条 / 网格上的独立入口）                    */
+/*                                                                     */
+/* 和解析（`@qr`）刻意分成两格，图标也做成一眼能分的两种形状：           */
+/*   · 解析 = 三个空心定位角 + 琥珀数据点（"看出里面写了什么"）；        */
+/*   · 生成 = 三个实心块 + 绿色加号（"把这段内容变出一个码"）。          */
+/* 触发路径：用户在任意软件里选中文字 → 横条/网格（此刻手里的          */
+/* `currentText` 就是那段选区）→ 点「生成」→ 这里弹一个小窗显示二维码。 */
+/* ------------------------------------------------------------------ */
+
+/// 最近一次要生成的二维码内容。窗口建好后靠 `qrgen_take_text` 拉取。
+static QRGEN_TEXT: Mutex<String> = Mutex::new(String::new());
+
+/// 打开（或复用）二维码生成结果窗。
+fn open_qrgen_window() {
+    let a = app();
+    if let Some(w) = a.get_webview_window("qrgen") {
+        // 已开着：不重建窗口，只把内容推过去 —— 页面收到后会重画
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        let _ = a.emit_to("qrgen", "qs://qrgen", json!({}));
+        return;
+    }
+    let a2 = a.clone();
+    /* 建窗必须脱开命令栈（和 open_qr_window / open_settings 同一个坑：
+     * 同步命令跑在主线程，`run_on_main_thread` 在主线程是当场内联执行的，
+     * 于是 build() 跑在 invoke 的栈里 → 死锁）。 */
+    std::thread::spawn(move || {
+        let a4 = a2.clone();
+        let _ = a2.run_on_main_thread(move || {
+            let mut b = WebviewWindowBuilder::new(&a4, "qrgen", WebviewUrl::App("qrgen.html".into()))
+                .title("二维码生成 —— Quick Search")
+                // 小窗：一枚码 + 一行内容 + 两个按钮，440×560 刚好，不占半屏
+                .inner_size(440.0, 560.0)
+                .min_inner_size(380.0, 500.0)
+                .resizable(true)
+                .center()
+                .visible(false)
+                .background_color(if win::apps_use_light_theme().unwrap_or(true) {
+                    crate::t::window::Color(245, 246, 248, 255)
+                } else {
+                    crate::t::window::Color(23, 24, 28, 255)
+                });
+            let wa = wv_args();
+            if !wa.is_empty() {
+                b = b.additional_browser_args(&wa);
+            }
+            match b.build() {
+                Ok(w) => {
+                    win::log("qrgen win: built (hidden, 等页面 ready)");
+                    let w2 = w.clone();
+                    // 与其它结果窗同一条兜底：ready 信号没来也要亮出来
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(2500));
+                        if !w2.is_visible().unwrap_or(false) {
+                            win::log("qrgen win: ready 超时，兜底显示");
+                            let _ = w2.show();
+                            let _ = w2.set_focus();
+                        }
+                    });
+                }
+                Err(e) => win::log(&format!("qrgen win: build failed: {e}")),
+            }
+        });
+    });
+}
+
+/// 入口：横条那颗按钮 / 网格那一格。
+///
+/// `text` 是前端手里的 `currentText`（唤出横条/网格时抓到的那段选区）。
+/// 它为空是**很常见**的（用户没选文字就按了快捷键），所以还要退到剪贴板：
+/// 用户在别处 Ctrl+C 复制过内容、再点这一格，同样应该能生成。
+#[crate::t::command]
+fn qrgen_show(text: Option<String>) {
+    let given = text.unwrap_or_default().trim().to_string();
+    let mut src = "选中的文字";
+    let mut body = given;
+    if body.is_empty() {
+        body = clip::read_text_any().unwrap_or_default().trim().to_string();
+        src = "剪贴板";
+    }
+    if let Ok(mut g) = QRGEN_TEXT.lock() {
+        *g = body.clone();
+    }
+    win::log(&format!(
+        "qrgen: 来源={src}，{} 字{}",
+        body.chars().count(),
+        if body.is_empty() { "（空：窗口里会提示先选内容）" } else { "" }
+    ));
+    open_qrgen_window();
+}
+
+/// 窗口来取内容（推 + 拉里的「拉」：页面先就绪、内容后到也不会丢）。
+#[crate::t::command]
+fn qrgen_take_text() -> String {
+    QRGEN_TEXT.lock().map(|g| g.clone()).unwrap_or_default()
+}
+
+/// 首帧画完了 —— 可以显示（避免先看到一块黑底）。
+#[crate::t::command]
+fn qrgen_ready() {
+    show_after_ready("qrgen");
+}
+
+#[crate::t::command]
+fn close_qrgen_window() {
+    if let Ok(mut g) = QRGEN_TEXT.lock() {
+        g.clear();
+    }
+    close_window("qrgen");
+}
+
 /// 「重新框选」：把遮罩再拉起来。结果窗留着，拿到新图后自动重解。
 #[crate::t::command]
 fn qr_restart() {
@@ -13832,6 +13945,20 @@ fn remember_ocr_size(w: u32, h: u32) {
 fn copy_text(text: String) {
     let ok = clip::set_text(&text);
     win::log(&format!("copy_text: {} chars ok={ok}", text.chars().count()));
+}
+
+/// 读一次剪贴板里的**纯文本**（v2.12.2：设置页「二维码 · 生成」用它，
+/// 用户在别处选中文字按 Ctrl+C 之后，回来点「读取选中内容」就能拿到）。
+///
+/// 刻意只读一次、读不到就回空串：
+///   · 不做重试 —— 这条路径是用户点按钮触发的交互动作，慢一点就该立刻给反馈；
+///   · 不读图片/HTML —— 生成二维码只需要文本，别的格式对这里没有意义。
+/// 失败（剪贴板被别的程序占着等）不算错，回空串让界面提示"没读到内容"即可。
+#[crate::t::command]
+fn clip_read_text() -> String {
+    let t = clip::read_text_any().unwrap_or_default();
+    win::log(&format!("clip_read_text: {} chars", t.chars().count()));
+    t
 }
 
 /** 本地 OCR 依赖检测（设置页「环境检测」卡片）。
@@ -15916,6 +16043,8 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
          * 少了这一行，设置页点「加到横条」会在后端被当成不认识的引擎拒掉，
          * 表现是"点了没反应、列表也不变"。 */
         && engine != config::BAR_QR
+        /* v2.12.2：二维码生成（@qrmake）同理 —— 它也要能被摆进横条。 */
+        && engine != config::BAR_QRMAKE
         && !config::is_wrap_sentinel(engine)
         && !config::is_text_sentinel(engine)
         && !config::is_fav_sentinel(engine)
@@ -19614,6 +19743,11 @@ fn main() {
             qr_open,
             qr_search,
             close_qr_window,
+            /* v2.12.2：二维码生成（横条 / 网格独立入口） */
+            qrgen_show,
+            qrgen_take_text,
+            qrgen_ready,
+            close_qrgen_window,
             region_beat,
             ocr_ready,
             // v1.5.16：翻译
@@ -19658,6 +19792,7 @@ fn main() {
             fav_send,
             fav_pick_image,
             copy_text,
+            clip_read_text,
             toggle_bar_engine,
             move_bar_item,
             bar_hold,

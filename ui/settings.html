@@ -795,7 +795,7 @@
                 <button type="button" class="chip" data-sub="txt"><span class="ci" aria-hidden="true"></span><span class="cl">文本处理</span></button>
                 <!-- v2.12.0：二维码解析。交互与「文字识别」一致（冻屏 → 框选 → 结果窗），
                      入口也一视同仁：能放横条、能放网格。 -->
-                <button type="button" class="chip" data-sub="qr"><span class="ci" aria-hidden="true"></span><span class="cl">二维码解析</span></button>
+                <button type="button" class="chip" data-sub="qr"><span class="ci" aria-hidden="true"></span><span class="cl">二维码</span></button>
             </div>
         </section>
     </div>
@@ -1269,8 +1269,29 @@
 
     <!-- v2.12.0：二维码解析（交互与文字识别同一套） -->
     <div class="pane" data-pane="qr" hidden>
+    <!-- v2.12.2：入口统一叫「二维码」，页内分成**解析 / 生成**两个子功能。
+         两个子功能用同一套 `.seg` 分段控件（和 OCR / 翻译页里那种一模一样），
+         选中态走 `.on` + aria-selected，卡片按 `data-qrsub` 互斥显隐 ——
+         同一时刻只有一组卡片在屏幕上，不会出现"两套内容叠在一起"。
+         ⚠ 卡片是**同级**元素、直接带 data-qrsub，不套外层容器：宽窗口下
+           `.pane:not([hidden])` 会变成两列网格，套一层 div 会把两列撑成单列。 -->
     <section class="card">
-        <h2>二维码解析 <small>框选屏幕上的二维码，直接解出链接</small></h2>
+        <div class="row">
+            <div class="rt">
+                <b>二维码</b>
+                <small id="qrModeHint">框选屏幕上的二维码，直接解出里面的链接或文字</small>
+            </div>
+            <div class="seg" id="qrModeSeg" role="tablist" aria-label="二维码子功能">
+                <button type="button" data-qrmode="parse" class="on" role="tab"
+                        aria-selected="true">解析</button>
+                <button type="button" data-qrmode="make" role="tab"
+                        aria-selected="false">生成</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" data-qrsub="parse">
+        <h2>解析 <small>框选屏幕上的二维码，直接解出链接</small></h2>
         <div class="hint">
             用法和「文字识别」完全一样：<b>先把当前画面冻住</b>，再框住二维码，
             自动解出里面的内容。识别成功后可以<b>在浏览器打开</b>、<b>复制链接</b>，
@@ -1280,7 +1301,7 @@
         <div class="row" id="qrEntryRow"></div>
         <div class="hint" id="qrEntryHint">加进横条之后，点那一格就能开始框选；加进网格页同理。</div>
     </section>
-    <section class="card">
+    <section class="card" data-qrsub="parse">
         <h2>识别不出来的时候</h2>
         <div class="hint">
             二维码对清晰度和大小比较敏感。常见情况与对策：<br>
@@ -1289,6 +1310,45 @@
             · <b>只框到一部分</b>：框选范围要完整包住二维码四周的空白边；<br>
             · 已经框好了还是不行：结果窗里会给出原因，点「重新框选」即可重来，
             不用关掉窗口。
+        </div>
+    </section>
+
+    <section class="card" data-qrsub="make" hidden>
+        <h2>生成 <small>把选中的文字 / 链接变成二维码</small></h2>
+        <div class="hint">
+            先在别处选中文字（或复制一段内容），回来点「读取选中内容」，
+            也可以直接在下面框里输入或粘贴；再点<b>生成二维码</b>。
+            生成本机完成，不联网、不上传。
+        </div>
+        <div class="row col">
+            <textarea id="qrMakeText" class="ta" rows="5" spellcheck="false"
+                      placeholder="要写进二维码的内容，例如 https://example.com 或一段文字"></textarea>
+        </div>
+        <div class="row">
+            <div class="rt"><b id="qrMakeCount">0 字</b><small>内容越长，二维码越密，扫起来越吃力</small></div>
+            <div class="qract">
+                <button type="button" class="btn ghost" id="btnQrPickSel">读取选中内容</button>
+                <button type="button" class="btn" id="btnQrMake">生成二维码</button>
+                <button type="button" class="btn ghost" id="btnQrClear">清空</button>
+            </div>
+        </div>
+        <div class="hint" id="qrMakeNote">还没有生成。填入内容后点「生成二维码」。</div>
+        <!-- 生成也有自己的「加到哪」：和解析那两颗是**两组**按钮，
+             因为它们进横条/网格后是两格（`@qr` / `@qrmake`），图标也不同。 -->
+        <div class="row" id="qrMakeEntryRow"></div>
+        <div class="hint" id="qrMakeEntryHint">加到横条或网格后：选中文字再点那一格，二维码会直接弹出来。</div>
+    </section>
+    <section class="card" data-qrsub="make" hidden id="qrOutCard">
+        <h2>二维码 <small>用手机扫一下就能读回下面这段内容</small></h2>
+        <div class="qrout"><canvas id="qrMakeCanvas" width="220" height="220"></canvas></div>
+        <div class="row">
+            <div class="rt">
+                <b>编码内容</b>
+                <small id="qrOutText" class="qrout-text"></small>
+            </div>
+            <div class="qract">
+                <button type="button" class="btn" id="btnQrCopy">复制内容</button>
+            </div>
         </div>
     </section>
     </div>
@@ -2052,6 +2112,12 @@
 <script src="shared.js"></script>
 <script src="i18n.js"></script>
 <script src="i18n.en.js"></script>
+<!-- v2.12.2：二维码「生成」。qrcode-generator（MIT，Kazuhiko Arase）内部实现，
+     已随包内嵌，运行时不联网；`qrcode-utf8.js` 是它的官方补丁 —— 原库按
+     charCode&0xFF 取字节，中文会被截成乱码，补丁把 stringToBytes 换成 UTF-8。
+     ⚠ 顺序不能反：补丁里直接 `qrcode.stringToBytes = ...`，必须在主库之后。 -->
+<script src="vendor/qrcode.min.js"></script>
+<script src="vendor/qrcode-utf8.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>

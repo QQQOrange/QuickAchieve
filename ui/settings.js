@@ -438,8 +438,9 @@ function afterShow(pane) {
     if (pane === 'about') updInit();
     // 直达页：切进来就重画一次（设置页刚打开时那次渲染可能早于配置到达）
     if (pane === 'go') renderGoList();
-    // 二维码解析：两颗「加到哪」的按钮要按当前 barList / gridItems 画状态
-    if (pane === 'qr') renderQrEntry();
+    // 二维码：两颗「加到哪」的按钮要按当前 barList / gridItems 画状态；
+    // 子功能复位到「解析」（和附加功能其它子页"每次进入回默认"一致）
+    if (pane === 'qr') { renderQrEntry(); setQrMode('parse'); }
     // 包裹符号页：把 12 组符号画出来（同时也是"它能加到哪里"的说明）
     if (pane === 'wrap') renderWrapPane();
     // 文本处理页：按注册表画出功能清单（每行两颗"放到哪里"按钮）
@@ -11524,6 +11525,19 @@ document.addEventListener('keydown', (e) => {
 (async function boot() {
     bindTabs();
 
+    /* ⚠ v2.12.2：**首屏必须先选一次分页**。
+     *
+     * 以前 boot 里根本没调 showPane —— HTML 里只有 `general` 没写 hidden，
+     * 所以内容区碰巧是对的，但**没有任何菜单项带 `.on`**：左侧目录通篇一样灰，
+     * 用户点开设置第一眼不知道自己在哪一页（用户报的"通用菜单项需处于选中状态、
+     * 选中项与内容区要一致"就是这个）。
+     *
+     * 放在最前面调：此刻 CONF 还没到，afterShow('general') 只做显隐相关的活
+     * （`idxFabHide` 之类），不碰配置，安全；而且要先于 `qs://goto-tab` 落位 ——
+     * 那个事件是 60ms 一轮补发过来的，用户从别处带 tab 进来时它会把我们这页切走，
+     * 顺序正好对。 */
+    showPane('general');
+
     CATALOG = await fetch('data/engines.json').then((r) => r.json());
     for (const e of CATALOG.toolbar) BY_NAME.set(e.name, e);
     for (const c of CATALOG.categories) {
@@ -11667,15 +11681,213 @@ async function removeFromGrid(name) {
 }
 
 /** 一键切换：在就移除、不在就加。`target` = 'bar' | 'grid'。 */
+/* ------------------------------------------------------------------ */
+/* v2.12.2：二维码页的两个子功能（解析 / 生成）                          */
+/* ------------------------------------------------------------------ */
+
+/** 当前子功能：'parse' | 'make'。每次进入这一页都回到「解析」——
+ *  和附加功能其它子页一样不记忆（用户口径：每次进来都是默认页）。 */
+let qrMode = 'parse';
+
+/** 页面上最后一次**非空**选中内容。
+ *
+ *  为什么要缓存：按钮的 mousedown 会先把选区收掉，等 click 回调跑起来，
+ *  `getSelection()` 已经是空串了 —— 在回调里直接读必然拿不到东西。
+ *  所以在 selectionchange 里随时记一份（只记非空，免得点别处就把要用的内容抹了）。 */
+let qrSelCache = '';
+document.addEventListener('selectionchange', () => {
+    let t = '';
+    try { t = String(window.getSelection ? window.getSelection() : '').trim(); } catch (_) { }
+    if (t) qrSelCache = t.slice(0, 4000);
+});
+
+/** 已经画进二维码的那段内容（「复制内容」用它，而不是输入框的当前值 ——
+ *  用户改了输入框还没重新生成时，图和剪贴板必须还是同一份）。 */
+let qrMade = '';
+
+/** 生成页的状态行。`kind` = '' | 'ok' | 'warn'，只影响颜色。 */
+function qrMakeSay(msg, kind) {
+    const el = $('qrMakeNote');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.toggle('ok', kind === 'ok');
+    el.classList.toggle('warn', kind === 'warn');
+}
+
+function syncQrMakeCount() {
+    const el = $('qrMakeCount');
+    const ta = $('qrMakeText');
+    if (!el || !ta) return;
+    const n = (ta.value || '').length;
+    el.textContent = n + ' 字';
+}
+
+/** 把一段文本画成二维码（canvas，按 dpr 取整像素，扫起来才不糊）。
+ *  抛错交给调用方 —— 太长 / 组件没加载都要变成一句人话，而不是白屏。 */
+function qrMakeDraw(text) {
+    const canvas = $('qrMakeCanvas');
+    if (!canvas) throw new Error('找不到画布');
+    if (typeof qrcode !== 'function') throw new Error('二维码组件没加载');
+    const qr = qrcode(0, 'M');   // 0 = 按内容自动挑版本（最高 40）
+    qr.addData(text);            // Byte 模式；UTF-8 由 vendor/qrcode-utf8.js 保证
+    qr.make();
+    const n = qr.getModuleCount();
+    const margin = 4;            // 静区：规范要求四周至少 4 个模块，少了扫不出
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const cell = Math.max(2, Math.floor((220 * dpr) / (n + margin * 2)));
+    const side = cell * (n + margin * 2);
+    canvas.width = side;
+    canvas.height = side;
+    canvas.style.width = Math.round(side / dpr) + 'px';
+    canvas.style.height = canvas.style.width;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, side, side);
+    ctx.fillStyle = '#000';
+    for (let r = 0; r < n; r += 1) {
+        for (let c = 0; c < n; c += 1) {
+            if (qr.isDark(r, c)) {
+                ctx.fillRect((c + margin) * cell, (r + margin) * cell, cell, cell);
+            }
+        }
+    }
+}
+
+/** 「生成二维码」：空内容**不生成**，只给一句明确提示（用户明确要求的）。 */
+function qrMakeGo() {
+    const ta = $('qrMakeText');
+    const out = $('qrOutCard');
+    const text = ((ta && ta.value) || '').trim();
+    if (!text) {
+        qrMade = '';
+        if (out) out.hidden = true;
+        qrMakeSay('还没有内容：先在别处选中文字点「读取选中内容」，或直接在上面输入 —— 空内容不会生成二维码', 'warn');
+        return;
+    }
+    try {
+        qrMakeDraw(text);
+    } catch (e) {
+        qrMade = '';
+        if (out) out.hidden = true;
+        const raw = String((e && e.message) || e || '');
+        qrMakeSay(/overflow|too (big|long)|length/i.test(raw)
+            ? '内容太长，一张二维码放不下（约 700 个汉字 / 2300 个英文字符）—— 换成短一点的内容再试'
+            : ('生成失败：' + raw), 'warn');
+        return;
+    }
+    qrMade = text;
+    const shown = text.length > 120 ? (text.slice(0, 120) + '…') : text;
+    if ($('qrOutText')) $('qrOutText').textContent = shown;
+    if (out) out.hidden = false;
+    qrMakeSay('已生成（' + text.length + ' 字）—— 用手机扫，或点下面的「复制内容」', 'ok');
+}
+
+/** 「读取选中内容」：页面上的选区优先，没有就退到剪贴板。
+ *  两条都空就明说没读到，不留下一个空输入框让用户猜。 */
+async function qrPickSelection() {
+    const ta = $('qrMakeText');
+    if (!ta) return;
+    let text = qrSelCache.trim();
+    let from = '页面上选中的文字';
+    if (!text) {
+        try {
+            text = String(await invoke('clip_read_text') || '').trim();
+            from = '剪贴板';
+        } catch (_) { text = ''; }
+    }
+    if (!text) {
+        qrMakeSay('没读到内容：先在要用的地方选中文字并按 Ctrl+C 复制，再回来点这里；也可以直接在上面输入', 'warn');
+        return;
+    }
+    // 用掉一次就清掉，免得下次又拿到很久以前那次选中
+    qrSelCache = '';
+    ta.value = text;
+    syncQrMakeCount();
+    qrMakeSay('已读取' + from + '（' + text.length + ' 字），点「生成二维码」即可', 'ok');
+}
+
+/** 切换子功能：`.seg` 的选中态 + 卡片互斥显隐，一次改齐。 */
+function setQrMode(mode) {
+    const m = (mode === 'make') ? 'make' : 'parse';
+    qrMode = m;
+    const seg = $('qrModeSeg');
+    if (seg) {
+        for (const b of seg.querySelectorAll('button[data-qrmode]')) {
+            const on = b.dataset.qrmode === m;
+            b.classList.toggle('on', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        }
+    }
+    for (const el of document.querySelectorAll('[data-qrsub]')) {
+        el.hidden = el.dataset.qrsub !== m;
+    }
+    /* ⚠ 结果卡是特例：它虽然属于「生成」，但**只有真生成过**才该出现。
+     *   上面的循环会把同组卡片一律 `hidden = false`，于是空手切到「生成」时
+     *   会先冒出一个空画布（用户看到的是一块空白方框）。这里按 `qrMade` 再压一次。 */
+    if (m === 'make' && $('qrOutCard')) $('qrOutCard').hidden = !qrMade;
+    const hint = $('qrModeHint');
+    if (hint) {
+        hint.textContent = m === 'make'
+            ? '把选中的文字或链接变成二维码，生成后可一键复制内容'
+            : '框选屏幕上的二维码，直接解出里面的链接或文字';
+    }
+    if (m === 'make') syncQrMakeCount();
+}
+
+/* 绑定只做一次：脚本在 body 末尾，这些节点一定在。 */
+if ($('qrModeSeg')) {
+    $('qrModeSeg').addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-qrmode]');
+        if (b) setQrMode(b.dataset.qrmode);
+    });
+}
+if ($('btnQrMake')) $('btnQrMake').addEventListener('click', qrMakeGo);
+if ($('btnQrPickSel')) $('btnQrPickSel').addEventListener('click', () => { qrPickSelection(); });
+if ($('btnQrClear')) {
+    $('btnQrClear').addEventListener('click', () => {
+        if ($('qrMakeText')) $('qrMakeText').value = '';
+        qrMade = '';
+        if ($('qrOutCard')) $('qrOutCard').hidden = true;
+        syncQrMakeCount();
+        qrMakeSay('还没有生成。填入内容后点「生成二维码」。');
+    });
+}
+if ($('btnQrCopy')) {
+    $('btnQrCopy').addEventListener('click', async () => {
+        if (!qrMade) { qrMakeSay('还没有生成内容，没有可复制的', 'warn'); return; }
+        try {
+            await invoke('copy_text', { text: qrMade });
+            qrMakeSay('已复制到剪贴板（' + qrMade.length + ' 字）', 'ok');
+        } catch (e) {
+            qrMakeSay('复制失败：' + String(e || ''), 'warn');
+        }
+    });
+}
+if ($('qrMakeText')) {
+    $('qrMakeText').addEventListener('input', () => {
+        syncQrMakeCount();
+        const cur = ($('qrMakeText').value || '').trim();
+        if (qrMade && cur !== qrMade) {
+            qrMakeSay('内容改过了，点「生成二维码」换成新的图（现在图里还是上一版）', 'warn');
+        }
+    });
+}
+
 /** 「二维码解析」页里那两颗入口按钮：加进横条 / 加进网格页。
  *
  *  和「智能直达」每行那两颗是同一套语义（`toggleAddTo`），只是这里把它提到
  *  功能页里 —— 用户不必先去横条外观 / 网格页设置里自己拼名字。
  *  再次点击就是移除，按钮文案跟着当前状态走，不做"隐藏式切换"。 */
-function renderQrEntry() {
-    const box = $('qrEntryRow');
+/** 画**一组**入口按钮（横条 / 网格各一颗）。
+ *
+ *  为什么拆成参数：这一页现在有两组 —— 解析（`@qr`）和生成（`@qrmake`）。
+ *  两者进横条/网格后是**两格**（图标不同、点击行为也不同），所以各自维护
+ *  自己的按钮状态，不能共用一行。 */
+function renderQrEntryRow(rowId, hintId, sent, verb) {
+    const box = $(rowId);
     if (!box) return;
-    const sent = window.QS_QR || '@qr';
+    const inBar = barHas(sent);
+    const inGrid = gridHas(sent);
     box.textContent = '';
     const mk = (label, title, on, fn) => {
         const b = document.createElement('button');
@@ -11686,30 +11898,39 @@ function renderQrEntry() {
         b.addEventListener('click', fn);
         return b;
     };
-    const inBar = barHas(sent);
-    const inGrid = gridHas(sent);
     box.appendChild(mk(
         inBar ? '− 从横条移除' : '＋ 加到横条',
-        inBar ? '从横条工具栏上移除这一格' : '固定到横条工具栏（点那一格就开始框选）',
+        inBar ? '从横条工具栏上移除这一格' : '固定到横条工具栏（' + verb + '）',
         inBar,
         () => toggleAddTo('bar', sent),
     ));
     box.appendChild(mk(
         inGrid ? '− 从网格页移除' : '＋ 加到网格页',
-        inGrid ? '从网格页里移除这一格' : '往网格页加一格，点它就开始框选',
+        inGrid ? '从网格页里移除这一格' : '往网格页加一格（' + verb + '）',
         inGrid,
         () => toggleAddTo('grid', sent),
     ));
-    const hint = $('qrEntryHint');
-    if (hint) {
-        hint.textContent = inBar || inGrid
-            ? (inBar ? '横条上已经有这一格了' : '')
-              + (inBar && inGrid ? '，' : '')
-              + (inGrid ? '网格页里也加好了' : '')
-              + ' —— 点它就会冻住画面等你框选。'
+    const hint = $(hintId);
+    if (!hint) return;
+    if (inBar || inGrid) {
+        hint.textContent = (inBar ? '横条上已经有这一格了' : '')
+            + (inBar && inGrid ? '，' : '')
+            + (inGrid ? '网格页里也加好了' : '')
+            + (verb === '选中文字再点它，直接生成二维码' ? ' —— 选中文字再点它，二维码会直接弹出来。'
+                                                       : ' —— 点它就会冻住画面等你框选。');
+    } else {
+        hint.textContent = verb === '选中文字再点它，直接生成二维码'
+            ? '加到横条或网格后：选中文字再点那一格，二维码会直接弹出来。'
             : '加进横条之后，点那一格就能开始框选；加进网格页同理。';
     }
 }
+
+function renderQrEntry() {
+    renderQrEntryRow('qrEntryRow', 'qrEntryHint', window.QS_QR || '@qr', '点它就开始框选');
+    renderQrEntryRow('qrMakeEntryRow', 'qrMakeEntryHint',
+        window.QS_QRMAKE || '@qrmake', '选中文字再点它，直接生成二维码');
+}
+
 
 async function toggleAddTo(target, name) {
     try {

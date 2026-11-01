@@ -37,6 +37,13 @@ window.QS_TRANS = '@trans';
  *  网格里也能当一格。点下去走的是**和 OCR 完全一样**的那条路（先冻屏框选，
  *  再出结果窗），所以入口配置方式、图标规格、点击反馈都沿用现成的一套。 */
 window.QS_QR = '@qr';
+/** v2.12.2：横条 / 网格上的「二维码**生成**」哨兵。
+ *
+ *  和 `@qr`（解析）是**两格两图标**，用户一眼能分：
+ *    · 解析 = 三个空心定位角 + 琥珀数据点（"看出码里写了什么"）；
+ *    · 生成 = 三个实心方块 + 绿色加号（"把手里这段内容变出一个码"）。
+ *  点下去拿的是唤出横条/网格时抓到的那段选区，直接弹一个小窗显示二维码。 */
+window.QS_QRMAKE = '@qrmake';
 /** 翻译按钮的**内置默认图标**（用户指定的「翻译-copy.png」）。
  *
  *  ⚠ v1.5.19：这张图**内嵌**在这里 —— 整张 PNG 以 base64 data URI 写死，
@@ -233,7 +240,8 @@ window.qsDisplayName = function (name) {
         txt: '文本处理',
         /* v2.12.0：二维码解析。漏了这一项的话界面上会显示成英文单词「qr」
          * （同 @wrap 早年那个坑）。 */
-        qr: '二维码解析',
+        qr: '二维码',
+        qrmake: '二维码生成',
         '|': '分隔线',
     };
     if (Object.prototype.hasOwnProperty.call(FIXED, key)) return FIXED[key];
@@ -478,6 +486,12 @@ window.qsFuncIcon = function (name) {
         /* 二维码解析：三只定位角 + 中间的点，靛蓝 + 琥珀双色，
          * 和抠图 / 包裹 / 文本处理那几张"线稿 + 彩色"保持同一套视觉重量。 */
         if (window.qsQrIconNode) return window.qsQrIconNode();
+    }
+    if (name === window.QS_QRMAKE) {
+        /* 二维码生成：实心方块 + 加号、绿色。和上面那张解析图标在**形状**
+         * （空心/实心）和**颜色**（青+琥珀/绿）两条线上同时区分开 —— 只改颜色
+         * 的话，缩到横条那 15px 大小仍然难分。 */
+        if (window.qsQrMakeIconNode) return window.qsQrMakeIconNode();
     }
     if (name === window.QS_WRAP) {
         /* 单项（`@wrap:title`）与整颗（`@wrap`）共用同一张图 —— 和 @txt:<op>
@@ -765,6 +779,42 @@ window.qsQrIconNode = function () {
         // 右下角的数据点（琥珀色，和别的功能区分开）
         + '<path d="M14.6 14.6h3.1v3.1h-3.1zM19.3 19.3h2.3v2.3h-2.3zM14.6 19.6h2.2v1.6h-2.2zM19.4 14.5h2.1v2.2h-2.1z" '
         + 'fill="#F59E0B" stroke="none"/>'
+        + '</svg>';
+    return sp;
+};
+
+/** 二维码**生成**（`@qrmake`）的默认图标：三块实心定位块 + 一个绿色加号。
+ *
+ *  设计口径（和解析那张配套）：
+ *    · 解析那张是**空心**描边 + 琥珀小点 —— 像"在读"；
+ *    · 这张是**实心**块 + 加号 —— 像"新增一个码"。
+ *  两者在缩小到 15px 时，实心/空心和绿/青的差别比任何细节都更早被眼睛抓住。
+ *  同样支持用户在设置里换图（overrideIcons），逻辑与其它内置图标一致。 */
+window.qsQrMakeIconNode = function () {
+    const conf = window.CONF || {};
+    const custom = conf.overrideIcons ? conf.overrideIcons[window.QS_QRMAKE] : null;
+    if (custom) {
+        const img = document.createElement('img');
+        img.src = custom;
+        img.alt = '';
+        img.draggable = false;
+        if (window.qsApplyOpticalScale) {
+            window.qsApplyOpticalScale(img, conf.unifyIcons !== false);
+        }
+        return img;
+    }
+    const sp = document.createElement('span');
+    sp.style.cssText = 'display:block;width:100%;height:100%';
+    sp.innerHTML = '<svg viewBox="0 0 24 24" fill="none" '
+        + 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
+        + 'style="display:block;width:100%;height:100%">'
+        // 三个实心定位块（左下 / 左上 / 右上）—— 实心是"生成"这张的识别特征
+        + '<rect x="2.8" y="2.8" width="6.8" height="6.8" rx="1.6" fill="#16A34A" stroke="none"/>'
+        + '<rect x="14.4" y="2.8" width="6.8" height="6.8" rx="1.6" fill="#16A34A" stroke="none"/>'
+        + '<rect x="2.8" y="14.4" width="6.8" height="6.8" rx="1.6" fill="#16A34A" stroke="none"/>'
+        // 右下角的「＋」：加号 = 生成
+        + '<rect x="15.6" y="12.2" width="3.2" height="10" rx="1.4" fill="#16A34A" stroke="none"/>'
+        + '<rect x="12.2" y="15.6" width="10" height="3.2" rx="1.4" fill="#16A34A" stroke="none"/>'
         + '</svg>';
     return sp;
 };

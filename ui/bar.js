@@ -788,7 +788,10 @@ function barList() {
             || n === window.QS_TRANS || n === window.QS_WRAP
             /* v2.12.0：二维码解析（@qr）和上面几颗一样，是横条上的一等成员 ——
              * 不认这里的话，用户刚加进横条的那格会被"必须是认识的名字"筛掉。 */
-            || n === window.QS_QR) return true;
+            || n === window.QS_QR
+            /* v2.12.2：二维码生成（@qrmake）同理 —— 它是独立的一格（不是解析的别名），
+             * 图标、点击行为都各走各的。 */
+            || n === window.QS_QRMAKE) return true;
         /* 单项包裹（`@wrap:<key>`，v2.11.0）：和 @txt:<op> 一样是一等成员。
          * 不认这里的话，用户刚在设置里加的书名号会被"必须是认识的名字"筛掉。 */
         if (typeof n === 'string' && window.qsWrapPairId && window.qsWrapPairId(n)) return true;
@@ -1111,6 +1114,18 @@ function renderBar(force) {
             b.title = '解析图片里的二维码（先框选，再出链接）';
             b.dataset.qr = '1';
             b.appendChild(window.qsQrIconNode ? window.qsQrIconNode() : document.createTextNode('▦'));
+            enginesEl.appendChild(b);
+            engines++;
+            continue;
+        }
+        /* v2.12.2：二维码生成（@qrmake）。和解析那格并排、但长得不一样：
+         * 实心方块 + 绿加号。点它直接把**当前选区**变成二维码弹出来。 */
+        if (name === window.QS_QRMAKE) {
+            const b = document.createElement('button');
+            b.className = 'ico engine qs-qrmake-inbar';
+            b.title = '生成二维码（把选中的文字/链接变成二维码）';
+            b.dataset.qrmake = '1';
+            b.appendChild(window.qsQrMakeIconNode ? window.qsQrMakeIconNode() : document.createTextNode('＋'));
             enginesEl.appendChild(b);
             engines++;
             continue;
@@ -2612,6 +2627,13 @@ barEl.addEventListener('click', (e) => {
         invoke('qr_start').catch(() => {});
         return;
     }
+    if (btn.dataset.qrmake === '1') {
+        /* 横条上点「生成」：`currentText` 就是唤出横条时抓到的那段选区，
+         * 原样递给后端；空的话后端自己退到剪贴板。 */
+        const t = (typeof currentText === 'string') ? currentText : '';
+        invoke('qrgen_show', { text: t }).catch(() => {});
+        return;
+    }
     if (btn.classList.contains('engine')) {
         // ⚠ 还要看 dataset.engine：收藏夹格子（qs-fav-inbar）和外部软件格子
         // （qs-app-inbar）也带 engine 类，但它们的 click 各自处理（弹面板 /
@@ -3369,7 +3391,10 @@ const GRID_SENTINELS = {
     '@txt': { label: '文本处理' },
     /* v2.12.0：二维码解析。点击走 qr_start（先冻屏框选、再出结果窗），
      * 和 @ocr 一条路 —— 用户要求"入口配置方式和交互与 OCR 一致"。 */
-    '@qr': { label: '二维码解析' },
+    '@qr': { label: '二维码' },
+    /* v2.12.2：二维码生成。点击走 qrgen_show（拿当前选区直接弹一个带二维码的小窗），
+     * 和解析那格完全两条路 —— 一格"读码"、一格"造码"。 */
+    '@qrmake': { label: '二维码生成' },
 };
 
 /** 三类「模型」：文字识别 / 识图 / 翻译各自的引擎清单。
@@ -3530,7 +3555,15 @@ function runGridFunc(key) {
     if (base === '@qr') {
         /* 和 OCR 同一条路：先开全屏遮罩冻屏 → 框选 → 结果窗。产物是我们
          * 自己的窗口，所以等 self（窗口 ready 之后才收网格）。 */
-        gridOpenThenClose(() => invoke('qr_start'), '二维码解析', { ready: 'self' });
+        gridOpenThenClose(() => invoke('qr_start'), '二维码', { ready: 'self' });
+        return;
+    }
+    if (base === '@qrmake') {
+        /* 网格里的「二维码生成」：把唤出网格时抓到的那段文字直接变成二维码。
+         * 文本可能是空的（用户没选字就按了快捷键）—— 那就交给后端退到剪贴板，
+         * 两边都空时窗口里会明确提示"先选内容"。 */
+        const t = (typeof currentText === 'string') ? currentText : '';
+        gridOpenThenClose(() => invoke('qrgen_show', { text: t }), '二维码生成', { ready: 'self' });
         return;
     }
     if (base === '@img') {
@@ -3661,7 +3694,7 @@ function gridPickSections() {
 
     /* ① 软件内置功能 */
     const builtin = [];
-    for (const key of ['@ocr', '@trans', '@img', '@qr', '@wrap']) {
+    for (const key of ['@ocr', '@trans', '@img', '@qr', '@qrmake', '@wrap']) {
         const meta = GRID_SENTINELS[key];
         if (!meta) continue;
         builtin.push({

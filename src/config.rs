@@ -122,6 +122,10 @@ pub const BAR_WRAP: &str = "@wrap";
 /// 能换图标、能被移出。点击由前端分发到 `qr_start`。
 pub const BAR_QR: &str = "@qr";
 
+/// v2.12.2：二维码**生成**哨兵。和 `BAR_QR`（解析）是两格、两个图标：
+/// 解析"看出码里写了什么"，生成"把手里这段内容变成一个码"。
+pub const BAR_QRMAKE: &str = "@qrmake";
+
 /// 文本处理的前缀：具体功能写在冒号后面（`@txt:trim` / `@txt:case:upper`…）。
 ///
 /// 为什么不做成 `@txt` 一颗 + 设置里再选是哪一件：用户明确要求
@@ -642,6 +646,7 @@ fn is_bar_sentinel(n: &str) -> bool {
         || n == BAR_TRANS
         || n == BAR_WRAP
         || n == BAR_QR
+        || n == BAR_QRMAKE
         || is_wrap_sentinel(n)
         || is_text_sentinel(n)
         || is_app_sentinel(n)
@@ -5922,6 +5927,24 @@ mod sanitize_tests {
         assert!(validate_app_url(&ok).is_ok(), "贴着上限的正当地址被误拦");
         let bad = format!("https://example.com/{}", "a".repeat(2048));
         assert!(validate_app_url(&bad).is_err(), "超过上限的地址必须拦下");
+    }
+
+    /// 二维码那两格必须是**合法的横条成员**，而且互不相等。
+    ///
+    /// 这条守的是 v2.12.2 新加的「生成」入口：`@qrmake` 只要在
+    /// `is_bar_sentinel` / `toggle_bar_engine` 任何一处漏掉，用户在设置页点
+    /// 「＋ 加到横条」就会被后端当成不认识的引擎拒掉 —— 界面表现是
+    /// "点了没反应、列表也不变"，且**没有任何报错**，非常难查。
+    #[test]
+    fn qr_sentinels_are_distinct_and_valid() {
+        assert_ne!(BAR_QR, BAR_QRMAKE, "解析和生成必须是两格");
+        assert!(is_bar_sentinel(BAR_QR));
+        assert!(is_bar_sentinel(BAR_QRMAKE));
+        // 别把它们误算进其它哨兵家族（前缀不同，但这条要钉住回归）
+        assert!(!is_wrap_sentinel(BAR_QRMAKE));
+        assert!(!is_text_sentinel(BAR_QRMAKE));
+        assert!(!is_fav_sentinel(BAR_QRMAKE));
+        assert!(!is_app_sentinel(BAR_QRMAKE));
     }
 
     /// 单项包裹哨兵（`@wrap:<key>`）：和 `@txt:<op>` 同一套口径。
