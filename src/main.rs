@@ -6016,6 +6016,8 @@ fn config_view() -> Value {
         "barNeedText": cfg.bar_need_text,
         // v2.16.0：框选之后先停一下（可拖角微调 + 换用途）。关掉 = 松手立即执行。
         "regionHold": cfg.region_hold,
+        // v2.18.1：上次在动作条上点的动作 —— 页面拿它当"双击执行"的默认项
+        "regionLastAction": cfg.region_last_action,
         // v2.14.0：横条触发方式（"always" = 选中即弹 / "ctrl" = 按住 Ctrl 才弹）。
         // 两者互斥，值只有这两个。
         "barTriggerMode": cfg.bar_trigger_mode,
@@ -6657,6 +6659,10 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
         "barNeedText" => cfg.bar_need_text = value.as_bool().unwrap_or(true),
         // v2.16.0：框选后停留（默认开）。关掉 = 松手立即执行（老行为）。
         "regionHold" => cfg.region_hold = value.as_bool().unwrap_or(true),
+        // v2.18.1：上次动作。白名单之外（手改、老页面）一律清空 = 按本次用途执行。
+        "regionLastAction" => {
+            cfg.region_last_action = normalize_region_action(value.as_str().unwrap_or(""))
+        }
         /* v2.14.0：触发方式（`always` / `ctrl`，互斥）。
          * 白名单与 sanitize 同一条口径；值不在白名单里（老页面、探针、手改）
          * 一律回 `always` —— 宁可多弹，也不能让横条因为这个值再也不弹。 */
@@ -14840,6 +14846,20 @@ fn ocr_warm() {
 /// 分发出去的仍然是原来那两个函数（一行没改），老路径的行为完全不变。
 #[crate::t::command]
 fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
+    /* 记下这次点的动作：下次框选双击就执行它（见 config::region_last_action）。
+     *
+     * 为什么在后端记、不让页面发一条 set_setting：页面提交完立刻就被销毁，
+     * 那条 IPC 很可能还在队列里就随窗口一起没了 —— 表现是"点了翻译，下次还是识别"。
+     * 这里是在命令栈里同步写的，可靠得多。只记白名单里的值，脏值不落盘。 */
+    let record = normalize_region_action(&action);
+    if !record.is_empty() {
+        if let Ok(mut cfg) = st().cfg.lock() {
+            if cfg.region_last_action != record {
+                cfg.region_last_action = record;
+                config::save(&cfg);
+            }
+        }
+    }
     match parse_region_action(&action) {
         RegionAction::Trans => region_translate(x, y, w, h, dpr),
         RegionAction::Img => img_region(x, y, w, h, dpr),
@@ -14867,6 +14887,18 @@ enum RegionAction {
     Img,
     Qr,
     Copy,
+}
+
+/// 动作名归一：**只认这五个**，其余一律空串。
+///
+/// 和 `parse_region_action` 的区别是语义：那个用于**执行**（认不出来就按 OCR 跑，
+/// 宁可多识别一次也不能没反应）；这个用于**记录**（认不出来就当没记录，绝不把
+/// 脏值写进配置 —— 下次双击会拿它当默认，写脏了就等于"默认动作坏了"）。
+fn normalize_region_action(s: &str) -> String {
+    match s {
+        "ocr" | "trans" | "img" | "qr" | "copy" => s.to_string(),
+        _ => String::new(),
+    }
 }
 
 /// 字符串 → 动作。**白名单之外一律当 OCR**：这是"点了一定有反应"的兜底，
@@ -24500,6 +24532,14 @@ mod tests {
         assert_eq!(parse_region_action("qr"), RegionAction::Qr);
         assert_eq!(parse_region_action("copy"), RegionAction::Copy);
         assert_eq!(parse_region_action("trans"), RegionAction::Trans);
+        // 记录用的归一：只认五个，脏值一律空串（脏值进配置 = 下次默认动作坏了）
+        for ok in ["ocr", "trans", "img", "qr", "copy"] {
+            assert_eq!(normalize_region_action(ok), ok);
+        }
+        for bad in ["", "translate", "OCR", " img", "copy2", "trans "] {
+            assert_eq!(normalize_region_action(bad), "", "{bad:?} 不该被记录");
+        }
+
         // 脏值 / 空串 / 大小写不对 —— 全部按识别处理，绝不静默
         for bad in ["", "translate", "OCR", " img", "copy2"] {
             assert_eq!(

@@ -259,6 +259,19 @@ let gesture = {
  * 读配置失败一律当 true（新行为），因为这是主路径。 */
 let holdMode = true;
 
+/* 上次在动作条上点过的动作（后端记的）。双击/回车执行的就是它 ——
+   固定用来"翻译截图"的人，第二次起就不必再点按钮了。
+   空串 = 还没点过 → 回落到这次框选的用途（?mode=）。
+
+   ⚠ 只在"**停留**"模式下生效：关掉停留（松手即执行）时仍然按 ?mode= 走，
+   否则"开 OCR 窗口却翻译了"会莫名其妙。 */
+let lastAct = '';
+
+/** 双击/回车要执行的动作：上次用过的 → 否则这次框选的用途。 */
+function defaultAct() {
+    return (lastAct && ACT_NAME[lastAct]) ? lastAct : MODE;
+}
+
 /* 真正执行：把这块区域交给后端，按 action 分流。 */
 let committed = false;
 function commit(action) {
@@ -462,8 +475,8 @@ function buildBar() {
         const b = document.createElement('button');
         b.dataset.act = a;
         b.textContent = ACT_NAME[a];
-        // 默认动作 = 这次框选本来的用途（?mode=），高亮它
-        if (a === MODE) b.classList.add('on');
+        // 高亮"双击会执行的那一个"（上次用过的 → 否则这次框选本来的用途）
+        if (a === defaultAct()) b.classList.add('on');
         b.addEventListener('click', (e) => {
             e.stopPropagation();
             commit(a);
@@ -475,7 +488,8 @@ function buildBar() {
     actbar.appendChild(sep);
     const hint = document.createElement('span');
     hint.className = 'hint';
-    hint.innerHTML = '拖角调整 · 双击<b>执行</b> · <b>Esc</b> 取消';
+    /* 写清"双击会执行哪一个"：不然记忆生效之后，用户会以为双击还是识别 */
+    hint.innerHTML = '拖角调整 · 双击<b>' + (ACT_NAME[defaultAct()] || '执行') + '</b> · <b>Esc</b> 取消';
     actbar.appendChild(hint);
 }
 
@@ -621,7 +635,7 @@ document.addEventListener('dblclick', (e) => {
     if (done || phase !== 'adjust') return;
     if (actbar.contains(e.target)) return;
     if (hitTest(e.clientX, e.clientY) === 'new') return;  // 双击空白 = 重新框，不执行
-    commit(MODE);
+    commit(defaultAct());
 });
 
 document.addEventListener('keydown', (e) => {
@@ -631,7 +645,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
     if (e.key === 'Enter' && phase === 'adjust') {
-        commit(MODE);
+        commit(defaultAct());
     }
 });
 
@@ -671,7 +685,11 @@ if (MODE === 'app') {
 } else {
     invoke('get_config').then((c) => {
         holdMode = !c || c.regionHold !== false;
-        jlog('regionHold=' + holdMode);
+        lastAct = (c && typeof c.regionLastAction === 'string') ? c.regionLastAction : '';
+        jlog('regionHold=' + holdMode + ' lastAct=' + (lastAct || '(none)'));
+        /* 配置比"拖框"慢到时（偶尔会比首帧晚几十毫秒），动作条已经画好了 ——
+         * 这里重建一次，让高亮和"双击XXX"的文案立刻对上。 */
+        if (phase === 'adjust') { buildBar(); paint(); }
     }).catch((e) => {
         // 读不到就按默认（新行为）走 —— 新行为才是主路径
         jlog('get_config failed: ' + ((e && e.message) || e) + ' -> 按停留处理');

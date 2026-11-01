@@ -1745,6 +1745,16 @@ pub struct Config {
     /// 嫌慢的人可以在「通用 → 触发」里关掉，行为立刻退回老样子。
     #[serde(default = "default_true")]
     pub region_hold: bool,
+    /// 上次在动作条上点的那一个动作（`""` = 还没点过）。
+    ///
+    /// 用途只有一个：**下次双击执行它**。用户如果固定用来"翻译截图"，就不必每回
+    /// 都去点一下按钮 —— 双击已经是最省的鼠标动作了。
+    ///
+    /// 存的是动作名（`ocr` / `trans` / `img` / `qr` / `copy`），由 `region_action`
+    /// 在后端写入（不在页面里写：页面提交完就被销毁，那条 IPC 很可能发不出去）。
+    /// 白名单之外的脏值一律当空串，回落到"按这次框选的用途执行"。
+    #[serde(default)]
+    pub region_last_action: String,
     /// 生效范围："off" = 全部软件；"blacklist" = 列出的软件里不弹；
     /// "whitelist" = 只在列出的软件里弹。
     pub filter_mode: String,
@@ -2253,6 +2263,7 @@ impl Default for Config {
             bar_trigger_mode: default_bar_trigger_mode(),
             // 框选后停留（可调整 + 换用途），见字段文档
             region_hold: true,
+            region_last_action: String::new(),
             filter_mode: "off".to_string(),
             filter_list: Vec::new(),
             ocr_enable: true,
