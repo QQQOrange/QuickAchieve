@@ -4806,15 +4806,36 @@ function gridItemIcon(name) {
  *  也用来回答"wrap 到底是干什么的" —— 用户明确要求给正式、易懂的名称。 */
 function gridItemDesc(name) {
     const nm = (id) => MODEL_NAMES.get(String(id)) || String(id || '未知');
+    /* ⚠ 模型名必须**按种类**取（`qsModelName('ocr','baidu')`），不能用上面那张
+     * 只按 id 索引的 MODEL_NAMES：OCR 的 baidu 是「百度云」、翻译的 baidu 是
+     * 「百度翻译」，同 id 不同名，后登记的把先登记的盖掉 —— 实测就出现过
+     * 「文字识别（同时用 本地识别、百度翻译）」。 */
+    const mn = (kind, id) => (window.qsModelName ? window.qsModelName(kind, id) : nm(id));
+    /* v2.13.0：绑定模型的格子（`@ocr:baidu` / `@ocr:windows+baidu`）以前落到
+     * default 分支 —— 设置列表里这一行只有名字、没有说明，和旁边那些
+     * "动作 + 产出"的说明不一致。绑定多家时要把"并行"这件事说出来。 */
+    const bound = window.qsFuncBound ? window.qsFuncBound(name) : null;
+    if (bound && ['ocr', 'img', 'trans'].indexOf(bound.kind) >= 0) {
+        const ids = bound.ids || [bound.id];
+        const names = ids.map((id) => mn(bound.kind, id)).join('、');
+        const act = bound.kind === 'ocr'
+            ? '框选屏幕 → 识别文字'
+            : bound.kind === 'img'
+                ? '框选图片 → 按图搜索'
+                : '翻译当前这段文字';
+        return ids.length > 1
+            ? act + '（同时用 ' + names + '，各出一份结果）'
+            : act + '（固定用 ' + names + '）';
+    }
     switch (name) {
         case '@ocr':
-            return '框选屏幕 → 识别文字（当前模型：' + nm(CONF && CONF.ocrEngine) + '）';
+            return '框选屏幕 → 识别文字（当前模型：' + mn('ocr', CONF && CONF.ocrEngine) + '）';
         case '@img': {
-            const list = ((CONF && CONF.imgEngines) || []).map(nm);
+            const list = ((CONF && CONF.imgEngines) || []).map((id) => mn('img', id));
             return '框选图片 → 按图搜索（当前模型：' + (list.length ? list.join('、') : '未配置') + '）';
         }
         case '@trans':
-            return '翻译当前这段文字（当前模型：' + nm(CONF && CONF.transEngine) + '）';
+            return '翻译当前这段文字（当前模型：' + mn('trans', CONF && CONF.transEngine) + '）';
         case '@wrap':
             return '点开一组符号（“” 《》 【】 等），把选中的文字套上 / 拆掉 / 换一对';
         /* v2.12.3：二维码两格以前没有说明（switch 里没有分支，直接空字符串），

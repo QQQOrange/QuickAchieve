@@ -9873,32 +9873,66 @@ static TRANS_SESSION: std::sync::Mutex<Option<TransSession>> = std::sync::Mutex:
 /// 翻译的"本次会话指定引擎"（v2.8.0）：网格里绑定了具体翻译模型
 /// （`@trans:<id>`）时由 `trans_start(engine)` 写进来，`trans_session` 据此
 /// 只跑这一家。下次普通入口调用会把它覆盖成 None —— 不会一直粘着。
-static TRANS_FORCE_ENGINE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+static TRANS_FORCE_ENGINE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// OCR 侧同理（见 `ocr_engine_plan`）：绑定 `@ocr:<id>` 的格子点下去，
-/// 整轮识别只跑这一家，不掺全局默认、也不掺"同时识别"名单。
-static OCR_FORCE_ENGINE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// 整轮识别只跑绑定的那几家，不掺全局默认、也不掺"同时识别"名单。
+///
+/// ⚠ v2.13.0：从 `Option<String>` 换成 `Vec<String>` —— 一格可以**同时绑多家**
+/// （`@ocr:windows+baidu`），并行识别、结果窗每家一段，和其它入口的"同时识别"
+/// 完全同一套展示。空 vec = 没绑定（走全局计划）。
+static OCR_FORCE_ENGINES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
-/// 写/清 OCR 的强制引擎。空字符串或未知 id 一律当"没指定"。
-fn set_ocr_force_engine(engine: Option<String>) {
-    let v = engine
-        .map(|e| e.trim().to_string())
-        .filter(|e| !e.is_empty() && ocr_engines::find(e).is_some());
+/// `"baidu+windows"` → `["baidu","windows"]`：**有序、去重、去空白**。
+///
+/// 为什么绑定的多模型用 `+` 而不是另开一个字段：网格项就是一串**不透明字符串**
+/// （`grid_list` / `bar_list` 里存的就是它们），换成对象会连带改动配置结构、
+/// 备份兼容、以及所有"按名字查"的地方。`+` 只是把"一格的模型"写成一段文本，
+/// 读的时候拆开即可 —— 老数据（单个 id）天然兼容。
+fn split_model_ids(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in s.split('+') {
+        let p = part.trim();
+        if p.is_empty() {
+            continue;
+        }
+        if !out.iter().any(|x| x == p) {
+            out.push(p.to_string());
+        }
+    }
+    out
+}
+
+/// 写/清 OCR 的强制引擎。空字符串、未知 id、重复项一律被剔掉。
+fn set_ocr_force_engine(engines: Option<String>) {
+    let mut v: Vec<String> = engines
+        .as_deref()
+        .map(split_model_ids)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| ocr_engines::find(e).is_some())
+        .collect();
+    // 上限 6 家：再多也不会有用户在结果窗里一页页看下去，反而拖慢识别
+    v.truncate(6);
     win::log(&format!(
         "ocr: 本轮强制引擎 = {}",
-        v.as_deref().unwrap_or("（未指定，用全局默认）")
+        if v.is_empty() {
+            "（未指定，用全局默认）".to_string()
+        } else {
+            v.join(" + ")
+        }
     ));
-    if let Ok(mut g) = OCR_FORCE_ENGINE.lock() {
+    if let Ok(mut g) = OCR_FORCE_ENGINES.lock() {
         *g = v;
     }
 }
 
-/// 这一轮是不是用户**明确指定**的那一家（网格里 `@ocr:<id>` 绑定格子）。
+/// 这一轮用户**明确指定**的那几家（网格里 `@ocr:<id>` / `@ocr:a+b` 绑定格子）。
 ///
-/// 用它区分两种口径：绑定 = 只跑它、跑不了就明说；没绑定 = 走"默认 + 同时识别"
+/// 用它区分两种口径：绑定 = 只跑这几家、跑不了就明说；没绑定 = 走"默认 + 同时识别"
 /// 那套，缺凭据时可以退回本地让功能可用（r76/r77 的老行为）。
-fn ocr_forced_engine() -> Option<String> {
-    OCR_FORCE_ENGINE.lock().ok().and_then(|g| g.clone())
+fn ocr_forced_engines() -> Vec<String> {
+    OCR_FORCE_ENGINES.lock().map(|g| g.clone()).unwrap_or_default()
 }
 
 /// 这一轮**计划**要跑哪几家（`ocr_region` / `rescan_ocr` 算出来的名单）。
@@ -9924,13 +9958,23 @@ fn ocr_plan_now() -> Value {
     json!(ocr_round_plan())
 }
 
-fn set_trans_force_engine(engine: Option<String>) {
-    let v = engine
-        .map(|e| e.trim().to_string())
-        .filter(|e| !e.is_empty() && trans_engines::find(e).is_some());
+/// 写/清翻译的强制引擎（`@trans:a+b` = 这几家一起翻）。
+fn set_trans_force_engine(engines: Option<String>) {
+    let mut v: Vec<String> = engines
+        .as_deref()
+        .map(split_model_ids)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| trans_engines::find(e).is_some())
+        .collect();
+    v.truncate(6);
     win::log(&format!(
         "trans: 本轮强制引擎 = {}",
-        v.as_deref().unwrap_or("（未指定，用全局默认）")
+        if v.is_empty() {
+            "（未指定，用全局默认）".to_string()
+        } else {
+            v.join(" + ")
+        }
     ));
     if let Ok(mut g) = TRANS_FORCE_ENGINE.lock() {
         *g = v;
@@ -10079,13 +10123,13 @@ fn trans_session() -> serde_json::Value {
     let plan_ids: Vec<String> = {
         let forced = TRANS_FORCE_ENGINE
             .lock()
-            .ok()
-            .and_then(|g| g.clone())
-            .filter(|id| trans_engines::find(id).is_some());
-        match forced {
-            // 绑定模型的格子：这次只翻这一家
-            Some(id) => vec![id],
-            None => config::trans_plan(&cfg),
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        if forced.is_empty() {
+            config::trans_plan(&cfg)
+        } else {
+            // 绑定模型的格子（`@trans:a+b`）：这次只翻这几家（顺序即上下排列顺序）
+            forced
         }
     };
     let plan: Vec<Value> = plan_ids
@@ -10661,7 +10705,7 @@ fn ocr_plan_with_local_fallback(cfg: &config::Config) -> (Vec<String>, bool) {
      * 用户绑了百度云却看到本地的界面 —— 表现就是「换成百度之后还是老样子」。
      * 现在缺凭据由 `ocr_start_flow` 直接说明（并把设置页打开到 OCR 那一栏），
      * 不再偷偷换人。 */
-    if ocr_forced_engine().is_some() {
+    if !ocr_forced_engines().is_empty() {
         return (run, false);
     }
     /* 只要名单里**有一家凭据齐**就照原样跑，一点都不动。
@@ -10737,7 +10781,7 @@ fn ocr_start_flow(force_engine: Option<String>) {
          * 选择"的默认路径是善意兜底；可用户明明点了「百度云」那颗格子，再被换成
          * 本地，他看到的就是"还是默认那家"。所以强制引擎走 else 分支：
          * 说清缺哪家凭据、把设置页开到 OCR 栏，然后退出。 */
-        if ocr_forced_engine().is_none()
+        if ocr_forced_engines().is_empty()
             && ocr_engines::find("windows").is_some()
             && !run.iter().any(|id| id == "windows")
         {
@@ -10785,6 +10829,14 @@ fn ocr_start_flow(force_engine: Option<String>) {
 /// （真上传的三家 / 打开页面的几家都不需要任何 API Key）—— 要是这里照 OCR
 /// 那样先查密钥，用户点「识图」就会被拦去设置页填一个根本不需要的东西。
 fn img_start_flow() {
+    /* 普通入口（横条按钮 / 设置页 / 托盘）：清掉上一轮的格子绑定 ——
+     * 和 `ocr_start_flow(None)` 同一个理由，免得在网格里点过"某几家识图"之后，
+     * 横条上的通用识图也只开那几家。 */
+    set_img_force_engines(None);
+    img_start_flow_inner();
+}
+
+fn img_start_flow_inner() {
     if app_locked() {
         focus_lock_window();
         return;
@@ -10799,11 +10851,50 @@ fn img_start_flow() {
     open_region_window_mode("img");
 }
 
+/// 网格里绑定模型的格子（`@img:a+b`）点下去时写进来的名单；空 = 走设置里的清单。
+///
+/// 和 OCR / 翻译同一套语义：非空就**只开这几家**（顺序 = 标签页从左到右），
+/// 不再套 `img_engines` 的"勾了哪几家"。识图本来就会**并行**开多个标签页，
+/// 所以"多选模型"在这里等于"这一格固定开这几家"。
+static IMG_FORCE_ENGINES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn set_img_force_engines(engines: Option<String>) {
+    let mut v: Vec<String> = engines
+        .as_deref()
+        .map(split_model_ids)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| imgsearch::find(e).is_some())
+        .collect();
+    v.truncate(imgsearch::MAX_TABS);
+    win::log(&format!(
+        "img: 本轮绑定引擎 = {}",
+        if v.is_empty() {
+            "（未指定，用设置里勾的那几家）".to_string()
+        } else {
+            v.join(" + ")
+        }
+    ));
+    if let Ok(mut g) = IMG_FORCE_ENGINES.lock() {
+        *g = v;
+    }
+}
+
+fn img_forced_engines() -> Vec<String> {
+    IMG_FORCE_ENGINES.lock().map(|g| g.clone()).unwrap_or_default()
+}
+
 #[crate::t::command]
-fn img_start() {
+fn img_start(engines: Option<String>) {
+    // 网格里绑定模型的格子（`@img:<id>` / `@img:a+b`）会带上 engines；
+    // 普通入口不传 = 用设置里勾的那几家（`img_start_flow` 会把绑定清掉）。
+    set_img_force_engines(engines);
     // 与 ocr_start 同一条理由：必须脱开命令调用栈再建全屏遮罩窗口，
     // 否则主线程会回头等这把尚未释放的锁 → 死锁 → 满屏点不动。
-    std::thread::spawn(img_start_flow);
+    //
+    // ⚠ 这里调的是 *_inner：外层 `img_start_flow` 会先把绑定清掉，
+    //   那样网格里选的那几家就白选了。
+    std::thread::spawn(img_start_flow_inner);
 }
 
 /* ================================================================== */
@@ -12017,6 +12108,17 @@ fn open_uploaded(done: &UploadDone, problems: &mut Vec<String>, opened: &mut usi
 }
 
 fn img_plan(cfg: &config::Config) -> Vec<&'static imgsearch::Engine> {
+    /* 0️⃣ 网格里绑定模型的格子（`@img:a+b`）：只开这几家，顺序 = 绑定顺序。
+     *    和 `img_engines` 那套"勾了哪几家"完全分开 —— 绑定是"这一格固定开这几家"，
+     *    不随设置变动；横条/托盘那条入口不绑定，仍然按设置来。 */
+    let forced = img_forced_engines();
+    if !forced.is_empty() {
+        return forced
+            .iter()
+            .filter_map(|id| imgsearch::find(id))
+            .take(imgsearch::MAX_TABS)
+            .collect();
+    }
     /* r62：**勾了多家就全部打开**（用户原话："如果在识图搜索里面把引擎都勾选，
      * 那点击横条中的识图搜索框选完之后，就应该在不同的标签页里面打开不同的识图"）。
      *
@@ -12782,17 +12884,14 @@ fn online_engine(cfg: &config::Config) -> String {
 ///      「就算我打开了，也要我把本地的识别引擎添加在多引擎识别里面，它才可以」。
 ///   现在本地和别家一样，**被勾选才参与**。
 fn ocr_engine_plan(cfg: &config::Config) -> Vec<String> {
-    /* 0️⃣ 格子绑定了具体模型（`@ocr:<id>`，见 `set_ocr_force_engine`）：
-     *    这一轮**只跑它**。用户原话是"一旦选定某一项，后续相关功能必须直接
-     *    使用该已选定的具体项执行，而不是回退到默认值或其他选项"——
-     *    所以这里连"同时识别"名单都不掺，结果窗也只有这一家。
+    /* 0️⃣ 格子绑定了具体模型（`@ocr:<id>` / `@ocr:a+b`，见 `set_ocr_force_engine`）：
+     *    这一轮**只跑这几家**（顺序 = 绑定顺序 = 结果窗里的先后）。
+     *    用户原话是"一旦选定某一项，后续相关功能必须直接使用该已选定的具体项执行，
+     *    而不是回退到默认值或其他选项"—— 所以这里连"同时识别"名单都不掺。
      *    全局配置不改：下一轮从横条/快捷键进来时 force 已被 `ocr_start` 清空。 */
-    if let Ok(g) = OCR_FORCE_ENGINE.lock() {
-        if let Some(id) = g.as_ref() {
-            if ocr_engines::find(id).is_some() {
-                return vec![id.clone()];
-            }
-        }
+    let forced = ocr_forced_engines();
+    if !forced.is_empty() {
+        return forced;
     }
     let mut out: Vec<String> = Vec::new();
     let def = cfg.ocr_engine.clone();
@@ -14603,7 +14702,7 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                  * v2.11.2：绑定了引擎时**必须**这样（否则用户只看得到一条
                  * 转瞬即逝的提示，正文空空如也）；默认路径仍是提示一条就够。 */
                 let why = notes.join("；");
-                if ocr_forced_engine().is_some() {
+                if !ocr_forced_engines().is_empty() {
                     set_ocr_note(why);
                     open_ocr_window(String::new());
                 } else {
@@ -14646,7 +14745,7 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                  * v2.11.2：**绑定了引擎的那一路一定开窗** —— 失败原因必须挂在
                  * "你选的那一家"上，否则用户只会觉得"点了跟没点一样"。 */
                 let why = format!("{}：{e}", engine_display(&ocr_engine));
-                if ocr_forced_engine().is_some() {
+                if !ocr_forced_engines().is_empty() {
                     set_ocr_note(why.clone());
                     open_ocr_window(String::new());
                 } else {
@@ -20675,11 +20774,27 @@ mod tests {
         cfg.ocr_secrets.clear();
 
         // ① 绑定 baidu（没有凭据）→ 名单必须还是 baidu，且不算"兜底过"
-        *OCR_FORCE_ENGINE.lock().unwrap() = Some("baidu".to_string());
+        set_ocr_force_engine(Some("baidu".to_string()));
         let (run, fell_back) = ocr_plan_with_local_fallback(&cfg);
         assert_eq!(run, vec!["baidu".to_string()], "绑定的引擎被换掉了");
         assert!(!fell_back, "绑定轮次不该标成「兜底」");
-        *OCR_FORCE_ENGINE.lock().unwrap() = None;
+
+        // ①.5 v2.13.0：**一格绑多家**（`@ocr:a+b`）→ 名单就是这几家，顺序照绑定顺序。
+        //     这条守的是"多选模型"那条新路：少跑一家 / 顺序被注册表顺序打乱都算错。
+        set_ocr_force_engine(Some("windows+baidu".to_string()));
+        let (run_multi, multi_fell) = ocr_plan_with_local_fallback(&cfg);
+        assert_eq!(
+            run_multi,
+            vec!["windows".to_string(), "baidu".to_string()],
+            "多绑定的名单不对：{run_multi:?}"
+        );
+        assert!(!multi_fell, "多绑定同样不该走兜底");
+
+        // ①.6 脏数据：重复、空白、不存在的 id 都要剔干净（手改配置 / 老备份）
+        set_ocr_force_engine(Some("baidu+ +baidu+不存在的引擎".to_string()));
+        assert_eq!(ocr_forced_engines(), vec!["baidu".to_string()]);
+
+        set_ocr_force_engine(None);
 
         // ② 没绑定时保留老兜底：缺凭据就补本地，让功能可用
         let (run2, fell2) = ocr_plan_with_local_fallback(&cfg);
@@ -21329,6 +21444,52 @@ mod tests {
     }
 
     /* ---------------- r76：AI 识图的排序与按键判据 ---------------- */
+
+    /// v2.13.0：网格里绑定了模型的识图格（`@img:a+b`）**只开这几家**，
+    /// 且顺序 = 绑定顺序（用户勾的先后 = 标签页从左到右）。
+    ///
+    /// 这条守的是"多选模型"落到识图上的语义：绑了就**不**再套设置里的勾选，
+    /// 也不重新按 AI-first 排序 —— 用户已经明确指定了名单和先后。
+    #[test]
+    fn 识图绑定多家时只开这几家且保序() {
+        let mut cfg = empty_cfg();
+        cfg.img_default_engine = String::new();
+        cfg.img_ai_first = true;
+        cfg.img_engines = vec!["doubao".into()];
+
+        // 没绑定：按设置来（只有豆包一家）
+        let ids: Vec<&str> = img_plan(&cfg).iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec!["doubao"]);
+
+        // 绑定两家：顺序照绑定顺序，AI-first 不插手
+        set_img_force_engines(Some("saucenao+doubao".into()));
+        let bound: Vec<&str> = img_plan(&cfg).iter().map(|e| e.id).collect();
+        assert_eq!(bound, vec!["saucenao", "doubao"], "绑定的名单/顺序被改写了");
+
+        // 脏数据（重复 / 空 / 不存在）剔干净
+        set_img_force_engines(Some("doubao++doubao+不存在".into()));
+        assert_eq!(img_forced_engines(), vec!["doubao".to_string()]);
+
+        // 清掉绑定 → 回到设置
+        set_img_force_engines(None);
+        let back: Vec<&str> = img_plan(&cfg).iter().map(|e| e.id).collect();
+        assert_eq!(back, vec!["doubao"]);
+    }
+
+    /// 模型 id 的拆解规则：有序、去重、去空白，**不认识的原样留着**
+    /// （合法性过滤在各自的 setter 里做 —— 拆解本身对 OCR/识图/翻译是同一套）。
+    #[test]
+    fn split_model_ids_trims_and_dedups() {
+        assert_eq!(split_model_ids("baidu+windows"), vec!["baidu", "windows"]);
+        assert_eq!(split_model_ids(" baidu + baidu "), vec!["baidu"]);
+        assert_eq!(split_model_ids("+"), Vec::<String>::new());
+        assert_eq!(split_model_ids(""), Vec::<String>::new());
+        assert_eq!(
+            split_model_ids("c+b+a"),
+            vec!["c", "b", "a"],
+            "顺序必须保留（结果窗/标签页的先后就按它来）"
+        );
+    }
 
     /// AI 引擎必须排在最前（用户要"AI 最先打开最先完成"），
     /// 且**非 AI 家的相对顺序一个都不能动**。

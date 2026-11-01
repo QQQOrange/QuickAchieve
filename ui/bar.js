@@ -3553,14 +3553,18 @@ function win_log(msg) {
  *  改成直连后端命令，和横条上那颗按钮走的是同一条路。 */
 function runGridFunc(key) {
     const t = (currentText || '').trim();
-    /* 绑定模型的格子（`@ocr:<id>` / `@trans:<id>`）：把 id 一起传给后端，
-     * 这一轮就**只跑这一家**，不回退到设置里的全局默认（用户明确要求）。
+    /* 绑定模型的格子（`@ocr:<id>` / `@trans:<id>` / `@img:<id>`）：把模型 id 一起
+     * 传给后端，这一轮就**只跑这几家**，不回退到设置里的全局默认（用户明确要求）。
+     *
+     * v2.13.0：一格可以绑**多家**（`@ocr:windows+baidu`）—— `bound.ids` 是拆好的
+     * 数组，用 `+` 拼回去交给后端（后端 `split_model_ids` 同一套规则）。
      * 普通哨兵（`@ocr`）照旧传空 = 用全局默认。 */
     const bound = window.qsFuncBound ? window.qsFuncBound(key) : null;
     const base = bound ? ('@' + bound.kind) : key;
+    const ids = (bound && bound.ids && bound.ids.length) ? bound.ids.join('+') : null;
     if (base === '@ocr') {
         // OCR / 识图 / 翻译的产物是**我们自己的窗口**，等 self 那一类
-        gridOpenThenClose(() => invoke('ocr_start', bound ? { engine: bound.id } : {}), '文字识别', { ready: 'self' });
+        gridOpenThenClose(() => invoke('ocr_start', ids ? { engine: ids } : {}), '文字识别', { ready: 'self' });
         return;
     }
     if (base === '@qr') {
@@ -3578,13 +3582,14 @@ function runGridFunc(key) {
         return;
     }
     if (base === '@img') {
-        gridOpenThenClose(() => invoke('img_start'), '识图搜索', { ready: 'self' });
+        // v2.13.0：绑定模型的识图格（`@img:a+b`）→ 只开这几家（顺序 = 标签页顺序）
+        gridOpenThenClose(() => invoke('img_start', ids ? { engines: ids } : {}), '识图搜索', { ready: 'self' });
         return;
     }
     if (base === '@trans') {
         // 没文字也照发（后端会开一个空翻译窗让用户自己粘贴），与横条一致
         gridOpenThenClose(
-            () => invoke('trans_start', { text: t || null, engine: bound ? bound.id : null }),
+            () => invoke('trans_start', { text: t || null, engine: ids }),
             '翻译', { ready: 'self' });
         return;
     }
@@ -3703,11 +3708,18 @@ function gridPickSections() {
     const inGrid = new Set((gridLast && Array.isArray(gridLast.items)) ? gridLast.items : []);
     const out = [];
 
-    /* ① 软件内置功能 */
+    /* ① 软件内置功能
+     *
+     * ⚠ v2.13.0：文字识别 / 识图 / 翻译这三颗**不在这里列**了 —— 它们各自的
+     * 模型分组里已经有一条「默认（跟随设置）」，那里才是这本功能的唯一入口。
+     * 两处都列会出现"同一颗格子两个条目"，而且其中一个不能多选，用户只会挑错的点。
+     * 模型表还没拉回来时（刚开面板那几十毫秒）仍然回落到这里，保证它没消失。 */
+    const modelKinds = ['ocr', 'img', 'trans'].filter((k) => (GRID_MODELS[k] || []).length);
     const builtin = [];
     for (const key of ['@ocr', '@trans', '@img', '@qr', '@qrmake', '@wrap']) {
         const meta = GRID_SENTINELS[key];
         if (!meta) continue;
+        if (modelKinds.indexOf(key.slice(1)) >= 0) continue;
         builtin.push({
             name: key,
             /* v2.12.3：名字统一从 shared.js 的注册表取（`GRID_SENTINELS` 里的
@@ -3766,23 +3778,52 @@ function gridPickSections() {
     for (const g of window.qsFavGroups()) walkFav(g, 0);
     if (favItems.length) out.push({ key: 'fav', title: '收藏夹', desc: '按目录整组加进格子', items: favItems });
 
-    /* ④ 三类模型：列出来是为了"能被搜到、能看清有哪些"；加进网格的仍然是那颗
-     *    功能格子本身（`@ocr` / `@img` / `@trans`），具体用哪家由设置决定。 */
-    /* 每个模型条目现在的名字是 `@ocr:<id>`（绑定格子），点它加进网格的就是
-     * "这一格固定用百度 OCR"，而不是以前那种"再加一颗通用 OCR 格子、
-     * 用哪家由全局设置决定" —— 用户报的"选了却不生效"就是这个原因。 */
+    /* ④ 三类模型：每条 = 一个**绑定格子**（`@ocr:<id>`），点它加进网格的就是
+     *    "这一格固定用百度 OCR"，而不是"再加一颗通用 OCR 格子、用哪家看设置"
+     *    —— 用户报的"选了却不生效"就是这个原因。
+     *
+     *    v2.13.0 每组最前面多了两条，解决的是另一个反馈：
+     * 「现有 OCR 虽可指定特定模型，但缺少同时并行调用多个模型的选项」——
+     *      · **默认（跟随设置）**：加 `@ocr`，用它唤起时跑设置里「同时识别」勾的
+     *        那几家，和横条上点 OCR 的体验**一模一样**（同一个后端名单、同一个结果窗）；
+     *      · **多选模型（并行）…**：打开勾选视图，勾几家就绑几家（`@ocr:a+b`），
+     *        并行识别、结果窗每家一段。
+     *    后者是这一格"认死"的名单，不随设置漂移 —— 两种意图都留着，用户自己挑。 */
     const addModel = (title, list, sentinel, activeIds) => {
         if (!list.length) return;
-        const items = list.map((m) => {
+        const baseLabel = (window.qsSentinelLabel && window.qsSentinelLabel(sentinel))
+            || (window.qsDisplayName ? window.qsDisplayName(sentinel) : sentinel);
+        const items = [
+            {
+                name: sentinel,
+                label: baseLabel + ' · 默认（跟随设置）',
+                added: inGrid.has(sentinel),
+                node: () => (window.qsFuncIcon ? window.qsFuncIcon(sentinel) : document.createTextNode('•')),
+            },
+            {
+                /* 伪条目：`multi` 有值 = 点击打开勾选视图，而不是直接加 */
+                name: sentinel,
+                multi: { kind: sentinel.slice(1), sentinel, title: baseLabel, list },
+                label: baseLabel + ' · 多选模型（并行）…',
+                added: false,
+                node: () => (window.qsFuncIcon ? window.qsFuncIcon(sentinel) : document.createTextNode('•')),
+            },
+        ];
+        for (const m of list) {
             const bound = sentinel + ':' + m.id;
-            return {
+            items.push({
                 name: bound,
                 label: (m.name || m.id) + (activeIds.has(String(m.id)) ? '（当前使用）' : ''),
                 added: inGrid.has(bound),
                 node: () => (window.qsFuncIcon ? window.qsFuncIcon(sentinel) : document.createTextNode('•')),
-            };
+            });
+        }
+        out.push({
+            key: 'model',
+            title,
+            desc: '默认 = 跟随设置；也可以多选几家并行',
+            items,
         });
-        if (items.length) out.push({ key: 'model', title, desc: '选中哪一项，这一格就固定用哪一家', items });
     };
     const imgOn = new Set(((window.CONF && window.CONF.imgEngines) || []).map(String));
     addModel('文字识别模型', GRID_MODELS.ocr, '@ocr',
@@ -3813,6 +3854,8 @@ function closeGridPicker() {
     if (p) p.remove();
     gridPickAt = -1;
     gridPickFilter = 'all';
+    // v2.13.0：多选视图的状态也要一起清，否则下次点空格子进来还停在勾选页
+    gridPickMulti = null;
     /* 选板模式给 .bar 写过内联宽高（applyPickSize），必须在这里还回去 ——
      * 否则关掉选板后网格会被留在 560×470 的大框里。 */
     if (barEl.classList.contains('qs-gpicking')) {
@@ -4116,6 +4159,29 @@ function renderGridPicker(query) {
     const q = box.querySelector('.qs-gpick-search');
     if (typeof query === 'string' && q.value !== query) q.value = query;
 
+    const titleEl = box.querySelector('.qs-gpick-title');
+    const filEl = box.querySelector('.qs-gpick-filters');
+    const cntEl = box.querySelector('.qs-gpick-count');
+
+    /* v2.13.0：模型多选视图 —— 复用同一个面板外壳，只换标题/列表/底部按钮。
+     * 搜索框和过滤胶囊在这一屏没有意义（一共就几家里挑），直接藏起来。 */
+    if (gridPickMulti) {
+        if (titleEl) titleEl.textContent = '选择模型 · ' + gridPickMulti.title;
+        /* ⚠ 用 style.display 而不是 hidden：`.qs-gpick-filters` 自己带
+         *   `display:flex`，类选择器压过 UA 的 `[hidden]{display:none}` ——
+         *   写 hidden 的话胶囊根本不藏（v2.12.1 的 `.empty[hidden]` 同一个坑）。 */
+        if (filEl) filEl.style.display = 'none';
+        if (q) q.style.display = 'none';
+        const total = renderGridPickMultiBody(box.querySelector('.qs-gpick-body'));
+        if (cntEl) cntEl.textContent = '共 ' + total + ' 家可选';
+        syncGridPickFoot(box);
+        return;
+    }
+    if (titleEl) titleEl.textContent = '添加到这一格';
+    if (filEl) filEl.style.display = '';
+    if (q) q.style.display = '';
+    syncGridPickFoot(box);
+
     // 目录/配置可能刚加载完，每次都现算（qsCatalogGroups 本身很轻）
     const secs = gridPickSections();
     renderPickFilters(box, secs);
@@ -4208,6 +4274,8 @@ function pickChip(it) {
     b.appendChild(nm);
     b.title = (it.label || it.name) + (it.added ? '　（已在网格里）' : '');
     b.addEventListener('click', () => {
+        /* v2.13.0：带 `multi` 的条目不是"直接加"，而是打开模型勾选视图。 */
+        if (it.multi) { openGridModelPicker(it.multi); return; }
         if (it.added) { showBarTip('这一项已经在网格里了'); return; }
         gridAddItem(it.name);
     });
@@ -4363,6 +4431,138 @@ function renderGridPickBody(body, kw, secs) {
     return shown;
 }
 
+/* ---------------- 模型多选：一格绑多家（v2.13.0） ---------------- */
+
+/** 正在多选模型时的状态；null = 普通列表。 */
+let gridPickMulti = null;
+
+/** 「这一功能」按当前设置实际会跑哪几家 —— 多选视图的**初始勾选**。
+ *
+ *  和 Rust 的 `ocr_engine_plan` / `config::trans_plan` / `img_plan` 同一口径
+ *  （默认那家在前，其余按注册表顺序），只是这里只为了"猜用户想要什么"，
+ *  真正跑哪几家由后端按绑定 id 决定。 */
+function gridPickPlanIds(kind, list) {
+    const c = window.CONF || {};
+    const order = list.map((m) => String(m.id));
+    let want = [];
+    if (kind === 'img') {
+        want = (c.imgEngines || []).map(String);
+    } else if (kind === 'trans') {
+        want = [String(c.transEngine || '')].concat((c.transMulti || []).map(String));
+    } else {
+        want = [String(c.ocrEngine || '')].concat((c.ocrMulti || []).map(String));
+    }
+    const set = new Set(want.filter(Boolean));
+    const picked = order.filter((id) => set.has(id));
+    // 一家都没勾（配置为空 / 都是老值）→ 默认勾上第一家，免得进来一片空白
+    return picked.length ? picked : order.slice(0, 1);
+}
+
+function openGridModelPicker(multi) {
+    const list = (multi && multi.list) || [];
+    if (!list.length) return;
+    gridPickMulti = {
+        kind: multi.kind,
+        sentinel: multi.sentinel,
+        title: multi.title,
+        list,
+        sel: new Set(gridPickPlanIds(multi.kind, list)),
+    };
+    // 搜索框马上要藏起来：先把焦点还出去，否则用户打字会落进一个看不见的框里
+    const q = barEl.querySelector('.qs-gpick-search');
+    if (q && document.activeElement === q) q.blur();
+    renderGridPicker();
+}
+
+function closeGridModelPicker() {
+    gridPickMulti = null;
+    renderGridPicker();
+    focusGridPickSearch();
+}
+
+/** 多选视图的列表体：一家一行，点一下勾 / 取消。 */
+function renderGridPickMultiBody(body) {
+    const m = gridPickMulti;
+    if (!body || !m) return 0;
+    body.textContent = '';
+    const tip = document.createElement('div');
+    tip.className = 'qs-gpick-multi-tip';
+    tip.textContent = '勾几家就同时跑几家（并行识别，结果每家一段）。这一格会固定用勾中的这几家。';
+    body.appendChild(tip);
+    for (const it of m.list) {
+        const id = String(it.id);
+        const on = m.sel.has(id);
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'qs-gpick-mrow' + (on ? ' on' : '');
+        row.setAttribute('aria-pressed', on ? 'true' : 'false');
+        const box = document.createElement('span');
+        box.className = 'qs-gpick-mbox';
+        box.textContent = on ? '✓' : '';
+        row.appendChild(box);
+        const nm = document.createElement('span');
+        nm.className = 'qs-gpick-mnm';
+        nm.textContent = it.name || id;
+        row.appendChild(nm);
+        if (it.note) {
+            const nt = document.createElement('span');
+            nt.className = 'qs-gpick-mnote';
+            nt.textContent = it.note;
+            row.appendChild(nt);
+        }
+        row.title = (it.name || id) + (on ? '　（已勾选）' : '');
+        row.addEventListener('click', () => {
+            if (m.sel.has(id)) m.sel.delete(id);
+            else m.sel.add(id);
+            renderGridPicker();
+        });
+        body.appendChild(row);
+    }
+    return m.list.length;
+}
+
+/** 底部：普通模式是一句说明，多选模式是「已选 N 家 + 加到格子 / 返回」。 */
+function syncGridPickFoot(box) {
+    const foot = box.querySelector('.qs-gpick-foot');
+    if (!foot) return;
+    foot.textContent = '';
+    foot.classList.toggle('is-multi', !!gridPickMulti);
+    if (!gridPickMulti) {
+        foot.textContent = '拖动右下角可调整窗口大小 · 已在网格里的项会打勾';
+        return;
+    }
+    const n = gridPickMulti.sel.size;
+    const info = document.createElement('span');
+    info.className = 'qs-gpick-foot-info';
+    info.textContent = n ? ('已选 ' + n + ' 家') : '还没选模型';
+    foot.appendChild(info);
+    const ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'qs-gbtn qs-gpick-ok';
+    ok.textContent = '加到格子';
+    ok.disabled = !n;
+    ok.title = n ? '把这几家绑到这一格（并行识别）' : '至少勾一家';
+    ok.addEventListener('click', gridPickMultiCommit);
+    foot.appendChild(ok);
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'qs-gbtn';
+    back.textContent = '返回';
+    back.addEventListener('click', closeGridModelPicker);
+    foot.appendChild(back);
+}
+
+/** 提交多选：勾一家 → `@ocr:x`；勾多家 → `@ocr:x+y`（顺序 = 列表顺序，稳定可比）。 */
+async function gridPickMultiCommit() {
+    const m = gridPickMulti;
+    if (!m || !m.sel.size) return;
+    const ids = m.list.map((x) => String(x.id)).filter((id) => m.sel.has(id));
+    if (!ids.length) return;
+    const name = m.sentinel + ':' + ids.join('+');
+    gridPickMulti = null;
+    await gridAddItem(name);   // 内部会 closeGridPicker + 重画 + 提示
+}
+
 /** 把 `name` 加到被点的那一格。落库走 `set_grid_items`，和其它改动同一套。 */
 async function gridAddItem(name) {
     if (!name) return;
@@ -4428,6 +4628,28 @@ function gridCellMode(name, g) {
     const ov = map[name];
     if (ov === 'icon' || ov === 'text' || ov === 'both') return ov;
     return (g && g.showLabel === false) ? 'icon' : 'both';
+}
+
+/** 格子点击的**编辑态闸门**（v2.13.0）。
+ *
+ * 用户口径：「唤出网格页并进入编辑状态后，点击项目会触发对应功能，修改为必须
+ * 先退出编辑才能触发。」
+ *
+ * 为什么在点击处拦、而不是把 handler 摘掉重挂：编辑态是"临时动作"，进出只改
+ * 一个布尔（`toggleGridEdit` → 重画）。在派发口拦一次，四条分支（功能哨兵 /
+ * 智能直达 / 应用 / 引擎）都自动生效，不会出现"改了三处漏一处"。
+ *
+ * 编辑态里**还能点**的只有两件：空格子（添加）和每格右上角的 ×（移出）——
+ * 那两个各有自己的 handler，不走这道闸。 */
+function gridCellClick(fn) {
+    return (e) => {
+        if (gridEdit) {
+            if (e) { e.preventDefault(); e.stopPropagation(); }
+            showBarTip('编辑中：点 ✏️ 退出编辑后再打开');
+            return;
+        }
+        return fn(e);
+    };
 }
 
 /* ---------------- 编辑模式下拖动调尺寸 ---------------- */
@@ -4728,7 +4950,7 @@ function renderGrid(g) {
             lb.textContent = lbl;
             cell.appendChild(lb);
             cell.title = lbl;
-            cell.addEventListener('click', () => runGridFunc(name));
+            cell.addEventListener('click', gridCellClick(() => runGridFunc(name)));
         } else if (typeof name === 'string' && (name.startsWith(window.QS_GO_PREFIX || '@go:') || name.startsWith(QS_APP_PREFIX) || name.startsWith(QS_FAV_PREFIX))) {
             // 哨兵项（直达 / 外部软件 / 收藏夹）：图标与点击都复用横条那套
             const inner = document.createElement('span');
@@ -4751,7 +4973,7 @@ function renderGrid(g) {
                 : ((it && it.name) || (window.qsDisplayName ? window.qsDisplayName(name) : name));
             cell.appendChild(lb);
             cell.title = lb.textContent;
-            cell.addEventListener('click', () => {
+            cell.addEventListener('click', gridCellClick(() => {
                 if (name.startsWith(window.QS_GO_PREFIX)) {
                     gridOpenThenClose(
                         () => invoke('shortcut_open', { id: name.slice(window.QS_GO_PREFIX.length) }),
@@ -4765,7 +4987,7 @@ function renderGrid(g) {
                      * 否则等不到前台窗口、还会把面板一起收掉。 */
                     openFavPanel(name);
                 }
-            });
+            }));
         } else {
             // 普通引擎：图标 + 名字，点一下拿当前文字去搜（没文字就开首页）
             const icon = buildIconInner(name);
@@ -4784,8 +5006,8 @@ function renderGrid(g) {
             const willSearch = gridClickMode === 'auto' && !!currentText;
             cell.title = label + (willSearch ? '　（点一下用这段文字搜索）' : '　（点一下打开首页）');
             cell.dataset.engine = name;
-            cell.addEventListener('click', () => gridOpenThenClose(
-                () => runEngineSearch(name, gridClickMode === 'home' ? null : undefined), label));
+            cell.addEventListener('click', gridCellClick(() => gridOpenThenClose(
+                () => runEngineSearch(name, gridClickMode === 'home' ? null : undefined), label)));
         }
         /* 编辑模式：每格右上角挂一个 ×，点它把这格内容移出网格页
          * （只动 grid_list，不删智能直达/引擎本身 —— 移出 ≠ 删除）*/
@@ -4932,6 +5154,13 @@ if (btnSettings) {
 
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        /* v2.13.0：模型多选视图开着时，Esc **先退回列表** ——
+         * 用户想撤的是"这次多选"，不是把整条横条一起关掉。 */
+        if (gridPickMulti) {
+            e.stopPropagation();
+            closeGridModelPicker();
+            return;
+        }
         /* 包裹菜单开着时 Esc **只收菜单** —— 用户想退出的是菜单，
          * 顺手把整条横条关掉会让他重新选一次文字。 */
         if (wrapMenuEl && !wrapMenuEl.hidden) {

@@ -2316,6 +2316,93 @@ button.fav-grp-head:focus-visible {
     user-select: none;
 }
 
+/* v2.13.0：模型多选视图的底部 —— 左边"已选 N 家"，右边两颗按钮。
+ * 普通模式仍然是一句灰字，所以只在 .is-multi 时切成 flex。 */
+.qs-gpick-foot.is-multi {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 1;
+}
+.qs-gpick-foot-info {
+    flex: 1 1 auto;
+    opacity: .75;
+}
+.qs-gpick-foot.is-multi .qs-gbtn {
+    flex: none;
+    height: 24px;
+    padding: 0 10px;
+    font-size: 11px;
+}
+.qs-gpick-foot.is-multi .qs-gpick-ok {
+    border-color: var(--qs-accent, #0E7490);
+    color: var(--qs-accent, #0E7490);
+    font-weight: 600;
+}
+.qs-gpick-foot.is-multi .qs-gpick-ok[disabled] {
+    opacity: .4;
+    cursor: default;
+}
+
+/* 多选视图：一家一行（勾选框 + 名字 [+ 说明]） */
+.qs-gpick-multi-tip {
+    padding: 2px 2px 8px;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--qs-fg-dim);
+}
+.qs-gpick-mrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--qs-fg);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.qs-gpick-mrow:hover {
+    background: var(--qs-hover, rgba(127, 127, 127, .12));
+}
+.qs-gpick-mrow.on {
+    border-color: var(--qs-accent, #0E7490);
+    background: var(--qs-accent-soft, rgba(14, 116, 144, .10));
+}
+.qs-gpick-mbox {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--qs-border);
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1;
+}
+.qs-gpick-mrow.on .qs-gpick-mbox {
+    border-color: var(--qs-accent, #0E7490);
+    background: var(--qs-accent, #0E7490);
+    color: #fff;
+}
+.qs-gpick-mnm {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.qs-gpick-mnote {
+    flex: none;
+    font-size: 10px;
+    color: var(--qs-fg-dim);
+    opacity: .8;
+}
+
 /* 右下角缩放抓手 */
 .qs-gpick-grip {
     position: absolute;
@@ -2614,6 +2701,12 @@ button.fav-grp-head:focus-visible {
 .bar.qs-grid.qs-gedit .qs-gcell:hover,
 .bar.qs-grid.qs-gedit .qs-gcell:focus-visible {
     z-index: 4;
+}
+
+/* v2.13.0：编辑态下**有内容的格子点了不执行功能**（要先退出编辑）——
+ * 光标给成默认箭头，别让用户以为还能点开。空格的 "+" 仍然是手型（能加）。 */
+.bar.qs-grid.qs-gedit .qs-gcell:not(.qs-gempty) {
+    cursor: default;
 }
 
 .bar.qs-grid .qs-gdel {

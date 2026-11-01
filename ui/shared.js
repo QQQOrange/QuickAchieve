@@ -258,6 +258,15 @@ window.qsDisplayName = function (name) {
          * 就成省略号，反而看不出是哪一家；而图标已经表达了"这是文字识别"，
          * 前缀是冗余信息。模型名还没登记回来时退回主功能名，绝不显示 id。 */
         const key = String(bound.kind) + ':' + String(bound.id);
+        /* v2.13.0：一格绑多家（`@ocr:a+b`）时把各家的名字用 " + " 串起来 ——
+         * 只看得到"文字识别"会让用户分不清这一格到底跑谁。名字还没登记回来
+         * 的退回落 id（绝不显示空串）。 */
+        const ids = bound.ids || [bound.id];
+        if (ids.length > 1) {
+            return ids
+                .map((id) => (window.QS_MODEL_NAMES || {})[String(bound.kind) + ':' + String(id)] || String(id))
+                .join(' + ');
+        }
         const nm = (window.QS_MODEL_NAMES || {})[key];
         return nm || window.qsDisplayName('@' + bound.kind) || String(bound.id);
     }
@@ -468,13 +477,20 @@ window.qsTextIconNode = function (opId) {
  * 设置里的全局选择决定。用户要的是"这一格就用百度 OCR"——所以格子名带上
  * 具体模型 id，执行时把 id 传给后端，不再回退到全局默认。
  *
+ * **v2.13.0 起一格可绑多家**：`@ocr:windows+baidu` = 这一格同时跑这两家
+ * （并行识别，结果窗每家一段，和横条"同时识别"的展示完全一致）。
+ * 拆出来的 `ids` 是有序数组，`id` 保留原始串 —— `@wrap:标题` / `@txt:去空格`
+ * 那些仍然只有一个值，用 `id` 的地方一行都不用改。
+ *
  * 三处（横条 / 网格预览 / 设置列表）都要能认这种名字，所以解析放在 shared.js。 */
 window.qsFuncBound = function (name) {
     if (typeof name !== 'string') return null;
     /* v2.11.0：`wrap` 也进这张表 —— `@wrap:title` 的 base 是 `@wrap`，
      * 图标 / 分发 / 显示名都要靠这条归一（和 @txt:trim 完全同构）。 */
     const m = /^@(ocr|img|trans|txt|wrap):(.+)$/.exec(name.trim());
-    return m ? { kind: m[1], id: m[2] } : null;
+    if (!m) return null;
+    const ids = m[2].split('+').map((x) => x.trim()).filter(Boolean);
+    return { kind: m[1], id: m[2], ids: ids.length ? ids : [m[2]] };
 };
 
 /** 模型 id → 显示名。由 bar.js / settings.js 拿到后端注册表后调用登记，
