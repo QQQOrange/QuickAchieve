@@ -100,7 +100,7 @@
             <input type="range" id="s-barAway" min="0" max="1000" step="20">
         </div>
         <div class="row">
-            <div class="rt"><b>划选没取到文字就不弹</b><small>只影响"划选"这一条路：拖窗口、拖滚动条、拖画布这类误触取不到词时不弹。Ctrl+C 是主动按下的，不受这个开关影响 —— 哪怕没复制到内容也一定弹</small></div>
+            <div class="rt"><b>划选没取到文字就不弹</b><small>开着：只有<b>真的选到文字</b>才弹条（拖滚动条、拖画布、拖图片这类不会再冒空条）。关掉：拖一下就弹一条空条，自绘界面取不到词时也能拿它点「识图 / OCR」</small></div>
             <label class="sw"><input type="checkbox" id="s-barNeedText"><i></i></label>
         </div>
     </section>
@@ -332,7 +332,7 @@
         </div>
         <div class="row">
             <button class="btn ghost" type="button" id="btnGridPreview">弹出真实网格</button>
-            <span class="hint">走的是和快捷键同一条唤起链路（设置页里点它，等于你按了一次 Ctrl+C）。</span>
+            <span class="hint">走的是和快捷键同一条唤起链路（设置页里点它，等于你按了一次上面录制的那个组合键）。</span>
         </div>
     </section>
 
@@ -392,10 +392,10 @@
         </div>
 
         <div class="row col">
-            <div class="rt"><b>唤起快捷键</b><small>写法：<code>ctrl+c</code> / <code>ctrl+shift+g</code> / <code>alt+space</code>。改了之后 <b>Ctrl+C 不再生效</b></small></div>
-            <div class="upd-token-row">
-                <input class="txt" id="gridHotkey" spellcheck="false" placeholder="ctrl+c">
-                <button class="btn" type="button" id="btnGridHotkey">保存快捷键</button>
+            <div class="rt"><b>唤起快捷键</b><small>点「录制」后<b>直接按下组合键</b>即可（必须带 Ctrl / Alt / Shift / Win）；Esc 或点别处退出录制。<b>Ctrl+C 是系统复制，不能用作唤起键</b></small></div>
+            <div class="hotkey-row">
+                <button class="btn ghost" type="button" id="btnGridHotkeyRec">ctrl+shift+g</button>
+                <button class="btn ghost" type="button" id="btnGridHotkeyReset">恢复默认</button>
                 <button class="btn ghost" type="button" id="btnGridDiag">快捷键自检</button>
             </div>
             <div class="upd-token-status" id="gridHotkeyMsg"></div>

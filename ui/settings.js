@@ -4334,12 +4334,154 @@ function gridMsg(id, text, bad) {
     el.style.color = bad ? 'var(--danger, #B0182A)' : '';
 }
 
+/* ---- 网格唤醒键：**录制式**录入（v2.12.6） ----
+ *
+ * 原来是一个纯文本框，让用户手打 `ctrl+shift+g`。用户报的问题正是"只能手动输入、
+ * 没法录制"：手打既得记住键名写法（ctrl 还是 control？space 还是直接敲空格？），
+ * 又容易和收藏夹那条已经录好的组合撞车，撞了还得回头改文本再点保存。
+ *
+ * 现在和「收藏夹唤起键」「快捷键引擎」走**同一套交互**：
+ *   · 点一下进入录制态，下一个组合键就是答案，**录完立刻生效**（不用再点保存）；
+ *   · Esc / 点别处 / 窗口失焦退出录制；
+ *   · 必须带一个 Ctrl / Alt / Shift / Win —— 否则打字都会触发（后端同一口径）；
+ *   · Ctrl+C 直接拒收：那是系统复制，拿它唤网格页等于把复制废掉。
+ */
+const GRID_HOTKEY_DEFAULT = 'ctrl+shift+g';
+let gridRecArmed = false;
+
+/** `ctrl+shift+g` → `Ctrl+Shift+G`，只为按钮上好看一点。 */
+function gridHotkeyLabel(spec) {
+    const s = String(spec || '').trim();
+    if (!s) return '未设置';
+    return s.split('+').map((x) => {
+        const p = x.trim();
+        const l = p.toLowerCase();
+        if (!p) return p;
+        if (l === 'ctrl' || l === 'control') return 'Ctrl';
+        if (l === 'alt') return 'Alt';
+        if (l === 'shift') return 'Shift';
+        if (l === 'win' || l === 'meta') return 'Win';
+        return p.toUpperCase();
+    }).join('+');
+}
+
+function gridRecBtn() { return $('btnGridHotkeyRec'); }
+
+/** 按钮文案对齐当前配置（录制态时不覆盖，免得把"请按下组合键…"刷掉）。 */
+function gridRecSyncUI() {
+    const b = gridRecBtn();
+    if (!b || gridRecArmed) return;
+    const cur = (CONF && CONF.gridHotkey) || GRID_HOTKEY_DEFAULT;
+    b.textContent = gridHotkeyLabel(cur);
+    b.title = '当前：' + cur + '（点一下重新录制）';
+}
+
+function gridRecDisarm() {
+    if (!gridRecArmed) return;
+    gridRecArmed = false;
+    const b = gridRecBtn();
+    if (b) b.classList.remove('rec');
+    gridRecSyncUI();
+}
+
+function gridRecArm() {
+    gridRecArmed = true;
+    const b = gridRecBtn();
+    if (b) {
+        b.textContent = '请按下组合键…';
+        b.classList.add('rec');
+    }
+    gridMsg('gridHotkeyMsg', '正在录制：按下组合键即生效；Esc 或点别处放弃');
+}
+
+/** 录到组合 → 交给后端落库（冲突检查在后端，话术也由它给）。 */
+async function gridRecCommit(combo) {
+    gridRecArmed = false;
+    const b = gridRecBtn();
+    if (b) {
+        b.classList.remove('rec');
+        // 先给即时反馈：广播回来前那几十毫秒里按钮就该显示新组合
+        b.textContent = gridHotkeyLabel(combo);
+    }
+    try {
+        await invoke('set_grid_hotkey', { hotkey: combo });
+        CONF = window.CONF = await invoke('get_config');
+        gridRecSyncUI();
+        gridMsg('gridHotkeyMsg', '已生效：' + gridHotkeyLabel((CONF && CONF.gridHotkey) || combo));
+        toast('网格页快捷键已改为 ' + gridHotkeyLabel(combo));
+    } catch (e) {
+        // 冲突 / 非法 / 占用系统复制 —— 说明都由后端给，原样显示
+        gridMsg('gridHotkeyMsg', String(e || '保存失败'), true);
+        gridRecSyncUI();
+    }
+}
+
+function bindGridHotkeyRec() {
+    const b = gridRecBtn();
+    if (!b) return;
+    b.addEventListener('click', () => {
+        if (gridRecArmed) {
+            gridRecDisarm();
+            gridMsg('gridHotkeyMsg', '');
+            return;
+        }
+        gridRecArm();
+    });
+    if ($('btnGridHotkeyReset')) {
+        $('btnGridHotkeyReset').addEventListener('click', () => {
+            if ((CONF && CONF.gridHotkey) === GRID_HOTKEY_DEFAULT) {
+                gridMsg('gridHotkeyMsg', '已经是默认快捷键了');
+                return;
+            }
+            gridRecCommit(GRID_HOTKEY_DEFAULT);
+        });
+    }
+    /* 三条退路，和收藏夹那条完全一致：点到别处、窗口失焦、按 Esc。
+     * 少了这几条，用户点开录制态后改主意去别处打字，会发现整个设置页打不进字。 */
+    document.addEventListener('pointerdown', (e) => {
+        if (gridRecArmed && e.target !== b) {
+            gridRecDisarm();
+            gridMsg('gridHotkeyMsg', '');
+        }
+    }, true);
+    window.addEventListener('blur', gridRecDisarm);
+    /* ⚠ 捕获阶段 + stopPropagation：页面底部还有一条"在设置页也能用网格快捷键"
+     *   的监听器（挂在 document 冒泡）—— 不拦住的话，录到现有组合的那一刻
+     *   会先把网格页唤出来，盖住设置页。 */
+    window.addEventListener('keydown', (e) => {
+        if (!gridRecArmed) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+            gridRecDisarm();
+            gridMsg('gridHotkeyMsg', '');
+            return;
+        }
+        // 与「快捷键引擎」共用同一个归一函数（键名词汇表和 win::parse_hotkey 一致）
+        const combo = ceComboFromEvent(e);
+        if (!combo) {
+            if (b) b.textContent = '再按一个字母 / 数字 / F 键…';
+            return;
+        }
+        if (!(e.ctrlKey || e.altKey || e.shiftKey || e.metaKey)) {
+            if (b) b.textContent = '至少要带一个 Ctrl / Alt / Shift / Win…';
+            return;
+        }
+        if (combo === 'ctrl+c') {
+            gridRecDisarm();
+            gridMsg('gridHotkeyMsg', 'Ctrl+C 是系统复制，不能用来唤出网格页 —— 换一个组合吧', true);
+            toast('Ctrl+C 是系统复制，不能给网格页');
+            return;
+        }
+        gridRecCommit(combo);
+    }, true);
+}
+
 /** 把配置里的值灌进表单（配置广播时也会调，保证"改完立刻看到"）。 */
 function gridFill() {
     const c = CONF || {};
-    if ($('gridHotkey') && document.activeElement !== $('gridHotkey')) {
-        $('gridHotkey').value = c.gridHotkey || 'ctrl+c';
-    }
+    // 唤起键现在是一个「录制」按钮，不再是输入框 —— 文案对齐配置即可
+    gridRecSyncUI();
     if ($('gridRows')) $('gridRows').value = c.gridRows || 3;
     if ($('gridCols')) $('gridCols').value = c.gridCols || 3;
     if ($('gridCellW')) $('gridCellW').value = c.gridCellW || 104;
@@ -5063,20 +5205,7 @@ function bindGridPages() {
 
 /** 把网格相关的表单一次性接上（启动时调一次）。 */
 function bindGrid() {
-    if ($('btnGridHotkey')) {
-        $('btnGridHotkey').addEventListener('click', async () => {
-            const key = ($('gridHotkey').value || '').trim();
-            try {
-                await invoke('set_grid_hotkey', { hotkey: key });
-                CONF = window.CONF = await invoke('get_config');
-                gridFill();
-                gridMsg('gridHotkeyMsg', '已生效：' + (CONF.gridHotkey || key));
-            } catch (e) {
-                // 冲突/非法组合的话术由后端给（"已经分配给收藏夹了"等）
-                gridMsg('gridHotkeyMsg', String(e || '保存失败'), true);
-            }
-        });
-    }
+    bindGridHotkeyRec();
     if ($('btnGridSize')) {
         $('btnGridSize').addEventListener('click', () => saveGridLook(false));
     }
@@ -5131,19 +5260,20 @@ function bindGrid() {
                 const d = await invoke('grid_diag');
                 // 把"会不会触发"翻成一句人话，别把 JSON 甩给用户
                 const problems = [];
+                if (d.copyConflict) problems.push('Ctrl+C 是系统复制，不能当唤起键 —— 重新录一个');
                 if (!d.ok) problems.push('组合键写法不对（认不出主键）');
                 if (!d.triggerCopy) problems.push('「按快捷键弹出网格页」总开关是关的');
                 if (d.paused) problems.push('程序处于暂停状态');
                 if (!d.foregroundAllowed) problems.push('当前程序在黑名单里');
                 if (problems.length) {
-                    gridMsg('gridSizeMsg', '⚠ ' + problems.join('；'), true);
+                    gridMsg('gridHotkeyMsg', '⚠ ' + problems.join('；'), true);
                 } else {
-                    gridMsg('gridSizeMsg',
+                    gridMsg('gridHotkeyMsg',
                         '✅ 快捷键 ' + d.hotkey + ' 解析正常（vk=' + (d.parsed ? d.parsed.vkHex : '?') + '），'
                         + '总开关开着、未暂停、当前程序不在黑名单 —— 按下它应该立刻弹出网格页');
                 }
             } catch (e) {
-                gridMsg('gridSizeMsg', String(e || '自检失败'), true);
+                gridMsg('gridHotkeyMsg', String(e || '自检失败'), true);
             }
         });
     }
@@ -11515,7 +11645,8 @@ const MODEL_NAMES = new Map();
  *
  * 规则：
  *   · 光标停在输入框 / 文本域 / 可编辑区域里时**不拦** —— 那里 Ctrl+C 应该是复制；
- *   · 命中配置里的 `gridHotkey`（默认 ctrl+c）才触发，并阻止默认行为；
+ *   · 命中配置里的 `gridHotkey`（默认 ctrl+shift+g，v2.12.6 起不再是 Ctrl+C）
+ *     才触发，并阻止默认行为；
  *   · 长按重复（e.repeat）忽略，避免连弹。
  */
 function hotkeyMatches(e, spec) {
@@ -11542,7 +11673,7 @@ document.addEventListener('keydown', (e) => {
     const t = e.target;
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     if (typing) return;
-    const spec = (CONF && CONF.gridHotkey) || 'ctrl+c';
+    const spec = (CONF && CONF.gridHotkey) || 'ctrl+shift+g';
     if (!hotkeyMatches(e, spec)) return;
     e.preventDefault();
     invoke('grid_trigger_from_ui').catch(() => { });

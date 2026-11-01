@@ -140,7 +140,7 @@ window.QS_I18N.add({
     "鼠标移远就收起": "Auto-hide when the pointer moves away",
     "指针离弹出位置超过这么远，说明这条你不需要了 —— 立刻收起 · 0 = 不收起 · 当前 400 px": "Hide immediately once the pointer is farther than this from the bar · 0 = never · now 400 px",
     "划选没取到文字就不弹": "Do not show the bar when no text was captured",
-    "只影响\"划选\"这一条路：拖窗口、拖滚动条、拖画布这类误触取不到词时不弹。Ctrl+C 是主动按下的，不受这个开关影响 —— 哪怕没复制到内容也一定弹": "Only affects drag-selection: dragging a window, scrollbar or canvas will not trigger the bar. Ctrl+C is an explicit action and always shows the bar, even if nothing was copied.",
+    "开着：只有真的选到文字才弹条（拖滚动条、拖画布、拖图片这类不会再冒空条）。关掉：拖一下就弹一条空条，自绘界面取不到词时也能拿它点「识图 / OCR」": "On: the bar only appears when text is actually selected (dragging a scrollbar, canvas or image no longer pops an empty bar). Off: any drag pops an empty bar, so self-drawn apps without extractable text can still use Image search / OCR.",
     "系统": "System",
     "界面语言": "Language",
     "切换后立刻生效，并写进本机配置（下次启动仍是这个语言）· 简体中文为默认": "Applies immediately and is saved to this machine (still in effect next launch) · Simplified Chinese is the default",

@@ -94,7 +94,7 @@ use crate::t::menu::{MenuBuilder, MenuItemBuilder};
 use crate::t::tray::TrayIconBuilder;
 use crate::t::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use windows::Win32::Foundation::{HWND, POINT};
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_C, VK_CONTROL, VK_ESCAPE, VK_O};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_C, VK_ESCAPE, VK_O};
 
 use config::Config;
 use hook::Ev;
@@ -2954,24 +2954,31 @@ fn set_grid_behavior(enable: bool, click: String, allow_add: bool) -> Result<(),
 fn set_grid_hotkey(hotkey: String) -> Result<(), String> {
     let key = hotkey.trim().to_ascii_lowercase();
     if key.is_empty() {
-        return Err("快捷键不能为空；想恢复默认就填 ctrl+c".into());
+        return Err("快捷键不能为空；想恢复默认就录一个 ctrl+shift+g".into());
     }
     // 语法先过一遍：解析不出来 = 写了不认识的键名，直接拒绝
     if parse_hotkey(&key).is_none() {
         return Err(format!(
-            "「{key}」不是可用的组合键。写法示例：ctrl+c、ctrl+shift+g、alt+space"
+            "「{key}」不是可用的组合键。写法示例：ctrl+shift+g、alt+space、ctrl+alt+g"
         ));
     }
-    /* 冲突检查。⚠ 这两项**必须各自独立判**：
+    /* 冲突检查。⚠ 下面三项**必须各自独立判**：
      *   第一版把 OCR 那条写在了 `if let Some(fav_hotkey)` 里面 —— 用户没设
      *   收藏夹热键时 fav_hotkey 是空串、parse_hotkey 返回 None，整段直接跳过，
      *   于是 ctrl+alt+o 这种保留键照样被接受（实测就是这么漏的）。 */
     if let Some((kc, ka, ks, kw, kvk)) = parse_hotkey(&key) {
-        // ① Ctrl+Alt+O 是「框选识别」的保留键（钩子里硬编码，改了会互相抢）
+        // ① Ctrl+C 是系统复制（判据在 `config::grid_hotkey_allowed`，见上）
+        if !config::grid_hotkey_allowed(&key) {
+            return Err(
+                "ctrl+c 是系统复制，不能拿来唤起网格页（会把复制弄坏）。换一个，比如 ctrl+shift+g。"
+                    .into(),
+            );
+        }
+        // ② Ctrl+Alt+O 是「框选识别」的保留键（钩子里硬编码，改了会互相抢）
         if kc && ka && !ks && !kw && kvk == VK_O.0 as u32 {
             return Err("ctrl+alt+o 是「框选识别」的保留键，请换一个组合。".into());
         }
-        // ② 和收藏夹热键撞车
+        // ③ 和收藏夹热键撞车
         if let Some((fc, fa, fs, fw, fvk)) = parse_hotkey(&cfg_with(|c| c.fav_hotkey.clone())) {
             if (fc, fa, fs, fw, fvk) == (kc, ka, ks, kw, kvk) {
                 return Err(format!(
@@ -3592,6 +3599,8 @@ fn grid_diag() -> Value {
         "parsed": parsed,
         // 解析不出来 = 写错了，永远匹配不上
         "ok": parsed.is_some(),
+        // v2.12.6：ctrl+c 是系统复制，不能当唤起键（配置迁移 / 保存 / 导入三处都拦）
+        "copyConflict": !config::grid_hotkey_allowed(&hot),
         "triggerCopy": cfg_with(|c| c.trigger_copy),
         "paused": is_paused(),
         "foregroundIsOurs": foreground_is_ours(),
@@ -3936,10 +3945,31 @@ fn post_ocr_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
             return;
         }
     }
+    /* 认字这件事连同"补内边距 / 保底尺寸 / 调试图"全在 `ocr_region_text` 里 ——
+     * 弹条前确认选区那条路用的是同一份实现，两边不会走样。 */
+    match ocr_region_text(drag) {
+        Some(text) => {
+            if !is_bar_shown() || GEN.load(Ordering::SeqCst) != gen {
+                win::log("post-ocr: 认出来了但横条已换新 —— 丢弃");
+                return;
+            }
+            let n = text.chars().count();
+            push_late_text(text, true);
+            win::log(&format!("post-ocr: 本地识别补字成功（{n} 字）"));
+        }
+        None => win::log("post-ocr: 屏幕上也没认到字（或截取失败）"),
+    }
+}
+
+/// 把"刚才划过的那块屏幕"交给 **Windows 本地 OCR**（不联网），返回认出来的文字。
+///
+/// 抽成独立函数的理由：有两条路要用它，而对"怎么补内边距、怎么保底尺寸、
+/// 怎么存调试图"的要求完全一致 —— 各抄一份迟早会走样。
+///   · `post_ocr_fill`：横条已经弹出来、复制通道拿不到字时补字；
+///   · `confirm_selection_text`：**弹条之前**确认"真的选中了东西"
+///     （微信 4.x 这类忽略合成按键的客户端，只有这条能给出证据）。
+fn ocr_region_text(drag: (i32, i32, i32, i32)) -> Option<String> {
     let (x0, y0, x1, y1) = drag;
-    /* ⚠ 拖选**横着划**时 `y0 == y1`，矩形高度是 0 —— 直接拿去截图只能是空条。
-     *   这里给选区补一圈内边距（上下各 10px、左右各 4px），既保证有高度，
-     *   也能把文字上下沿的半个字高包进来（本地 OCR 对切了边的字很敏感）。 */
     /* ⚠ v2.11.7：内边距给足。原来上下各 10px，横着拖出来的选区只有 20px 高，
      *   而一行中文在这个 DPI 下就有 16~18px —— 上下几乎贴边，Windows 本地 OCR
      *   对"切到字沿"的图非常敏感，实测直接返回"没有识别到文字"。
@@ -3959,51 +3989,99 @@ fn post_ocr_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
         w = 40;
     }
     if w < 8 || h < 8 || w > 3000 || h > 2000 {
-        win::log(&format!("post-ocr: 选区尺寸 {w}x{h} 不适合识别 —— 跳过"));
-        return;
+        win::log(&format!("ocr-region: 选区尺寸 {w}x{h} 不适合识别 —— 跳过"));
+        return None;
     }
     let Some((cw, ch, pixels)) = win::grab_region(x, y, w, h) else {
-        win::log("post-ocr: 截取选区失败");
-        return;
+        win::log("ocr-region: 截取选区失败");
+        return None;
     };
-    win::log(&format!(
-        "post-ocr: 截取 ({x},{y}) {w}x{h} → {cw}x{ch}"
-    ));
+    win::log(&format!("ocr-region: 截取 ({x},{y}) {w}x{h} → {cw}x{ch}"));
     let Some(img) = image::RgbaImage::from_raw(cw, ch, pixels) else {
-        win::log("post-ocr: 像素数据异常");
-        return;
+        win::log("ocr-region: 像素数据异常");
+        return None;
     };
     let mut cur = std::io::Cursor::new(Vec::new());
     if image::DynamicImage::ImageRgba8(img)
         .write_to(&mut cur, image::ImageFormat::Png)
         .is_err()
     {
-        return;
+        return None;
     }
     /* 排障用：`QS_OCR_DEBUG=1` 时把这一块存下来，能直接看出"到底截到了什么"。
-     * 只在这个兜底分支里生效，正式运行不写盘。 */
-    /* 开关：`QS_OCR_DEBUG=1` 环境变量，或数据目录里放一个 `ocr-debug.on`。
-     * 后者是因为提权启动（-Verb RunAs）时环境变量不一定会继承下来。 */
+     * 开关也可以是数据目录里的 `ocr-debug.on` —— 提权启动（-Verb RunAs）时
+     * 环境变量不一定会继承下来，那个文件是给这种情况准备的后门。 */
     if std::env::var("QS_OCR_DEBUG").map(|v| v == "1").unwrap_or(false)
         || config::data_dir().join("ocr-debug.on").exists()
     {
         let p = config::data_dir().join("ocr-debug.png");
         let _ = std::fs::write(&p, cur.get_ref());
-        win::log(&format!("post-ocr: 调试图已存 {}", p.display()));
+        win::log(&format!("ocr-region: 调试图已存 {}", p.display()));
     }
     match run_ocr(&cur.into_inner(), "windows") {
-        Ok((text, _raw, _label)) if !text.trim().is_empty() => {
-            if !is_bar_shown() || GEN.load(Ordering::SeqCst) != gen {
-                win::log("post-ocr: 认出来了但横条已换新 —— 丢弃");
-                return;
-            }
-            let n = text.chars().count();
-            push_late_text(text, true);
-            win::log(&format!("post-ocr: 本地识别补字成功（{n} 字）"));
+        Ok((text, _raw, _label)) if !text.trim().is_empty() => Some(text),
+        Ok(_) => {
+            win::log("ocr-region: 屏幕上没认到字");
+            None
         }
-        Ok(_) => win::log("post-ocr: 屏幕上也没认到字"),
-        Err(e) => win::log(&format!("post-ocr: 本地识别失败：{e}")),
+        Err(e) => {
+            win::log(&format!("ocr-region: 本地识别失败：{e}"));
+            None
+        }
     }
+}
+
+/// **弹条之前**确认「这次拖选是不是真的选中了东西」。
+///
+/// # 为什么需要它（v2.12.6，用户报"没选中任何文字也弹横条"）
+///
+/// 之前的行为是"拖选 + 没文字 → 照样弹空条，弹完再复制补字"。于是**任何一次
+/// 拖动**（拖滚动条、拖画布、拖图片、拖窗口里的空白）都会冒一条空横条。
+/// 用户的口径变了：**确实选中了文本才显示**。
+///
+/// "确实选中了"这件事只有两条证据来源：
+///   ① 复制通道 —— 模拟 Ctrl+C，剪贴板真的变了才说明有选区（**有就是有**，
+///      而且拿到的原文最精确）；剪贴板快照/还原逻辑复用现成的
+///      `capture_selection_fast`，用户原来的剪贴板内容不会被留下覆盖；
+///   ② 屏幕识别 —— 微信 4.x（Qt）这类会忽略合成按键的程序，复制永远拿不到，
+///      把划过的那块屏幕交给本地 OCR（约 100~200ms）。
+///
+/// ⚠ 这里**不走 `capture_selection` 的完整三级通道**（最坏 3.7s）：弹条前
+///   不能把用户晾在那里。快通道 700ms 拿不到就直接看屏幕 —— 而"看屏幕"
+///   正好就是微信这条路的唯一证据来源。
+fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option<String> {
+    /* ⚠ 终端里**不模拟 Ctrl+C**。
+     *
+     * 控制台类窗口里 Ctrl+C 不是"复制"而是**中断信号**：没有选区时按下它，
+     * 正在跑的命令（编译、脚本、服务器）会被直接打断。这条兜底以前就存在
+     * （`post_show_copy_fill` 对空文字的拖选一律复制），趁这次把口子堵上：
+     * 终端里改走"看屏幕"，一样能确认有没有选中文字，还不会误杀进程。 */
+    let start = win::window_under_point(drag.0, drag.1);
+    if is_console_window(start) || is_console_window(win::root_window(start)) {
+        win::log("confirm: 起点在终端里 —— 不模拟 Ctrl+C（会打断正在跑的命令），直接看屏幕");
+        return ocr_region_text(drag).filter(|t| !t.trim().is_empty());
+    }
+    if let Some(t) = capture_selection_fast(target_pid, 700).filter(|t| !t.trim().is_empty()) {
+        return Some(t);
+    }
+    win::log("confirm: 复制通道没拿到 —— 改看屏幕（本地识别）确认选区");
+    ocr_region_text(drag).filter(|t| !t.trim().is_empty())
+}
+
+/// 这个窗口是不是「控制台 / 终端」。
+///
+/// 只用来决定"能不能在这里模拟 Ctrl+C"（见 `confirm_selection_text` 的注释）：
+/// 控制台里 Ctrl+C = 中断信号，误发一次就可能把用户正在跑的编译/脚本打掉。
+/// 覆盖三种：conhost（`ConsoleWindowClass`）、Windows Terminal
+/// （`CASCADIA_HOSTING_WINDOW_CLASS`）、以及伪控制台宿主（`PseudoConsoleWindow`）。
+fn is_console_window(h: HWND) -> bool {
+    if h.0.is_null() {
+        return false;
+    }
+    matches!(
+        win::class_name(h).as_str(),
+        "ConsoleWindowClass" | "PseudoConsoleWindow" | "CASCADIA_HOSTING_WINDOW_CLASS"
+    )
 }
 
 /// 把「这一条文字」写进本次唤起的共享状态（选区 / 选区 URL / 选区里的全部链接）。
@@ -4283,10 +4361,14 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
                  *    **回退到复制通道**：模拟一次 Ctrl+C，读剪贴板，读完立刻还原。
                  *    这正是老版能在浏览器里出字的原因 —— 上一版把 OCR 兜底拆掉
                  *    之后这条链断了，表现为"选中文字不弹条"。 */
-                /* ⚠ 这里**只走不碰剪贴板的两条通道**（编辑控件 / UIA）。
-                 * 复制通道不再放在"弹条之前" —— 用户 2026-10-30 明确要求：
-                 * 只有「横条已经出现」且「没抓到文字」时才允许复制。
-                 * 见弹条之后的 `post_show_copy_fill`。 */
+                /* ⚠ 这里先走**不碰剪贴板**的两条通道（编辑控件 / UIA）。
+                 * 记事本、各种输入框、大多数原生控件走这条 —— 一次复制都不会发生。
+                 *
+                 * 拿不到文字时才轮到"确认选区"（`confirm_selection_text`）：
+                 * v2.12.6 起它被挪到**弹条之前**，因为用户明确要求"确实选中了文字
+                 * 才显示"。以前是先弹空条再复制补字，代价就是**任何一次拖动**
+                 * 都会冒出一条空横条。顺序换回来，剪贴板纪律（快照 → 复制 →
+                 * 还原）一条没变。 */
                 capture_without_clipboard(drag)
             };
             match &out {
@@ -4319,7 +4401,7 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
              *
              * ⚠ 唯一的例外是黑名单（`app_allowed`），那个判断在
              *   `trigger_allowed` 里、比这里更早，没有被我这条改动绕过。 */
-            let (text, via) = match out {
+            let (mut text, mut via) = match out {
                 Some((t, v)) => (t, v),
                 None => (String::new(), ""),
             };
@@ -4333,23 +4415,49 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
              * 现在默认改成：**没拿到文字就不弹**。`bar_need_text = false` 可以把
              * 老行为开回来（自绘界面 / 游戏的用户划词取不到词，仍然需要那条空横条
              * 去点「识图搜索」「OCR」）。设置页在「通用 → 触发」里。 */
-            /* 「没取到文字就不弹」只管**点击**，不管**拖选**（2026-10-30 起）。
+            /* 「没取到文字就不弹」现在**对拖选也生效**（v2.12.6）。
              *
-             * 起因：浏览器里选中一段文字后横条不出现。查下来不是没触发，而是
-             * 三条通道都没拿到文字（Chromium 没有 UIA 文本模式，复制通道偶尔也
-             * 空手而归），于是被这条开关整个拦掉 —— 用户看到的就是"选中了没反应"，
-             * 而且没有任何提示。用户的口径很明确：**鼠标选中文字就该有弹条**。
+             * 之前（2026-10-30）为了让浏览器里的"选中就弹"能出现，把拖选这一支
+             * 从开关下面放了出来：拖选 + 没文字 → 照样弹一条空条。代价是
+             * **任何一次拖动**都会冒一条空横条 —— 拖滚动条、拖画布、拖图片、
+             * 拖窗口边缘……用户报的"没选中任何文字也弹横条"就是这条。
              *
-             * 判据用矩形位移（>4px，和 dragging 同一口径）区分拖选与点击：
-             *   · 拖选 + 没文字 → **照样弹**（空条，带 OCR / 识图按钮）；
+             * 现在改成"**先确认选区，再弹条**"：
+             *   · 拖选 + 没文字 → 立刻走 `confirm_selection_text`（复制通道 +
+             *     屏幕识别），确认真的有字才弹；一个字都没有就不弹；
              *   · 点击 + 没文字 → 维持原样不弹（防"误点一下就冒一条"）。
-             * 这条不改变配置语义：把 `bar_need_text` 关掉时，行为与以前一致。 */
+             *
+             * ⚠ 顺序变了但代价没变：以前是"先弹空条、再复制补字"，复制同样
+             *   发生在每一次空文字的拖选上；现在只是把它挪到弹条**之前**，
+             *   剪贴板的快照/还原逻辑一字未动。区别只有一个 —— 没选区时
+             *   屏幕上不会再冒出一条空横条。
+             *
+             * `bar_need_text = false` 时行为完全不变：无论如何都弹一条空条
+             * （自绘界面 / 游戏的用户要靠它点「识图搜索」「OCR」）。 */
             let dragged = (drag.2 - drag.0).abs() > 4 || (drag.3 - drag.1).abs() > 4;
-            if text.trim().is_empty() && cfg_with(|c| c.bar_need_text) && !dragged {
-                win::log(
-                    "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
-                );
-                return;
+            if text.trim().is_empty() && cfg_with(|c| c.bar_need_text) {
+                if !dragged {
+                    win::log(
+                        "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
+                    );
+                    return;
+                }
+                match confirm_selection_text(target_pid, drag) {
+                    Some(t) => {
+                        win::log(&format!(
+                            "start_capture: 复核确认选区里有 {} 字 —— 弹条",
+                            t.chars().count()
+                        ));
+                        text = t;
+                        via = "复核";
+                    }
+                    None => {
+                        win::log(
+                            "start_capture: 拖选但没有选区（复制与屏幕识别都没拿到字）—— 这次不弹",
+                        );
+                        return;
+                    }
+                }
             }
             if text.trim().is_empty() {
                 win::log("start_capture: 拖选但没拿到文字 —— 按用户要求仍然弹一条空条");
@@ -5284,13 +5392,6 @@ fn spawn_detector() {
                  * 于是整条取词被否掉 —— 这就是"点中文字没反应"的直接原因。
                  * 这里记上一次**点击**（非拖拽）的位置与时刻，用来判双击。 */
                 let mut last_click: Option<(i32, i32, std::time::Instant)> = None;
-                /* 「最近见过一次 Ctrl 按下」的时间戳。
-                 *  有些软件 / 第三方工具发 Ctrl+C 的时序很怪：C 的按下先到、
-                 *  Ctrl 的按下事件丢了或者晚到，光看钩子在 C 那一刻读到的
-                 *  ctrl 状态就会漏 —— 这正是用户说的"部分窗口唤不出来"。
-                 *  600ms 内见过 Ctrl 就也算数，是纯保险，不会带来误触发
-                 *  （正常按 C 本来也带 Ctrl）。 */
-                let mut last_ctrl_seen: Option<std::time::Instant> = None;
 
             for ev in rx {
                 match ev {
@@ -5529,9 +5630,6 @@ fn spawn_detector() {
                                 }
                             }
                         }
-                        if vk == VK_CONTROL.0 as u32 {
-                            last_ctrl_seen = Some(std::time::Instant::now());
-                        }
                         if ctrl || alt {
                             win::log(&format!(
                                 "kbd: vk=0x{vk:X} ctrl={ctrl} alt={alt} ours={ours} ocrEnable={}",
@@ -5570,34 +5668,28 @@ fn spawn_detector() {
                             std::thread::spawn(|| ocr_start_flow(None));
                             continue;
                         }
-                        // ctrl：钩子在 C 那一刻读到的状态；加上"最近 600ms 见过 Ctrl"
-                        // 的保险（见 last_ctrl_seen 的注释），提高在怪时序软件里的命中率。
-                        let ctrl_ok = ctrl
-                            || last_ctrl_seen
-                                .map(|t| t.elapsed() < std::time::Duration::from_millis(600))
-                                .unwrap_or(false);
-                        /* ───── Ctrl+C（或用户自定义的快捷键）→ **网格页** ─────
+                        /* ───── 自定义快捷键 → **网格页** ─────
                          *
-                         * 用户口径（2026-10-30）：Ctrl+C 弹的是**网格页面**，和
-                         * "选中文字弹的横条"是两套东西，内容样式互不干扰。
-                         * 所以这条分支不再走 `copy_trigger`（那是文字横条），
-                         * 而是 `grid_trigger`（置 GRID_PENDING 后弹同一个窗口的
-                         * 网格视图）。
+                         * 用户口径（2026-10-30）：网格页和"选中文字弹的横条"
+                         * 是两套东西，内容样式互不干扰。所以这条分支不走
+                         * `copy_trigger`（那是文字横条），而是 `grid_trigger`
+                         * （置 GRID_PENDING 后弹同一个窗口的网格视图）。
                          *
-                         * 快捷键可完全自定义：设置里存什么就认什么；一旦改了，
-                         * Ctrl+C 就不再命中（"自定义快捷键需替代 Ctrl+C 生效"）。
-                         * 默认值 ctrl+c 额外保留"最近 600ms 见过 Ctrl"的兜底 ——
-                         * 这是历史坑：某些程序里钩子读到的 ctrl 状态是 false，
-                         * 只认严格匹配会让 Ctrl+C 偶发哑火。 */
+                         * ⚠ v2.12.6：**严格匹配，没有例外**。
+                         *
+                         * 老版本默认值就是 ctrl+c，为了让它在"读不到 ctrl 状态"
+                         * 的怪时序软件里也能命中，额外留了一条"最近 600ms 见过
+                         * Ctrl"的宽松兜底 —— 代价是**任何** Ctrl+C 都会顺手把
+                         * 网格页叫出来（用户报的"干扰正常复制"），而且宽松判定
+                         * 挡不住"配置里写了个别的键、Ctrl+C 仍然误弹"的老账。
+                         *
+                         * 现在默认键换成了 ctrl+shift+g（见 config::default_grid_hotkey），
+                         * 配置里也不可能再是 ctrl+c（读配置时迁移、保存时拒收），
+                         * 于是宽松判定没有存在意义，直接删掉：**存什么就认什么**。 */
                         if let Some((hc, ha, hs, hw, hvk)) =
                             parse_hotkey(&cfg_with(|c| c.grid_hotkey.clone()))
                         {
                             let strict = vk == hvk && ctrl == hc && alt == ha && shift == hs && win == hw;
-                            // 默认键（ctrl+c）才走宽松判定，自定义键必须严格匹配，
-                            // 免得"用户把网格设成 ctrl+shift+g，结果 Ctrl+C 还能弹"。
-                            let loose = hc && !ha && !hs && !hw && hvk == VK_C.0 as u32
-                                && vk == VK_C.0 as u32
-                                && ctrl_ok;
                             /* ⚠ v2.11.4：**网格快捷键只受 `grid_enable` 管**。
                              *
                              * 原来这里还要求「复制取词」开着（`trigger_copy`）——
@@ -5605,7 +5697,7 @@ fn spawn_detector() {
                              * 用户在微信里为了不被 Ctrl+C 打扰关掉它之后，网格快捷键
                              * 就一起哑了，而且**一行日志都没有**（条件不成立 = 静默跳过）。
                              * 现在解耦：关掉复制取词不影响网格页。 */
-                            if strict || loose {
+                            if strict {
                                 // 网格页总开关：关掉后快捷键不响应（内容和配置都留着）
                                 if !cfg_with(|c| c.grid_enable) {
                                     win::log("grid: 网格页已停用，忽略这次快捷键");
@@ -6028,7 +6120,9 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     if let Some(x) = b("triggerCopy") { cfg.trigger_copy = x; }
     // 网格页：备份/导入恢复。夹取到合法范围，避免手改过的备份把界面弄崩
     if let Some(x) = s("gridHotkey") {
-        if parse_hotkey(&x).is_some() {
+        // v2.12.6：老备份里可能是 ctrl+c —— 那是系统复制，导入时直接丢掉
+        // （配置保持原样），免得一份旧备份又把"复制被抢"这件事带回来。
+        if parse_hotkey(&x).is_some() && config::grid_hotkey_allowed(&x) {
             cfg.grid_hotkey = x;
         }
     }

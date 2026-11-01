@@ -1058,6 +1058,39 @@ pub fn custom_engine_usable(e: &CustomEngine) -> bool {
 ///   横条那边改成：画一颗带「!」的格子，点一下提示「去设置里补上」
 ///   （bar.js 的 `barList()` / `renderBar`），设置页那一行标红。
 ///   这样"设置说在横条上"和"横条里看得见"两句话重新对得上。
+/// 这个组合键能不能当「唤起网格页」的快捷键。
+///
+/// 目前只拦一条：**Ctrl+C**。它是系统复制，而网格页是"按一下就盖住半个屏幕"的
+/// 浮层 —— 让唤出键落在复制上，等于把复制废掉（用户报的"干扰正常复制"）。
+/// 其它组合交给 `parse_hotkey` 的语法校验和收藏夹冲突检查。
+///
+/// ⚠ 这是**唯一判据**，读配置（`migrate_legacy_grid_hotkey`）、设置页保存
+/// （`set_grid_hotkey`）、备份导入（`apply_view` 的网格段）三处都调它，
+/// 免得"从备份恢复进来的 ctrl+c 又被写回去"。
+pub fn grid_hotkey_allowed(combo: &str) -> bool {
+    !combo.trim().eq_ignore_ascii_case("ctrl+c")
+}
+
+/// 老配置里的 `grid_hotkey: "ctrl+c"` 换成新默认值。
+///
+/// 为什么必须迁移而不是"读的时候不认就行"：设置页会把配置里的值显示成
+/// 用户当前的选择。留着 ctrl+c 却让它不生效（钩子里拦掉），用户看到的
+/// 就是"我明明把快捷键设成 Ctrl+C 了，怎么按都没反应" —— 比不弹还难查。
+///
+/// 返回是否改过（调用方拿它决定要不要写回磁盘 / 记日志）。
+pub fn migrate_legacy_grid_hotkey(cfg: &mut Config) -> bool {
+    if grid_hotkey_allowed(&cfg.grid_hotkey) {
+        return false;
+    }
+    let old = cfg.grid_hotkey.clone();
+    cfg.grid_hotkey = default_grid_hotkey();
+    crate::win::log(&format!(
+        "config: 网格快捷键 {old} 是系统复制，已换成 {}（Ctrl+C 恢复为纯复制）",
+        cfg.grid_hotkey
+    ));
+    true
+}
+
 pub fn repair_dead_custom_engines(cfg: &mut Config) -> usize {
     let mut fixed = 0usize;
     for e in cfg.custom_engines.iter_mut() {
@@ -1527,8 +1560,14 @@ pub struct Config {
      * 引擎面板都是它），尺寸由前端量完 `layout_bar` 回填。网格页复用的正是这套，
      * 少一个窗口就少一套定位/焦点/单实例的坑（"保留现有架构"）。
      */
-    /// 唤起网格页的快捷键。**默认 `ctrl+c`**，用户可完全自定义；
-    /// 改了之后 Ctrl+C 就不再唤起它（"自定义快捷键需替代 Ctrl+C 生效"）。
+    /// 唤起网格页的快捷键。**默认 `ctrl+shift+g`**（G = grid），用户可完全自定义。
+    ///
+    /// ⚠ v2.12.6：默认值从 `ctrl+c` 换成 `ctrl+shift+g`。
+    /// 老默认值等于把**系统复制**抢走了 —— 用户在任何一个软件里按 Ctrl+C 想复制，
+    /// 屏幕上都会冒出网格页（用户报的"干扰正常复制"）。而且它是**默认值**，
+    /// 新装用户一上手就被打扰，却不知道是自己哪个设置惹的。
+    /// 现在：Ctrl+C 只做复制；想唤网格请用默认的 ctrl+shift+g 或自己录一个。
+    /// 老配置里的 `ctrl+c` 由 `migrate_legacy_grid_hotkey` 在读取时换掉。
     #[serde(default = "default_grid_hotkey")]
     pub grid_hotkey: String,
     /// 网格行数（1-10）
@@ -2073,7 +2112,15 @@ fn default_grid_click() -> String {
 }
 
 fn default_grid_hotkey() -> String {
-    "ctrl+c".to_string()
+    /* v2.12.6：`ctrl+c` → `ctrl+shift+g`。
+     *
+     * 旧默认值是**系统复制**，按一下就冒网格页 —— 用户报的"干扰 Ctrl+C 正常复制"
+     * 就是它。选 `ctrl+shift+g` 的理由：
+     *   · G 好记（grid / 网格），和收藏夹、OCR 的保留键（ctrl+alt+o）不撞；
+     *   · 带 Shift，不会和任何"单击字母键"的日常输入混到一起；
+     *   · Chrome / 记事本里都不是常用键（Chrome 的 ctrl+shift+g 是"上一个查找结果"，
+     *     只在查找框打开时才有效，正常浏览不会误触）。 */
+    "ctrl+shift+g".to_string()
 }
 fn default_grid_rows() -> u32 {
     3
@@ -3496,6 +3543,10 @@ pub(crate) fn sanitize(mut c: Config) -> Config {
             c.grid_app_pages.len()
         ));
     }
+    /* v2.12.6：老默认值 `ctrl+c` 抢了系统复制，读配置时就换掉。
+     * 放在这里（而不是只在 UI 上显示新值）的理由和上面几条一样 ——
+     * 本地配置 / 备份恢复 / 云端恢复 / 手改文件，每一路都该干净。 */
+    migrate_legacy_grid_hotkey(&mut c);
     let pruned_go = prune_shortcut_sentinels(&mut c);
     if pruned_go > 0 {
         crate::win::log(&format!(
@@ -5797,6 +5848,35 @@ mod sanitize_tests {
     ///      「待补全」的格子，设置页标红，等用户补）
     ///   ③ 正常的搜索类      → 原样留着
     ///   ④ 快捷键类没按键    → 同 ②
+    /// 网格快捷键：默认值 + 迁移 + 拒收 Ctrl+C。
+    ///
+    /// 三件事一起测，因为它们是同一条需求的三个面（"别再把系统复制抢走"）：
+    ///   · 默认值是 ctrl+shift+g，不是 ctrl+c；
+    ///   · 老配置里的 ctrl+c 读出来就被换掉（否则界面显示 Ctrl+C 却按不动）；
+    ///   · 判据函数本身认得大小写 / 前后空格（用户手改配置时不会带出漏网之鱼）。
+    #[test]
+    fn grid_hotkey_default_is_not_copy() {
+        let _serial = big_lock();
+        let c = Config::default();
+        assert_eq!(c.grid_hotkey, "ctrl+shift+g", "默认唤起键不能是系统复制");
+        assert!(grid_hotkey_allowed(&c.grid_hotkey));
+
+        assert!(!grid_hotkey_allowed("ctrl+c"));
+        assert!(!grid_hotkey_allowed("  Ctrl+C  "));
+        assert!(grid_hotkey_allowed("ctrl+shift+c"), "带 Shift 的不算复制");
+        assert!(grid_hotkey_allowed("ctrl+alt+c"));
+        assert!(grid_hotkey_allowed("ctrl+shift+g"));
+
+        let mut old = Config::default();
+        old.grid_hotkey = "ctrl+c".into();
+        assert!(migrate_legacy_grid_hotkey(&mut old), "老配置应当被迁移");
+        assert_eq!(old.grid_hotkey, "ctrl+shift+g");
+
+        // 已经合法的值不要动（幂等）
+        assert!(!migrate_legacy_grid_hotkey(&mut old), "迁移必须是幂等的");
+        assert_eq!(old.grid_hotkey, "ctrl+shift+g");
+    }
+
     #[test]
     fn repair_dead_custom_engines_recovers_kind_only() {
         let _serial = big_lock();
