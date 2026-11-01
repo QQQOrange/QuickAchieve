@@ -53,6 +53,20 @@ let ocrOnly = false;
 const btnPanelClose = $('btnPanelClose');
 const inputQ = $('q');
 const menuEl = $('menu');
+
+/** 运行时翻译：给**动态生成的 DOM** 用。
+ *
+ *  i18n.js 只翻页面里**静态存在**的文本节点 / 整块；JS 拼出来的标题、提示
+ *  它扫不到（那些节点是后来才插进来的）。以前这类文案就一直是中文 ——
+ *  英文界面下"最近使用"这种标题露着中文，看着像漏翻。
+ *  有了这个助手，动态文案也能跟着界面语言走：词典里没收录的原样返回。 */
+function barT(s) {
+    try {
+        return (window.QS_I18N && typeof window.QS_I18N.t === 'function') ? window.QS_I18N.t(s) : s;
+    } catch (_) {
+        return s;
+    }
+}
 /* 包裹符号菜单（#wrapMenu）。放在这里而不是跟包裹那一段的其它变量一起声明，
  * 是因为 `pushLayout()`（在上面很远的地方定义）要拿它算窗口包围盒 ——
  * 它每次被调用都可能早于包裹那段的 `const` 求值，那时引用就是 TDZ 报错。 */
@@ -1838,10 +1852,10 @@ function renderRecentSection() {
     t.className = 'cat-title recent-title';
     t.dataset.recent = '1';
     const txt = document.createElement('span');
-    txt.textContent = '最近使用';
+    txt.textContent = barT('最近使用');
     t.appendChild(txt);
     const hint = document.createElement('small');
-    hint.textContent = '你刚用过的引擎，按最近顺序排';
+    hint.textContent = barT('你刚用过的引擎，按最近顺序排');
     t.appendChild(hint);
     panelBody.appendChild(t);
 
@@ -6093,9 +6107,39 @@ function openMenu(x, y, engineName) {
         add(inBar ? '从横条移除' : '固定到横条',
             () => invoke('toggle_bar_engine', { engine: engineName, on: !inBar }).catch(() => {}));
     } else {
-        menuEl.hidden = true;
-        invoke('log_msg', { msg: 'menu: 非引擎区右键，无可用项，不弹菜单' }).catch(() => {});
-        return;
+        /* v2.23.0：**空白处右键 = 「最近用过」快速执行**。
+         *
+         * 老行为是"非引擎区右键什么都不弹"—— 但横条上到处都是图标之间的缝隙，
+         * 右键落空时用户只会觉得"右键坏了"。而"最近用过"这批引擎本来就已经在
+         * 配置里（`recent_engines`，由后端在使用时维护），拿来当一棵快捷菜单
+         * 零成本：不用新开窗口、不用新配置项、也不用再记一份"最近动作"。
+         *
+         * 点一条 = 用**当前这段文字**执行它（和点横条上的图标同一条路
+         * `runGridFunc`，哨兵 / 绑定模型 / 普通引擎全都能走）。
+         *
+         * 一条都没有时仍然不弹空菜单（别给用户一个只有分隔线的空壳）。 */
+        /* 面板 / 包裹菜单 / 收藏夹已经展开时**不弹**：它们本来就占着横条下方，
+         * 再叠一层菜单会盖住用户正在看的内容，而且右键在这些面板里通常是想
+         * 对面板里的条目做什么，不是想跑"最近用过"。 */
+        if (!panelEl.hidden || (wrapMenuEl && !wrapMenuEl.hidden) || favPinned) {
+            menuEl.hidden = true;
+            return;
+        }
+        const recents = (Array.isArray(CONF.recentEngines) ? CONF.recentEngines : [])
+            .filter((n) => typeof n === 'string' && n && n.charAt(0) !== '@')
+            .slice(0, 6);
+        if (!recents.length) {
+            menuEl.hidden = true;
+            invoke('log_msg', { msg: 'menu: 非引擎区右键，且没有最近使用记录，不弹菜单' }).catch(() => {});
+            return;
+        }
+        const head = document.createElement('div');
+        head.className = 'menu-head';
+        head.textContent = barT('最近用过 · 点一条就用当前这段文字执行');
+        menuEl.appendChild(head);
+        for (const n of recents) {
+            add(n, () => runGridFunc(n));
+        }
     }
 
     menuEl.hidden = false;

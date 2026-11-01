@@ -62,6 +62,10 @@
     ["^取消勾选：下次翻译不再连「(.+)」一起翻$", "Unticked: “$1” is no longer translated together"],
     ["^勾上：每次翻译都连「(.+)」一起翻$", "Ticked: every translation also runs “$1”"],
     ["^(\\d+) 个 · (\\d+) 个能对话 · 点一下选用$", "$1 models · $2 that can chat · click to use"],
-    ["^(\\d+) 家没翻出来，第一家是：(.+)$", "$1 engines failed — the first one: $2"]
+    ["^(\\d+) 家没翻出来，第一家是：(.+)$", "$1 engines failed — the first one: $2"],
+    ["^(\\d+) 格$", "$1 cells"],
+    ["^框选屏幕 → 识别文字（当前模型：(.+)）$", "Frame the screen → read the text (current model: $1)"],
+    ["^框选图片 → 按图搜索（当前模型：(.+)）$", "Frame an image → search by image (current model: $1)"],
+    ["^翻译当前这段文字（当前模型：(.+)）$", "Translate the bar’s text (current model: $1)"]
   ]
 }

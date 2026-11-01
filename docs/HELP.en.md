@@ -226,9 +226,16 @@ Settings → **Per app**.
 ## 4. OCR (text recognition)
 
 1. Click the **OCR** button on the bar (it shows your own icon if you customized it).
-2. Drag to select a screen region; recognition starts when you release.
+2. Drag to select a screen region. On release it **pauses**: handles appear at the corners and
+   an action bar pops up — drag a corner to fine-tune, drag inside to move, and switch the action
+   (**recognize / translate / image search / QR code / copy image**); **double-click** or press
+   Enter to run it (double-click runs the action you used **last time**; the first time it uses
+   this selection's own action).
 3. Results appear in a separate window; multiple engines can run **at the same time** and are
    shown side by side.
+
+> Think the extra step is a waste? Turn off **Settings → General → Trigger → “Pause after
+> selecting a region”** and it goes back to running on release.
 
 Notes:
 

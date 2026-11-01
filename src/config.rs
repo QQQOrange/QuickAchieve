@@ -687,23 +687,10 @@ fn is_bar_sentinel(n: &str) -> bool {
 /// 3. 完全并列时，**配置表里靠前的赢**（先配的说了算，行为可预测）；
 /// 4. 都没命中 / 命中的页已被删 → 回落到 `grid_default_page`，再不行用第一页。
 ///
-/// ⚠ 这里只管"**绑到哪一页**"（配置层事实）。"那一页是空的 → 展示时改回默认页"
-///   是**展示规则**，在 `resolve_grid_page` 里做 —— 两个问题分开，免得
-///   设置页说"这个应用绑的是工作页"、而这里已经悄悄换成了默认页。
-///
-/// 大小写不敏感：Windows 的进程名不区分大小写，`Chrome.exe` 和 `chrome.exe`
-/// 必须算同一个，否则用户从任务管理器抄下来的名字永远对不上。
-pub fn pick_grid_page(cfg: &Config, app: &str) -> usize {
-    let fallback = grid_page_index(cfg, &cfg.grid_default_page).unwrap_or(0);
-    let app = app.trim();
-    if app.is_empty() || cfg.grid_pages.is_empty() {
-        return fallback;
-    }
-    let Some(bi) = pick_grid_app_index(cfg, app) else {
-        return fallback;
-    };
-    grid_page_index(cfg, &cfg.grid_app_pages[bi].page).unwrap_or(fallback)
-}
+/* 这里原本还有一个 `pick_grid_page(cfg, app)`：只算"绑到哪一页"，不做
+ * 「专项页为空 → 回退默认页」那层展示规则。它已经被 `resolve_grid_page`
+ * 完全覆盖（后者把两件事分开做，还多返回 note 给设置页看），而且**一个调用点
+ * 都没有** —— 两个函数算同一件事是隐患（改了一个忘另一个），直接删掉。 */
 
 /// 单项显示样式的合法值（`icon` 只图标 / `text` 只名称 / `both` 图标+名称）。
 ///
@@ -847,11 +834,9 @@ pub struct Resolved {
     pub note: String,
 }
 
-impl Resolved {
-    pub fn is_default(&self) -> bool {
-        self.source == "default"
-    }
-}
+/* `Resolved::is_default()` 删掉了：调用方判断"是不是回退"一律直接看
+ * `source == "default"`（`note` 里还有更具体的原因），这个 getter 从加上那天起
+ * 就没有一个使用者——留着只会让人以为它在别处被依赖。 */
 
 /// 网格页解析结果：在 `Resolved` 之上多带"实际显示的是哪一页"。
 #[derive(Clone, Debug, Default)]
@@ -5905,10 +5890,15 @@ mod sanitize_tests {
         assert_eq!(normalize_grid_pages(&mut c), 0);
     }
 
-    /// 应用 → 页的匹配优先级：**精确 > 通配；通配里模式更长 > 更短；都不中走默认**。
+    /// 应用 → 绑定的匹配优先级：**精确 > 通配；通配里模式更长 > 更短；都不中就没命中**。
     /// 用户明确要求把冲突规则说清楚，这条测试就是那份规则的执行版本。
+    ///
+    /// ⚠ 这里断言的是 `pick_grid_app_index`（"命中哪一条绑定"），**不是**最终显示哪一页 ——
+    /// "绑到的页是空的 → 回退默认页"是展示规则，在 `resolve_grid_page` 里，由它自己的
+    /// 测试覆盖。以前这里测的是一个只做前半段的 `pick_grid_page()`，那个函数线上没人用、
+    /// 与 `resolve_grid_page` 又算同一件事，已经删掉；规则本身换到这里钉。
     #[test]
-    fn pick_grid_page_prefers_exact_then_longest_wildcard() {
+    fn grid_app_binding_prefers_exact_then_longest_wildcard() {
         let mut c = Config::default();
         c.grid_pages = vec![
             GridPage { id: "p1".into(), name: "默认".into(), items: vec![] },
@@ -5922,17 +5912,17 @@ mod sanitize_tests {
             GridAppPage { app: "chrome.exe".into(), page: "p3".into() },
             GridAppPage { app: "*chrome.exe".into(), page: "p4".into() },
         ];
-        // 精确匹配赢过两条通配
-        assert_eq!(pick_grid_page(&c, "chrome.exe"), 2);
+        // 精确匹配（第 2 条）赢过两条通配
+        assert_eq!(pick_grid_app_index(&c, "chrome.exe"), Some(1));
         // 大小写不敏感
-        assert_eq!(pick_grid_page(&c, "Chrome.EXE"), 2);
+        assert_eq!(pick_grid_app_index(&c, "Chrome.EXE"), Some(1));
         // 只有通配命中时，长的那条赢（*chrome.exe 比 *chrome* 具体）
-        assert_eq!(pick_grid_page(&c, "my-chrome.exe"), 3);
+        assert_eq!(pick_grid_app_index(&c, "my-chrome.exe"), Some(2));
         // 只命中短通配
-        assert_eq!(pick_grid_page(&c, "chrome-helper"), 1);
-        // 都不中 / 空应用名 → 默认页
-        assert_eq!(pick_grid_page(&c, "firefox.exe"), 0);
-        assert_eq!(pick_grid_page(&c, ""), 0);
+        assert_eq!(pick_grid_app_index(&c, "chrome-helper"), Some(0));
+        // 都不中 / 空应用名 → 没有命中（由调用方决定回退到默认页）
+        assert_eq!(pick_grid_app_index(&c, "firefox.exe"), None);
+        assert_eq!(pick_grid_app_index(&c, ""), None);
     }
 
     /// 归一必须清掉"指向已删除页"的应用绑定，并且默认页无效时回落到第一页。

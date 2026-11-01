@@ -4751,7 +4751,7 @@ fn __probe_inject_drag_in(label: String) -> bool {
      * 钩子那边算出来的 Down→Up 间隔 dt=0 —— 而划选判定要求 dt>=12ms
      * （挡掉合成/注入的瞬时 Up），于是整条链路在 up-check 就被丢掉。
      * 这条曾经让我误以为"注入没法验证"，其实是探针不像人。 */
-    let mut send_one = |e: INPUT| -> bool {
+    let send_one = |e: INPUT| -> bool {
         unsafe { SendInput(&[e], std::mem::size_of::<INPUT>() as i32) == 1 }
     };
 
@@ -11106,19 +11106,18 @@ fn ocr_start_flow(force_engine: Option<String>) {
     open_region_window_mode("ocr");
 }
 
-/// r54：进入识图流程（横条上那颗「识图」按钮走这里）。
+/// r54：识图流程的实体（**建遮罩窗 + 跑引擎**）。
 ///
 /// 和 OCR 的区别只有一句：**不查凭据**。识图的引擎都是匿名可用的公开接口
 /// （真上传的三家 / 打开页面的几家都不需要任何 API Key）—— 要是这里照 OCR
 /// 那样先查密钥，用户点「识图」就会被拦去设置页填一个根本不需要的东西。
-fn img_start_flow() {
-    /* 普通入口（横条按钮 / 设置页 / 托盘）：清掉上一轮的格子绑定 ——
-     * 和 `ocr_start_flow(None)` 同一个理由，免得在网格里点过"某几家识图"之后，
-     * 横条上的通用识图也只开那几家。 */
-    set_img_force_engines(None);
-    img_start_flow_inner();
-}
-
+///
+/// ⚠ **不要直接调这个函数**（除非你已经自己设过 `set_img_force_engines`）。
+///   唯一入口是 `img_start(engines)`：它先把"这一轮只跑哪几家"设好（普通入口
+///   传 `None` = 清掉上一轮的格子绑定，回归设置里勾的那几家），再脱开命令栈
+///   起线程调这里。以前这里还套了一层 `img_start_flow()` 做"清绑定 + 转调"，
+///   后来所有调用点都改走 `img_start` 了，那层壳成了死代码（编译器一直警告
+///   never used）—— 删掉，免得以后有人照着它写出"设了绑定又被清掉"的新入口。
 fn img_start_flow_inner() {
     if app_locked() {
         focus_lock_window();
@@ -17818,8 +17817,12 @@ fn go_icon_kind(kind: &str, target: &str) -> &'static str {
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" | "svg" | "heic" | "avif"
         | "tif" | "tiff" | "psd" => "image",
+        /* ⚠ 这里**不能**写 `ts`：它是 TypeScript 的扩展名，而 TypeScript 文件远比
+         * MPEG-TS 视频常见。以前 `ts` 同时出现在这一支和下面的 code 分支里，
+         * 匹配先到先得 ⇒ **所有 .ts 文件都被当成视频**（编译器其实一直在报
+         * unreachable pattern，只是被当成噪音忽略了）。 */
         "mp4" | "mkv" | "avi" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg"
-        | "ts" | "rmvb" | "3gp" => "video",
+        | "rmvb" | "3gp" => "video",
         "mp3" | "wav" | "flac" | "ape" | "aac" | "ogg" | "m4a" | "wma" | "opus" | "mid"
         | "midi" => "audio",
         "txt" | "md" | "log" | "ini" | "cfg" | "conf" | "rtf" | "csv" | "tsv" | "json"

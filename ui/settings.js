@@ -9,6 +9,17 @@ const MONO_BRAND = new Set(['Twitter', 'GitHub', 'Threads', '维基百科']);
 
 const $ = (id) => document.getElementById(id);
 
+/** 给**JS 拼出来的字符串**用的翻译（不经过 DOM，i18n 的观察者扫不到）。
+ *  词典里没有的原样返回；中文模式下也是原样 —— 所以可以放心内联写中文。 */
+function qsT(s) {
+    try {
+        return (window.QS_I18N && typeof window.QS_I18N.t === 'function')
+            ? window.QS_I18N.t(s) : s;
+    } catch (_) {
+        return s;
+    }
+}
+
 let CATALOG = null;
 let CONF = null;
 let BY_NAME = new Map();
@@ -628,7 +639,10 @@ document.addEventListener('pointerup', (e) => {
     if (!wasActive) return;
     if (!over) return;      // 拖到别处松手 = 放弃（不误加）
     dropIntoBar(st.key, y).catch((err) => {
-        console.log('拖进横条失败', err);
+        /* 写进日志而不是 console：WebView 的 console 在正式版里谁也看不见，
+         * 而"拖过去没反应"正是用户会来报的那类问题 —— 有这一行就能看出
+         * 是后端拒了（未知引擎）还是别的。 */
+        invoke('log_msg', { msg: '拖进横条失败：' + String((err && err.message) || err) }).catch(() => { });
     });
 }, true);
 
@@ -733,10 +747,10 @@ function renderBarList() {
          *   新增功能只要登记进 shared.js 的注册表就自动有名字，不会再漏。 */
         const pretty = (window.qsSentinelLabel && window.qsSentinelLabel(name))
             || name;
-        nm.textContent = isSep ? '分隔线'
-            : (isOcr ? '识别图片文字'
-                : (isImg ? '识图搜索'
-                    : (isTrans ? '翻译'
+        nm.textContent = isSep ? qsT('分隔线')
+            : (isOcr ? qsT('识别图片文字')
+                : (isImg ? qsT('识图搜索')
+                    : (isTrans ? qsT('翻译')
                         : (isFav ? favGroup.name : (isApp ? app.name : pretty)))));
         if (isFav) {
             const em = document.createElement('em');
@@ -5164,7 +5178,11 @@ function renderGridPages() {
             cnt.className = 'nm';
             cnt.style.flex = '0 0 auto';
             cnt.style.opacity = '.7';
-            cnt.textContent = (Array.isArray(pg.items) ? pg.items.length : 0) + ' 格';
+            /* 这里是**数量标签**，不是引擎名 —— 但 className 用的是 `nm`，
+             * 而 i18n 把 `.nm` 整类当"名字（数据）"跳过（怕翻坏用户自己起的
+             * 引擎名）。所以这句在英文界面里一直是「8 格」。自己过一遍词典
+             * （i18n 的规则表里有 `(\d+) 格` → `$1 cells`），名字那半边照旧不动。 */
+            cnt.textContent = qsT((Array.isArray(pg.items) ? pg.items.length : 0) + ' 格');
             row.appendChild(cnt);
 
             const ops = document.createElement('span');

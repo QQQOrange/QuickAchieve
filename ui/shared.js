@@ -204,12 +204,24 @@ window.qsIsFuncSentinel = function (name) {
  *    · 这里更严格：**只要拿不到正式名，就绝不把代号露出去**，统一显示
  *      「未命名功能」，并把这件事写进日志（方便我们发现自己漏登记）。
  *  所有"把哨兵摆到界面上"的地方都应该先问它。 */
+/** 界面文案翻译 —— 只给**我们自己的固定标签**用（分隔线、文字识别、包裹符号…）。
+ *  用户数据（引擎名、软件名、文件名）本来就不在字典里，问了也是原样返回，
+ *  所以这条通道不会把用户起的名字翻坏。 */
+function qsI18nText(s) {
+    try {
+        return (window.QS_I18N && typeof window.QS_I18N.t === 'function')
+            ? window.QS_I18N.t(s) : s;
+    } catch (_) {
+        return s;
+    }
+}
+
 const qsUnknownSentinels = new Set();
 window.qsSentinelLabel = function (name) {
     if (typeof name !== 'string') return '';
     const raw = name.trim();
     if (!raw) return '';
-    if (raw === window.QS_SEP) return '分隔线';
+    if (raw === window.QS_SEP) return qsI18nText('分隔线');
     // 普通引擎名（百度 / Google…）不归这里管
     if (!raw.startsWith('@')) return '';
     let label = '';
@@ -307,7 +319,7 @@ window.qsDisplayName = function (name) {
         qrmake: '二维码生成',
         '|': '分隔线',
     };
-    if (Object.prototype.hasOwnProperty.call(FIXED, key)) return FIXED[key];
+    if (Object.prototype.hasOwnProperty.call(FIXED, key)) return qsI18nText(FIXED[key]);
     // ③ 兜底：还有 @ 或斜杠就剥掉；剥空了就用原名
     if (/^[@\\/]/.test(raw) || /[@\\/]$/.test(raw)) {
         const cleaned = raw.replace(/^[@\\/\s]+|[@\\/\s]+$/g, '');

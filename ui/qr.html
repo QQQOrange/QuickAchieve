@@ -213,6 +213,10 @@ button:disabled:hover { background: var(--card); }
      少了它，用户在设置里选了「强制亮色」而系统是深色时，这个窗口仍然是深的 ——
      ocr / 翻译 / 图标编辑器都因为同一份引导才对齐，这里不能例外。 -->
 <script src="shared.js"></script>
+<!-- v2.23.0：这个窗以前没挂 i18n，英文界面下整窗都是中文（"没认出二维码"、
+     "重新框选"这些）。i18n 自己读配置、自己听 qs://config 广播，挂上就跟着界面语言走。 -->
+<script src="i18n.js"></script>
+<script src="i18n.en.js"></script>
 <script src="vendor/jsqr.min.js"></script>
 <script>
 /* IPC 兼容层：这个窗口和 region.html / ocr.html 一样，`__TAURI__` 是宿主注入的

@@ -84,8 +84,13 @@
     let BUSY = false;
 
     /** 不翻译的标签（内容不是界面文案）。 */
+    /* `SELECT` **不在**跳过表里（v2.23.0）：格子样式、点击行为这些下拉框的选项
+     * 文案也是界面文字，以前整棵 `<select>` 被跳过，英文界面里选项一直是中文
+     * （"跟随默认 / 图标+名称 / 只图标 / 只名称"）。选项的 `value` 是代码用的，
+     * 这里只按字典换文本、不碰 value，所以翻译安全；字典里没有的（引擎名、
+     * 语言名这类数据）原样保留。 */
     const SKIP_TAGS = new Set([
-        'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT', 'SELECT',
+        'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'INPUT',
         'PRE', 'CODE', 'KBD', 'CANVAS', 'SVG', 'PATH',
     ]);
 

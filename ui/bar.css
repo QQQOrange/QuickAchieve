@@ -2928,3 +2928,13 @@ button.fav-grp-head:focus-visible {
     font-weight: 600;
     line-height: 1;
 }
+
+/* v2.23.0：右键菜单里的分组标题（「最近用过」）。
+   非可点项，所以不给 hover 底色；字号比条目小半档，避免和可点项混淆。 */
+.menu-head {
+    padding: 4px 10px 3px;
+    font-size: 11px;
+    opacity: .62;
+    pointer-events: none;
+    white-space: nowrap;
+}

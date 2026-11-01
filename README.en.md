@@ -45,6 +45,7 @@ bundled runtime dependencies.
 | **Long-press reorder** | Hold any tile on the bar for ~0.3 s and drag it to a new spot — the other tiles make room and the order is saved on release; separators drag too, and letting go never counts as a click. **Drag it out of the bar** and release to remove that tile (it turns red first) |
 | **Hover hints** | Rest the pointer on a tile for 0.16 s and its name appears (the system tooltip takes about a second); a self-drawn popup window that follows the light/dark theme and stays out of the way while dragging |
 | **Drag to configure** | Settings → “Engines on the bar”: drag any row from the engine list straight in and it lands where you dropped it; dragging a row that is already on the bar only moves it, never duplicates it |
+| **Right-click recents** | Right-click empty space on the bar to get “Recently used” (up to 6 entries) and click one to run it on the current text; nothing pops up while a panel is open |
 | **Wrap symbols** | Wrap the selection in “” 《》 【】 `[ ]` `{ }` pairs in one click; the same pair unwraps, another pair replaces the outer one, result is copied |
 | **Icon editor** | AI auto-matting (optional models) + brush touch-up + re-run with another model + export |
 | **Custom icons** | Any engine / OCR / translation / favorite item can use your own image, and **your icons carry over across upgrades** |
