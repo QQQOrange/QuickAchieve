@@ -1812,41 +1812,67 @@ function renderRun(st) {
     runBaseAt = Date.now();
     if (!finished) startRunTick();
 
-    bar.textContent = '';
-    const head = document.createElement('span');
-    head.className = 'rb-head';
-    head.textContent = finished
+    /* v2.14.1：**原地更新**，不再每次重新 innerHTML。
+     *
+     * 老实现每次状态变化（排队→识别中→完成，每家两次，3 家就是 6 次）都把
+     * 整条状态条拆掉重建：文本先被清空再插入，浏览器要重新排版两遍，肉眼看
+     * 就是一串"闪一下、跳一下"。现在胶囊按引擎 id 复用，只改 class 和文字，
+     * 一行都不重排（宽度不变的话连 reflow 都没有）。 */
+    const head = bar.querySelector('.rb-head');
+    if (!head) {
+        bar.textContent = '';
+        const h = document.createElement('span');
+        h.className = 'rb-head';
+        bar.appendChild(h);
+        const l = document.createElement('span');
+        l.className = 'rb-list';
+        bar.appendChild(l);
+    }
+    const headEl = bar.querySelector('.rb-head');
+    const listEl = bar.querySelector('.rb-list');
+    const headTxt = finished
         ? (bad === 0
             ? '识别完成 · ' + total + ' 家 · ' + fmtSec(runElapsed())
             : (done === 0 ? '识别失败 · ' + bad + ' 家没出结果' : '识别结束 · ' + done + ' 家成功、' + bad + ' 家失败/跳过'))
         : '正在识别 ' + done + '/' + total + ' · ' + fmtSec(runElapsed());
-    bar.appendChild(head);
+    if (headEl.textContent !== headTxt) headEl.textContent = headTxt;
 
-    const list = document.createElement('span');
-    list.className = 'rb-list';
+    // 名单变了才重建胶囊（正常一轮里名单是固定的）
+    const sig = rows.map((e) => e.id).join('|');
+    if (listEl.dataset.sig !== sig) {
+        listEl.dataset.sig = sig;
+        listEl.textContent = '';
+        for (const e of rows) {
+            const chip = document.createElement('span');
+            chip.dataset.eng = e.id;
+            const dot = document.createElement('i');
+            dot.className = 'rb-dot';
+            chip.appendChild(dot);
+            const nm = document.createElement('span');
+            nm.className = 'rb-name';
+            nm.textContent = e.name || e.id;
+            chip.appendChild(nm);
+            const tx = document.createElement('span');
+            tx.className = 'rb-st';
+            chip.appendChild(tx);
+            listEl.appendChild(chip);
+        }
+    }
     for (const e of rows) {
-        const chip = document.createElement('span');
+        const chip = listEl.querySelector('.rb-chip[data-eng="' + e.id + '"]')
+            || listEl.querySelector('[data-eng="' + e.id + '"]');
+        if (!chip) continue;
         const stt = String(e.state || '');
         chip.className = 'rb-chip st-' + stt;
         chip.title = (e.name || e.id) + (e.note ? '\n' + e.note : '');
-        const dot = document.createElement('i');
-        dot.className = 'rb-dot';
-        chip.appendChild(dot);
-        const nm = document.createElement('span');
-        nm.className = 'rb-name';
-        nm.textContent = e.name || e.id;
-        chip.appendChild(nm);
-        const tx = document.createElement('span');
-        tx.className = 'rb-st';
-        tx.textContent = stt === 'queued' ? '排队'
+        const tx = chip.querySelector('.rb-st');
+        const txt = stt === 'queued' ? '排队'
             : stt === 'running' ? '识别中'
                 : stt === 'done' ? fmtSec(e.ms)
                     : stt === 'skip' ? '跳过'
                         : '失败';
-        chip.appendChild(tx);
-        list.appendChild(chip);
+        if (tx && tx.textContent !== txt) tx.textContent = txt;
     }
-    bar.appendChild(list);
 }
 
 listen('qs://ocr-run', (ev) => renderRun(ev && ev.payload));

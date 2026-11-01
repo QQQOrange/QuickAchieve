@@ -9561,6 +9561,9 @@ static OCR_LAST_RAW: Mutex<String> = Mutex::new(String::new());
 /// 换了一张图（新框选），旧缓存全部作废，绝不能把上一张图的结果拿来用。
 static OCR_PNG_GEN: AtomicU64 = AtomicU64::new(0);
 
+/// 结果窗是不是**正在建**（见 `open_ocr_window` 里的守卫说明）。
+static OCR_WIN_BUILDING: AtomicBool = AtomicBool::new(false);
+
 /// 引擎结果缓存：(截图代次, 引擎名, 清理后文本, 原始文本, 引擎标签)。
 ///
 /// 用户要求：结果窗口里「本地 → 百度 → 本地」来回切的时候，同一个引擎
@@ -10077,6 +10080,16 @@ static OCR_RUN: std::sync::Mutex<Vec<OcrRunRow>> = std::sync::Mutex::new(Vec::ne
 /// 这一轮从哪一刻开始算（给"已用时"用）。
 static OCR_RUN_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
+/// 这一轮是不是**真的收尾了**（v2.14.1）。
+///
+/// 以前 `finished` 是算出来的：`running == 0 && queued == 0`。可引擎线程是在
+/// `run_ocr` 一返回就先把状态改成 done，**然后**才把结果发回主循环入库/推送 ——
+/// 也就是说"最后一家 done"的那一刻，它的结果还没进缓存、页面也还没收到。
+/// 于是状态条先定稿成「识别完成」，正文却是空的（用户报的"显示完成但没有结果"
+/// 就是这条时间差）。现在 finished 只由 `ocr_run_finish`（在所有结果入账并推完
+/// 之后）置位，两者严格同序。
+static OCR_RUN_DONE: AtomicBool = AtomicBool::new(false);
+
 fn ocr_run_rows() -> Vec<OcrRunRow> {
     OCR_RUN.lock().map(|g| g.clone()).unwrap_or_default()
 }
@@ -10101,8 +10114,8 @@ fn ocr_run_json() -> Value {
         "running": running,
         "queued": queued,
         "elapsed": elapsed,
-        // finished = 没有还在排队/跑的
-        "finished": running == 0 && queued == 0,
+        // finished = 收尾流程真的走完了（结果已入账并推给页面），见 OCR_RUN_DONE
+        "finished": OCR_RUN_DONE.load(Ordering::SeqCst),
         "engines": rows.iter().map(|r| json!({
             "id": r.id, "name": r.name, "state": r.state, "ms": r.ms, "note": r.note,
         })).collect::<Vec<_>>(),
@@ -10148,6 +10161,8 @@ fn ocr_run_begin(engines: &[String], skipped: &[String]) {
     if let Ok(mut g) = OCR_RUN_AT.lock() {
         *g = Some(std::time::Instant::now());
     }
+    // 新一轮开始：先清掉上一轮的"已完成"，否则第一帧就是完成态
+    OCR_RUN_DONE.store(false, Ordering::SeqCst);
     ocr_run_emit();
 }
 
@@ -10177,6 +10192,18 @@ fn ocr_run_now() -> Value {
 
 /// 收尾：给一句人话总结（窗口里有状态条，这里只在"值得提醒"时额外弹一条提示）。
 fn ocr_run_finish(rounds: usize) {
+    /* ⚠ 先置位再取快照/广播：`ocr_run_json` 读的就是这一位。
+     * 调用点都在"所有结果已入库并推完"之后，所以界面看到「识别完成」时，
+     * parts 一定已经是全的（用户报的"显示完成但没结果"就是这里的时间差）。 */
+    OCR_RUN_DONE.store(true, Ordering::SeqCst);
+    /* v2.14.1：宣布"完成"之前，先把**最终状态**再推一帧。
+     *
+     * 为什么还要这一下：多引擎是"谁先回来先推谁"，最后一家的那一推有可能
+     * 赶在页面监听挂上之前（窗口刚建好那一瞬）。只靠"结果推过就算了"，
+     * 极端时序下就会变成「状态条写着完成、正文还是空的」。
+     * 这里以"当前全部结果"重推一次，和完成状态**同序**发出 ——
+     * 页面收到完成的那一刻，parts 一定已经在手上了。 */
+    push_ocr_state();
     let v = ocr_run_json();
     let total = v["total"].as_u64().unwrap_or(0);
     let ok = v["done"].as_u64().unwrap_or(0);
@@ -10769,6 +10796,16 @@ fn open_ocr_window(text: String) {
             let _ = w.unminimize();
             let _ = w.set_focus();
         }
+    } else if OCR_WIN_BUILDING.swap(true, Ordering::SeqCst) {
+        /* ⚠ 首窗还在建（主线程排队 + WebView2 冷启动要几百毫秒），**绝不重复建**。
+         *
+         * 多引擎模式里本地引擎 20ms 就出结果，那一推又会走到这里：此刻
+         * `get_webview_window("ocr")` 仍是 None（窗还在建），于是又 build 一个
+         * 同 label 的窗口 —— 上一个被销毁 → `Destroyed` 触发 `clear_ocr_session()`
+         * （清空本轮缓存 + 代次 +1）→ 后面回来的引擎结果全部落空，用户看到的
+         * 就是「识别完成，但百度云/硅基流动的结果一个都没有」；窗口被反复销毁
+         * 重建的过程，也正是那个"持续闪烁"。 */
+        win::log("ocr win: 首窗还在建，等它 —— 不重复建（否则会销毁旧窗、清掉本轮结果）");
     } else {
         let a2 = a.clone();
         // 窗口尺寸按用户上次拖的结果开（见 config::ocr_window_size 的注释）。
@@ -10821,7 +10858,10 @@ fn open_ocr_window(text: String) {
             if !wa.is_empty() {
                 b = b.additional_browser_args(&wa);
             }
-            match b.build() {
+            let built = b.build();
+            // 无论成败都要放开守卫，否则一次建窗失败就再也不建了
+            OCR_WIN_BUILDING.store(false, Ordering::SeqCst);
+            match built {
                 Ok(w) => {
                     win::log("ocr win: built (hidden, 等页面 ready)");
                     // 用户点 X 关掉结果窗也要清缓存（走命令关的那条见 close_ocr_window）。
@@ -10855,75 +10895,46 @@ fn open_ocr_window(text: String) {
             });
         });
     }
-    // 推「文字 + 图片」这一整份结果。
-    //
-    // WebView 起来要时间，推几次；前端那边「值一样就不动」所以推多了也没关系。
-    // 图片单独编一次 base64 复用（见 OCR_LAST_PNG 的注释），
-    // 空图时字段给空串，前端据此决定显不显示图片区。
-    let a3 = a.clone();
-    let img = OCR_LAST_PNG
-        .lock()
-        .map(|g| {
-            if g.is_empty() {
-                String::new()
-            } else {
-                ocr_image_data_url(&g)
-            }
-        })
-        .unwrap_or_default();
-    // 降级提示（取走即清空，免得下一张图还挂着上一句）。
-    // 锁被毒化（别的线程 panic 时）不该让整个开窗流程失败，拿不到就当没提示。
-    let note = OCR_NOTE
-        .lock()
-        .map(|mut n| {
-            let s = n.trim().to_string();
-            n.clear();
-            s
-        })
-        .unwrap_or_default();
-    let note = if note.is_empty() { None } else { Some(note) };
-    // 分段结果（仅本地 / 仅百度 / 两者都看）：和 text 一起推，页面切换是纯前端操作
-    let parts = std::sync::Arc::new(ocr_parts(OCR_PNG_GEN.load(Ordering::SeqCst)));
-    // ⚠ 以前这里每次循环都 `img.clone()`：一张 1920px 的截图 base64 动辄
-    //   300KB~1.5MB，30 次就是几十 MB 的字符串拷贝 + JSON 编码 —— 每次 OCR
-    //   完成都要卡一下。改成 Arc 共享，clone 只是加个引用计数。
-    let img = std::sync::Arc::new(img);
-    let text = std::sync::Arc::new(text);
-    std::thread::spawn(move || {
-        /* ⚠ 别把「窗口还没登记」当成「用户把窗口关了」。
-         *
-         * 建窗现在跑在**主线程队列**里（见上面 open_ocr_window 的 spawn 说明），
-         * 本线程可能比它先醒：这时 get_webview_window 还是 None。原先是见到
-         * None 就直接 return —— 于是整轮结果**一个字都推不出去**，用户看到的是
-         * 一个空的识别窗（机器越慢越容易中，冷启动尤其）。
-         *
-         * 判据改成「先见到过、之后又没了」才是真的被关掉。 */
-        let mut seen = false;
-        for i in 0..14 {
-            std::thread::sleep(Duration::from_millis(if i < 6 { 90 } else { 260 }));
-            if a3.get_webview_window("ocr").is_none() {
-                if seen {
-                    return;
-                }
-                continue;
-            }
-            seen = true;
-            let _ = a3.emit_to(
-                "ocr",
-                "qs://ocr-result",
-                json!({
-                    "text": text.as_str(),
-                    "image": img.as_str(),
-                    "note": note.clone(),
-                    "parts": parts.as_ref(),
-                    // 同 emit_ocr_result：这一轮计划跑哪几家
-                    "plan": ocr_round_plan(),
-                }),
-            );
-            // 老的纯文字事件留着：老版本页面/第三方调用还可能只听这个
-            let _ = a3.emit_to("ocr", "qs://ocr-text", text.as_str());
-        }
-    });
+    /* v2.14.1：**只推一次**，不再 14 轮盲推。
+     *
+     * 老实现每次开窗都要循环 14 次（间隔 90→260ms，共约 2.6s）把同一份快照
+     * 重新发一遍 —— 目的是"页面还没起来，多推几次总能收到"。代价是：
+     * 多引擎模式下每家结果都调一次 open_ocr_window，3 家 × 14 轮 = 40+ 次整页
+     * 重画，用户看到的就是**持续闪烁**；而且快照是**调用时**取的，之后回来的
+     * 引擎结果根本不在里面。
+     *
+     * 现在改成：
+     *   · 这里只推**当前状态**一帧；
+     *   · 页面首帧就绪时会自己发 `ocr_ready`，那边再补推一次（见 `ocr_ready`）；
+     *   · 页面加载时本来还会 pull 一次（ocr_take_text / image / parts / plan）。
+     * 三条路径覆盖了"推早了页面还没监听"的情况，且不会重复刷屏。 */
+    push_ocr_state();
+}
+
+/// 把**当前**的 OCR 状态推一帧给结果页（文字 + 图 + 分段 + 本轮名单 + 提示）。
+///
+/// 只推一次、不重试：重试交给 `ocr_ready`（页面首帧就绪）和页面自己的 pull。
+fn push_ocr_state() {
+    let Some(a) = APP.get().cloned() else { return };
+    // 窗还没建好 → 页面都还不存在，推了也没人听；`ocr_ready` 会补
+    if a.get_webview_window("ocr").is_none() {
+        return;
+    }
+    let text = OCR_LAST.lock().map(|g| g.clone()).unwrap_or_default();
+    let png = OCR_LAST_PNG.lock().map(|g| g.clone()).unwrap_or_default();
+    emit_ocr_result(&png, &text);
+}
+
+/// 只把已经开着的结果窗提到前面（**不推结果**）。
+///
+/// 多引擎模式每回来一家就要"确保窗口在前面"，但结果本身由 `emit_ocr_result`
+/// 推 —— 如果这里再推一次，3 家就是 6 次整页重画，白白闪。
+fn focus_ocr_window() {
+    if let Some(w) = app().get_webview_window("ocr") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
 }
 
 /// 算出这一轮 OCR 到底跑哪几家，必要时**临时**补上本地引擎。
@@ -12977,6 +12988,12 @@ fn qr_percent_encode(s: &str) -> String {
 #[crate::t::command]
 fn ocr_ready() {
     show_after_ready("ocr");
+    /* v2.14.1：页面首帧就绪 = 监听已经挂上，这里把**当前**状态补推一帧。
+     *
+     * 为什么需要：结果可能在窗口还在建的时候就出来了（本地引擎 20ms），
+     * 那一推页面收不到。以前靠"循环推 14 次"盲撞，现在改成在 ready 这一
+     * 确定的时刻补一次 —— 不撞、不闪、也丢不了。 */
+    push_ocr_state();
 }
 
 /// 同 `ocr_ready`，只是给设置窗口用：首帧画完才把隐藏的窗口亮出来，
@@ -14977,10 +14994,11 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                     if first { "先出" } else { "补齐" },
                     text.chars().count()
                 ));
-                /* 窗口在开跑时就已建好，所以这里**总是**推一次给页面；
-                 * `open_ocr_window` 仍然调（它负责把 OCR_LAST 写好，
-                 * 页面首帧 pull 时能拿到文字）。 */
-                open_ocr_window(text.to_string());
+                /* 窗口在开跑时就已建好；这里只需"提到前面 + 推这一份结果"。
+                 * ⚠ 不要再调 `open_ocr_window`：它内部也会推一次，等于每条结果
+                 * 推两帧（3 家 = 6 次整页重画），是闪烁的第二个来源。
+                 * OCR_LAST / OCR_LAST_RAW 已由 `ocr_run_engines` 在回调前写好。 */
+                focus_ocr_window();
                 emit_ocr_result(&png, text);
             });
             if ok == 0 {
@@ -15040,10 +15058,11 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                     t_single.elapsed().as_millis() as u64,
                     "",
                 );
+                /* v2.14.1：`open_ocr_window` 现在**既能建窗也只推一帧** ——
+                 * 本地引擎走的是"出结果才开窗"这条路，窗口得由它建出来
+                 * （之前这里换成 focus+emit，冷启动时压根没人建窗，结果窗根本不出现）。
+                 * 不要再额外调 emit_ocr_result：它内部已经推过一帧。 */
                 open_ocr_window(text.clone());
-                // 窗口可能是"提前开好"的（在线引擎），页面已经加载过了 ——
-                // 只 show 一发是拿不到文字的，必须再推一次结果。
-                emit_ocr_result(&png, &text);
                 ocr_run_finish(1);
             }
             Err(e) => {
@@ -24235,6 +24254,39 @@ mod tests {
         assert!(above_y + bar_ph <= 500, "上方：胶囊整体在鼠标点之上");
         assert!(below_y >= 500, "下方：胶囊顶边在鼠标点之下");
         assert!(below_y > above_y, "两个选项不能算出同一个位置");
+    }
+
+    /// v2.14.1：「识别完成」必须晚于**结果全部入账**，不能只看"每家都 done 了"。
+    ///
+    /// 用户报的就是这条时间差：三家都跑完（每家状态都 done、耗时都显示了），
+    /// 界面已经是「识别完成」，正文却只有一家甚至空的 —— 因为引擎线程是
+    /// "先报 done，再把结果发回主循环入库"，两者不是一件事。
+    /// 现在 finished 只由 `ocr_run_finish`（所有结果入账并推完之后）置位。
+    #[test]
+    fn finished_waits_for_all_results() {
+        ocr_run_begin(&["windows".to_string(), "baidu".to_string()], &[]);
+        assert!(
+            !ocr_run_json()["finished"].as_bool().unwrap_or(true),
+            "刚开跑就说完工了"
+        );
+
+        // 两家都 done —— 但收尾流程还没走（结果可能还在路上）
+        ocr_run_set("windows", "done", 12, "");
+        ocr_run_set("baidu", "done", 230, "");
+        assert!(
+            !ocr_run_json()["finished"].as_bool().unwrap_or(true),
+            "全部 done 不等于收尾完成：结果可能还没入账/推给页面"
+        );
+
+        ocr_run_finish(2);
+        let v = ocr_run_json();
+        assert!(v["finished"].as_bool().unwrap_or(false), "收尾后必须是完成态");
+        assert_eq!(v["done"].as_u64(), Some(2));
+        assert_eq!(v["total"].as_u64(), Some(2));
+
+        // 下一轮开始要能把上一轮的完成态清掉（否则新的一开就显示"已完成"）
+        ocr_run_begin(&["windows".to_string()], &[]);
+        assert!(!ocr_run_json()["finished"].as_bool().unwrap_or(true));
     }
 
     /// v2.14.0：划选触发的两道闸门 —— 总开关 + 触发方式（互斥）。
