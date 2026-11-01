@@ -778,6 +778,23 @@ function openFavPanel(sentinel) {
 /* 渲染                                                                */
 /* ------------------------------------------------------------------ */
 
+/** v2.13.1：这一项是不是「绑定具体模型的格子」——
+ *  `@ocr:<id>` / `@ocr:a+b` / `@img:<id>` / `@trans:<id>`。
+ *
+ *  横条这条链上有**四处**判据要认它（准入在后端 / 归一在后端 / 这里筛选 /
+ *  下面的渲染），各自抄一遍必然分叉 —— 而分叉的症状就是"加了却看不见、
+ *  点了却没反应"。所以判据只写这一份。 */
+function qsIsBoundModel(n) {
+    const b = window.qsFuncBound ? window.qsFuncBound(n) : null;
+    return !!(b && (b.kind === 'ocr' || b.kind === 'img' || b.kind === 'trans') && b.ids && b.ids.length);
+}
+
+/** 这一项是不是「某一类功能」的绑定格子（按功能总开关隐藏时用）。 */
+function isBoundKind(n, kind) {
+    const b = window.qsFuncBound ? window.qsFuncBound(n) : null;
+    return !!(b && b.kind === kind && b.ids && b.ids.length);
+}
+
 function barList() {
     const all = CATALOG.toolbar.map((e) => e.name);
     /* 按应用专项优先（整份取代默认横条）。没命中时走原来的 `CONF.barList` ——
@@ -806,6 +823,11 @@ function barList() {
         /* 单项包裹（`@wrap:<key>`，v2.11.0）：和 @txt:<op> 一样是一等成员。
          * 不认这里的话，用户刚在设置里加的书名号会被"必须是认识的名字"筛掉。 */
         if (typeof n === 'string' && window.qsWrapPairId && window.qsWrapPairId(n)) return true;
+        /* v2.13.1：**绑定模型的格子**（`@ocr:<id>` / `@ocr:a+b` / `@img:<id>` /
+         * `@trans:<id>`）—— 这里是第四处漏网的判据：后端已经准入、配置里也有，
+         * 但这一行之前会按"必须是认识的名字"把它筛掉，于是横条上什么都画不出来。
+         * 用户报的「加到横条上的 OCR / 多选模型不生效」最直观的一条就是它。 */
+        if (typeof n === 'string' && qsIsBoundModel(n)) return true;
         if (typeof n === 'string' && n.startsWith(QS_FAV_PREFIX)) {
             return !!favGroupBySentinel(n);
         }
@@ -829,11 +851,17 @@ function barList() {
     // OCR 总开关关着时，别把 @ocr 渲染出来（留一条空位毫无意义）。
     // 哨兵仍保留在配置里，用户下次开开关它就回到原位。
     // 翻译总开关关着时 @trans 同理（v1.5.16）。
-    let vis = (CONF && CONF.ocrEnable !== false)
+    // v2.13.1：绑定模型的格子跟着**各自的总开关**走（@ocr:x 跟 OCR 开关，
+    // @trans:x 跟翻译开关，@img:x 跟识图开关），不然关了功能还留一颗哑按钮。
+    const on = (kind) => !!(CONF && CONF[kind] !== false);
+    let vis = on('ocrEnable')
         ? kept
-        : kept.filter((n) => n !== QS_OCR);
-    if (!(CONF && CONF.transEnable !== false)) {
-        vis = vis.filter((n) => n !== window.QS_TRANS);
+        : kept.filter((n) => n !== QS_OCR && !isBoundKind(n, 'ocr'));
+    if (!on('transEnable')) {
+        vis = vis.filter((n) => n !== window.QS_TRANS && !isBoundKind(n, 'trans'));
+    }
+    if (!on('imgEnable')) {
+        vis = vis.filter((n) => n !== window.QS_IMG && !isBoundKind(n, 'img'));
     }
     // 开头的、结尾的、连着重复的分隔线在这里一次性抹平，
     // 后面渲染就不用再操心「这根竖线怎么贴边上了」。
@@ -1186,6 +1214,32 @@ function renderBar(force) {
                 e.stopPropagation();
                 const t = (currentText || '').trim();
                 invoke('trans_start', { text: t || null }).catch(() => {});
+            });
+            enginesEl.appendChild(b);
+            engines++;
+            continue;
+        }
+        /* v2.13.1：**绑定模型的格子**（`@ocr:<id>` / `@ocr:a+b` / `@img:<id>` /
+         * `@trans:<id>`）—— 以前横条这里没有分支，它们会掉进下面"普通引擎"那条路：
+         * 画出来像颗引擎，点下去发 `open_search(engine="@ocr:baidu")`，后端直接拒，
+         * 用户看到的就是「加到横条上的 OCR 模型点了没反应」「多选模型没生效」。
+         * 现在和网格里那颗格子走**同一个** `runGridFunc`（绑定 id 一路传到底）。 */
+        const barBound = window.qsFuncBound ? window.qsFuncBound(name) : null;
+        if (qsIsBoundModel(name)) {
+            const b = document.createElement('button');
+            b.className = 'ico engine qs-model-inbar';
+            const lbl = (window.qsSentinelLabel && window.qsSentinelLabel(name))
+                || (window.qsDisplayName ? window.qsDisplayName(name) : name);
+            b.title = lbl + (barBound.ids.length > 1
+                ? '　（这一格同时跑这 ' + barBound.ids.length + ' 家）'
+                : '　（这一格固定用这家）');
+            /* 右键菜单（换图标 / 恢复默认 / 从横条移除）按 `.engine` + dataset.engine
+             * 认人 —— 不填就会被当成"没有引擎的格子"，菜单项全不出现。 */
+            b.dataset.engine = name;
+            b.appendChild(window.qsFuncIcon(name));
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                runGridFunc(name);
             });
             enginesEl.appendChild(b);
             engines++;
@@ -3872,6 +3926,10 @@ function closeGridPicker() {
 /** 进入 / 退出编辑模式。只切 UI，不动配置。 */
 function toggleGridEdit() {
     gridEdit = !gridEdit;
+    /* v2.13.1：进出编辑都清一次"选中 / 拖动"残留 —— 退出编辑后不该还留着
+     * 一格虚线选中；刚进编辑时也不该继承上一次没走完的按下状态。 */
+    gridDragReset();
+    gridDragAteClick = false;
     barEl.classList.toggle('qs-gedit', gridEdit);
     const b = document.getElementById('qsGridEdit');
     if (b) {
@@ -3881,7 +3939,9 @@ function toggleGridEdit() {
     closeGridPicker();
     // 用当前页的内容重画（多页下不能再去读 CONF.gridItems —— 那是默认页的）
     renderGrid(gridPayloadNow());
-    showBarTip(gridEdit ? '编辑模式：点空格子添加，点 × 移出' : '已退出编辑（只读）');
+    showBarTip(gridEdit
+        ? '编辑模式：点空格子添加，长按格子可选中并拖动换位置'
+        : '已退出编辑（只读）');
 }
 
 /** 把第 i 项从网格页移出（不删智能直达/引擎本身）。 */
@@ -3926,6 +3986,8 @@ function switchGridPage(delta) {
     if (next === gridPageIdx) return false;
     gridPageIdx = next;
     closeGridPicker();
+    // v2.13.1：换页后"选中/拖动到第 N 格"的坐标已经不对了，先清掉
+    gridDragReset();
     renderGrid(gridPayloadNow());
     const pg = gridPageNow();
     if (pg.id && gridApp) persistGridPageSoon();
@@ -4610,6 +4672,9 @@ function exitGridMode() {
      * 用户会以为程序坏了（编辑是临时动作，不该跨次生效）。 */
     gridEdit = false;
     barEl.classList.remove('qs-gedit');
+    // v2.13.1：选中 / 拖动状态也一起清（否则下次进来还留着虚线选中）
+    gridDragReset();
+    gridDragAteClick = false;
     gridPickAt = -1;
     gridLast = null;
     gridPages = [];
@@ -4645,12 +4710,182 @@ function gridCellClick(fn) {
     return (e) => {
         if (gridEdit) {
             if (e) { e.preventDefault(); e.stopPropagation(); }
+            /* 刚做完"拖动换位"的那一下松手会顺带派发一次 click —— 那不该再弹
+             * "先退出编辑"的提示（顺序明明已经改好了，却像被拒绝了一次）。 */
+            if (gridDragAteClick) { gridDragAteClick = false; return; }
             showBarTip('编辑中：点 ✏️ 退出编辑后再打开');
             return;
         }
         return fn(e);
     };
 }
+
+/* ---------------- 编辑模式：长按选中 + 拖动换位（v2.13.1） ----------------
+ *
+ * 用户口径：「在编辑模式下支持长按某一项进行选中，选中后可拖动调整该项的顺序，
+ * 松手后正确更新并保存新位置。」
+ *
+ * 为什么用"长按"而不是直接拖动：
+ *   · 编辑态下点格子本来就有事做（提示"先退出编辑"），短按/长按必须能区分开，
+ *     否则用户想点一下看看就会被判定成拖动；
+ *   · 横条窗口很窄，格子之间没有空隙，从按下那一刻就跟随指针会让人手一抖就把
+ *     相邻格子换了位置（误操作代价是"内容顺序被悄悄改了"）。
+ *
+ * 交互：
+ *   · 按住 420ms 不动 → 该格**选中**（虚线高亮 + 抬起手感），进入可拖动状态；
+ *     松手不移动 = 只是选中，什么都不保存；
+ *   · 拖动经过别的格子时，目标格出现"落到这里"的高亮；
+ *   · 松手 → 把这一项移到目标位置，`set_grid_items` 落库，重画；
+ *   · 选中态下再按住同一格可以**立刻**拖动（不用再等 420ms）；
+ *   · 退出编辑 / 切页 / 关网格都会清掉选中与拖动状态。
+ */
+const GRID_LONGPRESS_MS = 420;
+/** 长按照判定前允许的抖动（px）：超过就认为是"想滚动/手滑"，不进入拖动。 */
+const GRID_PRESS_SLOP = 8;
+
+/** 当前的按下/拖动状态；null = 没按。 */
+let gridDrag = null;
+/** 拖动刚结束时抑制一次 click —— 否则松手会再弹一句"编辑中：先退出编辑"。 */
+let gridDragAteClick = false;
+
+function gridDragClearVisual() {
+    for (const el of barEl.querySelectorAll('.qs-gdrop')) el.classList.remove('qs-gdrop');
+    barEl.classList.remove('qs-gdragging');
+}
+
+/** 清掉选中/拖动（退出编辑、切页、关网格时调）。 */
+function gridDragReset() {
+    if (gridDrag && gridDrag.timer) clearTimeout(gridDrag.timer);
+    gridDrag = null;
+    gridDragClearVisual();
+    for (const el of barEl.querySelectorAll('.qs-gsel')) el.classList.remove('qs-gsel');
+}
+
+/** 把第 from 项挪到第 to 项的位置并保存（顺序 = 网格里的阅读顺序）。 */
+async function gridMoveItem(from, to) {
+    const pg = gridPageNow();
+    const cur = (Array.isArray(pg.items) ? pg.items : []).slice();
+    if (from < 0 || from >= cur.length) return false;
+    const dst = Math.max(0, Math.min(to, cur.length - 1));
+    if (dst === from) return false;
+    const [it] = cur.splice(from, 1);
+    cur.splice(dst, 0, it);
+    try {
+        await invoke('set_grid_items', { items: cur, page: pg.id || null });
+        pg.items = cur;
+        renderGrid(gridPayloadNow());
+        const name = (window.qsSentinelLabel && window.qsSentinelLabel(it))
+            || (window.qsDisplayName ? window.qsDisplayName(it) : it);
+        /* 重画之后把"选中"落到新位置的那一格上 —— 刚拖完手还没松多久，
+         * 选中态突然消失会让人以为没生效（虽然顺序已经变了）。 */
+        try {
+            const cell = enginesEl.querySelector('.qs-gcell[data-idx="' + dst + '"]');
+            if (cell) cell.classList.add('qs-gsel');
+        } catch (_) { /* 重画异常不影响已经落库的顺序 */ }
+        showBarTip('已把「' + name + '」移到第 ' + (dst + 1) + ' 格');
+        return true;
+    } catch (e) {
+        showBarTip('调整顺序失败：' + String(e || '').slice(0, 40));
+        return false;
+    }
+}
+
+/** 给一个格子挂上"长按选中 / 拖动换位"。只在编辑态调用。 */
+function bindGridDrag(cell, i) {
+    cell.dataset.idx = String(i);
+    cell.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        // 右上角 × 是"移出"，不参与拖动
+        if (e.target.closest && e.target.closest('.qs-gdel')) return;
+        if (gridDrag) return;   // 已经有一次按下在处理
+        const wasSel = cell.classList.contains('qs-gsel');
+        const st = {
+            from: i,
+            to: i,
+            sx: e.clientX,
+            sy: e.clientY,
+            active: false,
+            timer: 0,
+            cell,
+        };
+        gridDrag = st;
+        const arm = () => {
+            if (gridDrag !== st) return;
+            st.active = true;
+            st.timer = 0;
+            // 单选：选中新的一格时，把别的选中态清掉
+            for (const el of barEl.querySelectorAll('.qs-gsel')) {
+                if (el !== cell) el.classList.remove('qs-gsel');
+            }
+            cell.classList.add('qs-gsel');
+            barEl.classList.add('qs-gdragging');
+            showBarTip('已选中：拖到目标位置松手即可换位置');
+        };
+        if (wasSel) arm();
+        else st.timer = setTimeout(arm, GRID_LONGPRESS_MS);
+    });
+}
+
+window.addEventListener('pointermove', (e) => {
+    const st = gridDrag;
+    if (!st) return;
+    if (!st.active) {
+        // 还没到长按时长就动了 → 不是长按，直接放弃（交给正常点击）
+        if (Math.abs(e.clientX - st.sx) > GRID_PRESS_SLOP || Math.abs(e.clientY - st.sy) > GRID_PRESS_SLOP) {
+            if (st.timer) clearTimeout(st.timer);
+            gridDrag = null;
+        }
+        return;
+    }
+    e.preventDefault();
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const target = el && el.closest ? el.closest('.qs-gcell') : null;
+    if (!target || !target.dataset.idx) return;
+    const to = parseInt(target.dataset.idx, 10);
+    if (!Number.isFinite(to)) return;
+    if (st.to !== to) st.to = to;
+    for (const x of barEl.querySelectorAll('.qs-gdrop')) {
+        if (x !== target) x.classList.remove('qs-gdrop');
+    }
+    if (to !== st.from) target.classList.add('qs-gdrop');
+    else target.classList.remove('qs-gdrop');
+}, { passive: false });
+
+window.addEventListener('pointerup', async (e) => {
+    const st = gridDrag;
+    gridDrag = null;
+    if (!st) return;
+    if (st.timer) { clearTimeout(st.timer); st.timer = 0; }
+    if (!st.active) return;      // 只是普通点击（交给 click 那条路）
+    gridDragAteClick = true;
+    setTimeout(() => { gridDragAteClick = false; }, 0);
+    gridDragClearVisual();
+    const from = st.from;
+    const to = st.to;
+    // 松手时再取一次落点：指针可能停在格子边缘外（比如拖到面板空白处）
+    try {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const t = el && el.closest ? el.closest('.qs-gcell') : null;
+        if (t && t.dataset.idx) {
+            const n = parseInt(t.dataset.idx, 10);
+            if (Number.isFinite(n)) st.to = n;
+        }
+    } catch (_) { /* 取不到就用拖动过程中记下的目标 */ }
+    if (st.to === from) {
+        // 只选中、没移动：保持选中态，等用户下一步
+        st.cell.classList.add('qs-gsel');
+        return;
+    }
+    await gridMoveItem(from, st.to);
+}, { capture: true });
+
+/** 编辑模式下短按落点之外的地方 → 取消选中（网格头部、空白、面板上都算）。 */
+document.addEventListener('pointerdown', (e) => {
+    if (!gridEdit) return;
+    const t = e.target;
+    if (t && t.closest && (t.closest('.qs-gcell') || t.closest('.qs-gpick') || t.closest('.qs-ghead'))) return;
+    for (const el of barEl.querySelectorAll('.qs-gsel')) el.classList.remove('qs-gsel');
+}, true);
 
 /* ---------------- 编辑模式下拖动调尺寸 ---------------- */
 
@@ -5024,6 +5259,9 @@ function renderGrid(g) {
             cell.appendChild(del);
         }
         cell.classList.add('qs-gmode-' + gridCellMode(name, g));
+        /* v2.13.1：编辑态下这一格可以"长按选中 → 拖动换位"（见 bindGridDrag）。
+         * 只在编辑态挂：只读时拖格子没有任何意义，挂了反而会让点击多一次判断。 */
+        if (gridEdit) bindGridDrag(cell, i);
         enginesEl.appendChild(cell);
     }
     /* 编辑模式下给面板挂三个"拖边调尺寸"抓手（v2.8.0，用户要求"换出的网格页

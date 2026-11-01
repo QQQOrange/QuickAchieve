@@ -16246,6 +16246,10 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
         && engine != config::BAR_QRMAKE
         && !config::is_wrap_sentinel(engine)
         && !config::is_text_sentinel(engine)
+        /* v2.13.1：绑定模型的格子（`@ocr:baidu` / `@ocr:a+b` / `@img:<id>` /
+         * `@trans:<id>`）也是横条的一等成员 —— 少了这一行，设置页「加到横条」
+         * 会在后端被当成不认识的引擎静默拒掉（点了没反应、列表也不变）。 */
+        && !config::is_model_sentinel(engine)
         && !config::is_fav_sentinel(engine)
         && !config::is_app_sentinel(engine)
     {
@@ -21959,9 +21963,22 @@ mod tests {
         toggle_bar_engine_impl(&mut cfg, "我的截图", false);
         assert!(!cfg.bar_list.iter().any(|n| n == "我的截图"), "要能移出");
 
+        // v2.13.1：**绑定模型的格子**也能加进横条（`@ocr:baidu` / `@ocr:a+b`）。
+        // 以前这里被准入判据静默拒掉 —— 设置页点「加到横条」什么都不发生。
+        let n0 = cfg.bar_list.len();
+        toggle_bar_engine_impl(&mut cfg, "@ocr:baidu", true);
+        toggle_bar_engine_impl(&mut cfg, "@ocr:windows+baidu", true);
+        toggle_bar_engine_impl(&mut cfg, "@img:yandex", true);
+        toggle_bar_engine_impl(&mut cfg, "@trans:baidu+google", true);
+        assert_eq!(cfg.bar_list.len(), n0 + 4, "绑定模型的格子被拒了");
+        assert!(cfg.bar_list.iter().any(|n| n == "@ocr:windows+baidu"));
+
         // 彻底不存在的引擎照样拒收（不能往横条塞phantom）
         toggle_bar_engine_impl(&mut cfg, "不存在的引擎", true);
         assert!(!cfg.bar_list.iter().any(|n| n == "不存在的引擎"), "来路不明的引擎必须拒");
+        // 只有冒号没有模型 id 的畸形哨兵也拒
+        toggle_bar_engine_impl(&mut cfg, "@ocr:", true);
+        assert!(!cfg.bar_list.iter().any(|n| n == "@ocr:"), "畸形哨兵必须拒");
     }
 
     /// engines.json 的数据不变量（管线 tools/add-engines.py 的产出质量在这兜底）：

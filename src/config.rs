@@ -140,6 +140,29 @@ pub fn is_text_sentinel(n: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 是不是「绑定具体模型的格子」哨兵（`@ocr:<id>` / `@ocr:a+b` / `@img:<id>` / `@trans:<id>`）。
+///
+/// # 为什么配置层必须认识它（v2.13.1）
+///
+/// 这类名字**本来就能进网格页**（`set_grid_items` 只做形状净化），但横条那三处
+/// 判据（`is_bar_sentinel` / `toggle_bar_engine_impl` / `renderBar`）一直只认
+/// 裸哨兵 `@ocr`：
+///   · 设置页「添加到横条 → 文字识别模型 → 百度云」**点了没反应**（准入被拒）；
+///   · 就算硬写进配置，读配置时会被 `prune_undefined_bar_engines` 当成
+///     "孤儿条目"**删掉**（用户看到的：加了、重启没了）；
+///   · 前端还会把它当普通引擎画，点下去发 `open_search(engine="@ocr:baidu")`，
+///     后端拒掉 —— 又一次"点了没反应"。
+///
+/// 三处都补上之后，绑定格子才真正是横条的一等成员。同样**不校验 id 是否存在**：
+/// 模型表在 main.rs / ocr_engines.rs 里，配置层不认识；执行时找不到自然会说明。
+pub fn is_model_sentinel(n: &str) -> bool {
+    [BAR_OCR, BAR_IMG, BAR_TRANS].iter().any(|base| {
+        n.strip_prefix(base)
+            .map(|rest| rest.starts_with(':') && rest.len() > 1)
+            .unwrap_or(false)
+    })
+}
+
 /// 是不是「单项包裹符号」哨兵（`@wrap:<key>`，v2.11.0）。
 ///
 /// 和 [`is_text_sentinel`] 同一套口径：只认「前缀 + 冒号 + 非空 id」，
@@ -649,6 +672,7 @@ fn is_bar_sentinel(n: &str) -> bool {
         || n == BAR_QRMAKE
         || is_wrap_sentinel(n)
         || is_text_sentinel(n)
+        || is_model_sentinel(n)
         || is_app_sentinel(n)
         || is_fav_sentinel(n)
         || is_go_sentinel(n)
@@ -5836,6 +5860,39 @@ mod sanitize_tests {
 
         // 幂等：干净的数据再剪一次不该动
         assert_eq!(prune_undefined_bar_engines(&mut c), 0);
+    }
+
+    /// v2.13.1：**绑定模型的格子**（`@ocr:baidu` / `@ocr:a+b` / `@img:<id>` /
+    /// `@trans:<id>`）也必须算"横条的一等成员"。
+    ///
+    /// 这条守的是用户报的「多选模型无法真正生效」里的一条来路：这些名字在网格里
+    /// 一直能用，但横条那三处判据（准入 / 归一 / 渲染）只认裸哨兵 ——
+    ///   · 设置页「加到横条」被后端静默拒掉（点了没反应）；
+    ///   · 硬写进配置的，下次读配置被当孤儿**删掉**（加了、重启没了）。
+    #[test]
+    fn bound_model_sentinels_are_bar_members() {
+        let _serial = big_lock();
+        // 判据本身
+        assert!(is_model_sentinel("@ocr:baidu"));
+        assert!(is_model_sentinel("@ocr:windows+baidu"), "多绑定也是合法哨兵");
+        assert!(is_model_sentinel("@img:yandex"));
+        assert!(is_model_sentinel("@trans:baidu+google"));
+        assert!(!is_model_sentinel("@ocr"), "裸哨兵归 is_bar_sentinel 管");
+        assert!(!is_model_sentinel("@ocr:"), "只有冒号没有 id 不算");
+        assert!(!is_model_sentinel("baidu"));
+        assert!(!is_model_sentinel("@qr:x"), "别的功能前缀不归它");
+
+        // 归一化不再把它们当孤儿剪掉
+        let mut c = Config::default();
+        c.bar_list = vec![
+            "@ocr:baidu".to_string(),
+            "@ocr:windows+baidu".to_string(),
+            "@img:yandex".to_string(),
+            "@trans:baidu+google".to_string(),
+        ];
+        assert_eq!(prune_undefined_bar_engines(&mut c), 0, "绑定格子被误剪了");
+        assert_eq!(c.bar_list.len(), 4);
+        assert!(bar_member_defined(&c, "@ocr:windows+baidu"));
     }
 
     /// 「空壳自定义引擎」的补救：**只认回种类，绝不删、绝不摘横条**。
