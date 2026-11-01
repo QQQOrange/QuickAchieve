@@ -526,6 +526,117 @@ function endDrag(commitY) {
 document.addEventListener('pointerup', (e) => endDrag(e.clientY));
 document.addEventListener('pointercancel', () => endDrag(null));
 
+/* ================================================================== */
+/* v2.22.0：从「全部引擎」把一整行**直接拖进**「横条上的引擎」            */
+/* ================================================================== */
+/* 用户口径：「780 个引擎，想把某几个放到横条，现在得先点『添加到横条』，
+ * 它就跑到末尾去了，然后还得回上面把它拖到想要的位置 —— 绕。」          */
+/*                                                                     */
+/* 现在：按住任意一行往「横条上的引擎」的列表里拖，**松手就插在落点那个位置**。 */
+/* 已经在横条上的行也能这么拖 —— 等于「从引擎列表直接改它在线上的位置」。   */
+/*                                                                     */
+/* 为什么沿用 pointer 事件、不用 HTML5 拖放：见上面 `dragState` 的注释 ——  */
+/* WebView2 里原生 dragstart 有「抓手在、拖不动」的假死。                  */
+const ADD_DRAG_PX = 6;
+
+let addDrag = null;   // { key, row, x, y, active, ghost }
+
+function addDragCleanup() {
+    if (!addDrag) return;
+    if (addDrag.ghost && addDrag.ghost.parentNode) addDrag.ghost.parentNode.removeChild(addDrag.ghost);
+    if (addDrag.row) addDrag.row.classList.remove('dragging');
+    if (addDrag.active) clearDropMarks();
+    const sec = document.getElementById('sec-bar');
+    if (sec) sec.classList.remove('qs-dropbar');
+}
+
+/** 指针是不是落在「横条上的引擎」那张卡片里。 */
+function overBarCard(x, y) {
+    const sec = document.getElementById('sec-bar');
+    if (!sec) return false;
+    const r = sec.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
+document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || dragState || addDrag) return;
+    const row = e.target && e.target.closest ? e.target.closest('.item[data-drag-engine]') : null;
+    if (!row) return;
+    /* 横条列表里的行有自己的「换位」拖拽（dragState），别抢。
+     * 它们本来也没有 data-drag-engine，这里是第二道保险。 */
+    if (row.closest('#barList')) return;
+    if (e.target.closest('button, input, select, textarea, a, [contenteditable]')) return;
+    addDrag = { key: row.dataset.dragEngine, row, x: e.clientX, y: e.clientY, active: false, ghost: null };
+}, true);
+
+document.addEventListener('pointermove', (e) => {
+    if (!addDrag) return;
+    if (!addDrag.active) {
+        if (Math.hypot(e.clientX - addDrag.x, e.clientY - addDrag.y) < ADD_DRAG_PX) return;
+        addDrag.active = true;
+        addDrag.row.classList.add('dragging');
+        /* 幽灵：固定宽度的克隆，跟着指针走。pointer-events:none 必须加，
+         * 否则 elementFromPoint / getBoundingClientRect 都被它自己挡住。 */
+        const g = addDrag.row.cloneNode(true);
+        g.classList.add('qs-add-ghost');
+        g.classList.remove('dragging');
+        const r = addDrag.row.getBoundingClientRect();
+        g.style.width = r.width + 'px';
+        document.body.appendChild(g);
+        addDrag.ghost = g;
+    }
+    if (addDrag.ghost) {
+        addDrag.ghost.style.transform = 'translate(' + (e.clientX + 14) + 'px,' + (e.clientY + 10) + 'px)';
+    }
+    const over = overBarCard(e.clientX, e.clientY);
+    const sec = document.getElementById('sec-bar');
+    if (sec) sec.classList.toggle('qs-dropbar', over);
+    if (over) paintSlot(e.clientY);
+    else clearDropMarks();
+}, true);
+
+/** 松手：算出「该插到第几位」并落库。
+ *
+ *  为什么用**原始长度**当 from，而不是等配置广播后再回头数：
+ *  `toggle_bar_engine` 是 push 到末尾，按下时 `CONF.barList` 的长度就是新项的
+ *  下标 —— 这个值不依赖任何异步回包，广播早到晚到都不影响。 */
+async function dropIntoBar(key, clientY) {
+    const list = Array.isArray(CONF.barList) ? CONF.barList : [];
+    const already = list.indexOf(key);
+    if (already >= 0) {
+        const { slot } = slotAt(clientY);
+        // 抽走自己会让后面的下标前移一格，补回来才是「挪完之后待在第几位」
+        const to = slot > already ? slot - 1 : slot;
+        if (to !== already) await invoke('move_bar_item', { from: already, to });
+        return;
+    }
+    const from = list.length;                    // 新项会被 push 到这里
+    await invoke('toggle_bar_engine', { engine: key, on: true });
+    const { slot } = slotAt(clientY);            // 落点在**加进去之后**的列表上算
+    const to = Math.min(slot, from);
+    if (to !== from) await invoke('move_bar_item', { from, to });
+}
+
+document.addEventListener('pointerup', (e) => {
+    if (!addDrag) return;
+    const st = addDrag;
+    const wasActive = st.active;
+    const over = overBarCard(e.clientX, e.clientY);
+    const y = e.clientY;
+    addDragCleanup();
+    addDrag = null;
+    if (!wasActive) return;
+    if (!over) return;      // 拖到别处松手 = 放弃（不误加）
+    dropIntoBar(st.key, y).catch((err) => {
+        console.log('拖进横条失败', err);
+    });
+}, true);
+
+document.addEventListener('pointercancel', () => {
+    addDragCleanup();
+    addDrag = null;
+}, true);
+
 function renderBarList() {
     const box = $('barList');
     box.textContent = '';
@@ -551,7 +662,7 @@ function renderBarList() {
     if (!list.length) {
         const d = document.createElement('div');
         d.className = 'hint';
-        d.textContent = '横条现在是空的，去「全部引擎」里打开几个吧。';
+        d.textContent = '横条现在是空的 —— 去「全部引擎」里点「添加到横条」，或者直接把下面的一整行拖进来。';
         box.appendChild(d);
     }
 
@@ -1024,6 +1135,11 @@ function allRowNode(r) {
     const on = inBar(key);
     const row = document.createElement('div');
     row.className = 'item' + (on ? '' : ' off');
+    /* v2.22.0：标记「这一行可以拖进横条」。用独立字段而不是复用别的 dataset，
+     * 是因为下面那段全局 pointerdown 只认它 —— 设置页里 `.item` 有十几种用途
+     * （备份文件、收藏夹、网格格…），拿类名当判据一定会误伤。 */
+    row.dataset.dragEngine = key;
+    row.title = '按住这一行拖到上面「横条上的引擎」里，松手就插在落点那个位置';
 
     const ic = document.createElement('span');
     ic.className = 'ic';
@@ -2302,6 +2418,7 @@ function renderCustomList() {
     list.forEach((ce, idx) => {
         const row = document.createElement('div');
         row.className = 'item' + (ceEditIndex === idx ? ' editing' : '');
+        row.dataset.dragEngine = ce.name;   // 同样可以拖进横条（见「拖进横条」那段）
 
         const ic = document.createElement('span');
         ic.className = 'ic';

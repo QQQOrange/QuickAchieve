@@ -4311,3 +4311,40 @@ main {
 .pane[data-pane="qr"] .card[data-qrsub="make"] {
     grid-column: 1 / -1;
 }
+
+/* ------------------------------------------------------------------
+ * v2.22.0：把引擎行拖进「横条上的引擎」
+ *
+ * 幽灵用 fixed + 只改 transform —— 每帧只换合成层属性，拖起来不抖。
+ * pointer-events:none 是必须的：不然它自己会挡住"指针下面是哪一行"的判断。
+ * ------------------------------------------------------------------ */
+.item[data-drag-engine] {
+    cursor: grab;
+}
+
+.item[data-drag-engine]:active {
+    cursor: grabbing;
+}
+
+.qs-add-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    margin: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: .92;
+    transform-origin: top left;
+    border-radius: 10px;
+    background: var(--card, #fff);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, .35);
+    will-change: transform;
+}
+
+/* 指针停在横条卡片范围内时，整张卡片描一圈强调色 ——
+   "松手会放进这里"必须在松手之前就看得见。 */
+#sec-bar.qs-dropbar {
+    outline: 2px dashed var(--accent, #2563EB);
+    outline-offset: 3px;
+    border-radius: 12px;
+}

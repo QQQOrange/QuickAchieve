@@ -20,10 +20,8 @@
   "挑一张图抠…": "Choose an image…",
   "保存结果…": "Save result…",
   "模型": "Model",
-
   "加好引擎、排好顺序，这里就是横条真实的样子": "Once engines are set and ordered, this is exactly how the bar looks",
   "横条上的引擎": "Engines on the bar",
-  "拖动换位 · 左键搜索 · 右键换图标": "Drag to reorder · left-click to search · right-click to change the icon",
   "＋ 添加分隔线": "＋ Add separator",
   "分隔线样式": "Separator style",
   "细竖线": "Thin line",
@@ -92,5 +90,6 @@
   "打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜，地址里用": "Open: one click opens this address (no selection needed) · Search: passes the selected text to that app; in the address, mark the query with",
   "标出搜索词的位置": "to mark where the query goes",
   "外部软件": "External apps",
-  "已添加的软件：编辑、删除、固定到横条": "Added apps: edit, delete, pin to the bar"
+  "已添加的软件：编辑、删除、固定到横条": "Added apps: edit, delete, pin to the bar",
+  "拖动换位（也能把下面任意一行直接拖进来） · 左键搜索 · 右键换图标": "Drag to reorder (or drag a row in from the engine list) · left-click to search · right-click to change the icon"
 }
