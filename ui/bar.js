@@ -4810,6 +4810,7 @@ function gridDragReset() {
         gridPress = null;
     }
     if (gridDrag) {
+        gridEdgeClear(gridDrag);
         if (gridDrag.raf) cancelAnimationFrame(gridDrag.raf);
         try { gridDrag.ghost.remove(); } catch (_) { /* 已经不在树上 */ }
         try { gridDrag.cell.classList.remove('qs-gph'); } catch (_) { }
@@ -4884,6 +4885,82 @@ function gridDragStart() {
     showBarTip('拖动到目标位置，松手保存顺序');
 }
 
+/* ================================================================== */
+/* v2.19.0：网格页拖到左右边缘 = 送到相邻页                              */
+/* ================================================================== */
+/* 用户口径：「想把这一格挪到另一页，现在得先切页再拖，或者干脆重配」。 */
+/*                                                                     */
+/* 做法上刻意**不在拖动中途切页**：`switchGridPage` 会重画整页，正在被拖的 */
+/* 那颗 DOM 当场就没了，要么把拖拽状态"跨页复活"（改一处动全身），要么就  */
+/* 让这一格**直接落到那一页末尾**。后者更简单、也更好理解：拖到边上停一下， */
+/* 这一格就"送过去了"，页面跟着翻过去让你看见它落在哪。                    */
+/*                                                                     */
+/* 只在有相邻页时生效（不循环）：拖到最左/最右边缘但那边没有页，就什么都不做， */
+/* 免得"从第 1 页往左拖，结果跑到最后一页"这种莫名其妙。                  */
+const GRID_EDGE_PX = 64;    // 距格子区左右边缘多近算"要靠边翻页"
+const GRID_EDGE_MS = 420;   // 停在边上多久才真的送过去（太短容易误触）
+
+/** 清掉靠边计时与高亮。 */
+function gridEdgeClear(st) {
+    if (st && st.edgeTimer) { clearTimeout(st.edgeTimer); st.edgeTimer = 0; }
+    if (st) st.edgeDir = 0;
+    barEl.classList.remove('qs-gedge-l', 'qs-gedge-r');
+}
+
+/** 每次 pointermove 看一眼：靠边就起计时，离开就取消。 */
+function gridEdgeTick(x) {
+    const st = gridDrag;
+    if (!st) return;
+    if (gridPages.length < 2) { gridEdgeClear(st); return; }
+    const r = enginesEl.getBoundingClientRect();
+    let dir = 0;
+    if (x <= r.left + GRID_EDGE_PX) dir = -1;
+    else if (x >= r.right - GRID_EDGE_PX) dir = 1;
+    // 那边没有页 → 当作没靠边（不循环，见上面的说明）
+    if (!dir || !gridPages[gridPageIdx + dir]) { gridEdgeClear(st); return; }
+    if (st.edgeDir === dir) return;
+    gridEdgeClear(st);
+    st.edgeDir = dir;
+    barEl.classList.add(dir < 0 ? 'qs-gedge-l' : 'qs-gedge-r');
+    st.edgeTimer = setTimeout(() => gridEdgeFlush(st, dir), GRID_EDGE_MS);
+}
+
+/** 真的送过去：改两页的数据 → 保存 → 翻到目标页。 */
+async function gridEdgeFlush(st, dir) {
+    st.edgeTimer = 0;
+    if (gridDrag !== st) return;
+    const to = gridPages[gridPageIdx + dir];
+    if (!to) { gridEdgeClear(st); return; }
+    const from = gridPageNow();
+    const a = (Array.isArray(from.items) ? from.items : []).slice();
+    if (st.from < 0 || st.from >= a.length) { gridEdgeClear(st); return; }
+    const it = a.splice(st.from, 1)[0];
+    const b = (Array.isArray(to.items) ? to.items : []).slice();
+    b.push(it);
+
+    /* 收掉拖拽的视觉。这一次不是"归位"而是"放下"：幽灵直接消失，
+     * 槽位也清掉（否则重画前会留一个空框闪一下）。 */
+    gridDrag = null;
+    gridEdgeClear(st);
+    barEl.classList.remove('qs-gdragging');
+    try { st.ghost.remove(); } catch (_) { }
+    try { st.cell.classList.remove('qs-gph'); } catch (_) { }
+
+    const name = (window.qsSentinelLabel && window.qsSentinelLabel(it))
+        || (window.qsDisplayName ? window.qsDisplayName(it) : it);
+    try {
+        await invoke('set_grid_items', { items: a, page: from.id || null });
+        await invoke('set_grid_items', { items: b, page: to.id || null });
+        from.items = a;
+        to.items = b;
+        showBarTip('已把「' + name + '」送到「' + (to.name || '下一页') + '」');
+        switchGridPage(dir);
+    } catch (e) {
+        showBarTip('跨页移动失败：' + String(e || '').slice(0, 40));
+        renderGrid(gridPayloadNow());
+    }
+}
+
 /** 拖拽中：跟手 + 实时让位（FLIP 动画）。 */
 function gridDragMove(x, y) {
     const st = gridDrag;
@@ -4891,6 +4968,9 @@ function gridDragMove(x, y) {
     st.x = x;
     st.y = y;
     gridDragQueuePaint();
+    /* 靠边检测要在下面那个"换位冷却提前 return"**之前**跑，
+     * 否则指针停在边缘、冷却期内一动就被 return 掉，永远起不了计时。 */
+    gridEdgeTick(x);
 
     /* ⚠ 防抖两道（"拖动时抖动"的根因就在这儿）：
      *   · 命中测试用的是**最终布局**位置，而格子还在 150ms 的 FLIP 补间里走 ——
@@ -4952,6 +5032,7 @@ function gridDragFinish() {
     const st = gridDrag;
     gridDrag = null;
     if (!st) return;
+    gridEdgeClear(st);
     barEl.classList.remove('qs-gdragging');
 
     const phRect = st.cell.getBoundingClientRect();

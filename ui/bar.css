@@ -755,6 +755,12 @@ button.fav-grp-head:focus-visible {
     gap: 3px;
 }
 
+/* v2.19.0：网格页把格子拖到左右边缘时的「送过去」提示。
+   用**追加**一层 inset 阴影，而不是覆盖 box-shadow —— `.bar` 那条是用户的
+   「浮层阴影」设置（var(--qs-shadow)），覆盖掉就等于把人家的投影吃了。 */
+.bar.qs-gedge-l { box-shadow: var(--qs-shadow), inset 46px 0 38px -30px rgba(76, 141, 255, .9); }
+.bar.qs-gedge-r { box-shadow: var(--qs-shadow), inset -46px 0 38px -30px rgba(76, 141, 255, .9); }
+
 /* v2.17.0：长按拖动重排。
    被拖的那颗留一个"坑"（半透明 + 虚线环），幽灵跟着鼠标走 ——
    这样能一眼看出"它会落到哪"，而不是整条横条跟着乱跳。 */
