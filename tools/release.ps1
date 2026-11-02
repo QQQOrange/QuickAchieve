@@ -69,9 +69,11 @@ try {
     }
     if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail '找不到 node' }
     foreach ($suite in @('tools/test-ui.js', 'tools/test-pages.js')) {
-        $out = node $suite 2>&1 | Select-String -Pattern '通过|FAIL'
+        $out = node $suite 2>&1 | Select-String -Pattern '通过|存在失败'
         if ($LASTEXITCODE -ne 0) { Fail "$suite 退出码非 0" }
-        if ("$out" -match 'FAIL') { Fail "$suite 有失败项" }
+        # ⚠ 判套件自己打印的结论行，不搜 'FAIL'：PowerShell 的 -match 默认
+        #   忽略大小写，而测试名里有 "fail-safe"，用 FAIL 会把它当成失败项。
+        if ("$out" -match '存在失败') { Fail "$suite 有失败项" }
         if ("$out" -notmatch '全部通过') { Fail "$suite 没有打印 全部通过" }
         Ok ("$suite  " + ($out | Select-Object -Last 1))
     }
