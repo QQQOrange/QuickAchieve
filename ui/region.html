@@ -231,15 +231,16 @@ const actbar = $('actbar');
 const ACT_NAME = { ocr: '识别', trans: '翻译', img: '识图', qr: '二维码', copy: '复制图片' };
 
 /* 顶部提示按用途换一句话：识图是"框完去搜图"，OCR 是"框完去认字"，
-   app 是"点一下某个程序"（r59 的十字准星点选）。
-   不换的话用户框完会以为点了 OCR，白白再框一次。 */
+   万能框选是"框完让你挑"。
+   不换的话用户框完会以为点了 OCR，白白再框一次。
+
+   ⚠ v2.23.5：`app`（点一下某个程序）那条分支删了 —— 那件事走的是
+   `picker.html`，`MODE` 在这里只可能是 ocr / img / qr / any。 */
 tip.innerHTML = MODE === 'img'
     ? '拖拽框选要识图搜索的区域 · <b>Esc</b> 取消'
-    : MODE === 'app'
-        ? '点一下要绑定的那个程序窗口（鼠标移到目标上点左键） · <b>Esc</b> 取消'
-        : MODE === 'any'
-            ? '拖拽框选一块区域，松开后选择要做什么（识别 / 翻译 / 识图 / 二维码 / 复制图片） · <b>Esc</b> 取消'
-            : '拖拽框选要识别的区域 · <b>Esc</b> 取消';
+    : MODE === 'any'
+        ? '拖拽框选一块区域，松开后选择要做什么（识别 / 翻译 / 识图 / 二维码 / 复制图片） · <b>Esc</b> 取消'
+        : '拖拽框选要识别的区域 · <b>Esc</b> 取消';
 
 /* 取消阶段的提示统一走这里，免得几处各写一句、下次改文案漏掉一处 */
 const TIP_IDLE = tip.innerHTML;
@@ -293,9 +294,13 @@ let holdMode = (MODE === 'any') ? true : null;
 /** 松手了、但还在等配置 —— 配置一落地就按 `applyRelease()` 走。 */
 let pendingRelease = false;
 
-/* 上次在动作条上点过的动作（后端记的）。双击/回车执行的就是它 ——
+/* 上次**执行过**的动作（后端记的）。双击/回车执行的就是它 ——
    固定用来"翻译截图"的人，第二次起就不必再点按钮了。
-   空串 = 还没点过 → 回落到这次框选的用途（?mode=）。
+   空串 = 还没执行过 → 回落到这次框选的用途（?mode=）。
+
+   ⚠ 注意口径是"执行过"而不是"在动作条上点过"：非停留模式下的自动提交
+   （`commit(MODE)`）也会被后端记下来。这反而是想要的 —— 用户常用哪个，
+   `@any` 的动作条就把哪个高亮成默认。
 
    ⚠ 只在"**停留**"模式下生效：关掉停留（松手即执行）时仍然按 ?mode= 走，
    否则"开 OCR 窗口却翻译了"会莫名其妙。 */
@@ -370,9 +375,10 @@ function commit(action) {
 /* 兜底退出：无论哪里出错，都必须把这个铺满全屏的遮罩窗口关掉。
    它一旦留下，用户满屏都点不动，是最糟糕的失败形态。
 
-   ⚠ 守卫用 `bailing` 而不是 `done`：`app` 模式点一下之后会先把 done 立起来
-   （防重复识别），随后 pick_app_at 失败还要走这里报错 —— 拿 done 当守卫的话
-   那条报错就永远弹不出来，用户只看到遮罩一闪而过。 */
+   ⚠ v2.23.5：注释里那句"守卫用 bailing 是因为 app 模式先立了 done"已经作废 ——
+   `MODE === 'app'` 早就拆走了（点选程序在 picker.html）。现在 `done` 只在
+   `bail` 里被置起，两者等价；保留 `bailing` 只是为了"重入"这件事有个单独的名字
+   （第一行就 return，不再去碰 DOM / 再发一次 ocr_cancel）。 */
 let done = false;
 let bailing = false;
 function bail(msg) {
@@ -455,10 +461,13 @@ function paint() {
         // 贴着选框上方，顶到屏幕边就挪到里面
         const above = r.y - 26;
         /* v2.23.4：右边也要夹 —— 以前只夹上/下，框到屏幕右上角时
-         * 尺寸标签会伸出右边界被裁掉半截（只剩「2560 ×」）。 */
+         * 尺寸标签会伸出右边界被裁掉半截（只剩「2560 ×」）。
+         * v2.23.5：下边也夹 —— 框贴着屏幕底部时标签会掉出视口。 */
         const sw = sizeEl.offsetWidth || 70;
+        const sh = sizeEl.offsetHeight || 20;
         sizeEl.style.left = Math.max(0, Math.min(r.x, window.innerWidth - sw - 2)) + 'px';
-        sizeEl.style.top = (above > 4 ? above : r.y + 6) + 'px';
+        const sy = (above > 4 ? above : r.y + 6);
+        sizeEl.style.top = Math.max(0, Math.min(sy, window.innerHeight - sh - 2)) + 'px';
     } else {
         sizeEl.style.display = 'none';
     }
@@ -810,69 +819,50 @@ document.addEventListener('contextmenu', (e) => {
 /* ------------------------------------------------------------------ */
 /* 启动：读配置 → 决定"松手是否停留"                                    */
 /* ------------------------------------------------------------------ */
-if (MODE === 'app') {
-    /* r59：`app` 模式是"点一下窗口"，跟动作条无关 —— 保持老逻辑：
-       单击直接 pick_app_at，不做停留。 */
-    document.addEventListener('pointerup', (e) => {
-        if (done || e.button !== 0) return;
-        if (phase !== 'drag' && phase !== 'idle') return;
-        done = true;
-        phase = 'committed';
-        stopBeat();
-        sel.style.display = 'none';
-        frame.style.display = 'none';
-        sizeEl.style.display = 'none';
-        tip.innerHTML = '正在识别这个窗口…';
-        jlog('app click at ' + e.clientX + ',' + e.clientY);
-        invoke('pick_app_at', {
-            x: e.clientX,
-            y: e.clientY,
-            dpr: window.devicePixelRatio || 1
-        }).catch((err) => {
-            jlog('pick_app_at failed: ' + ((err && err.message) || err));
-            bail('点选失败，已退出');
-        });
-    }, true);   // capture：要比上面那套拖框逻辑先拿到事件
-} else {
-    invoke('get_config').then((c) => {
-        /* 默认**关**：读不到配置也按"框完直接执行"走（那才是主路径）。
-         * 只有用户显式打开「框选后可调整」才停。
-         * ⚠ `mode=any`（万能框选）**永远停**：它存在的意义就是让用户挑，
-         *   那个开关只管"具体功能要不要也停"。 */
-        holdMode = (MODE === 'any') || !!(c && c.regionAdjust);
-        lastAct = (c && typeof c.regionLastAction === 'string') ? c.regionLastAction : '';
-        /* 各功能开关：动作条只画开着的（后端那几条路也会再查一次，这里是为了
-         * 不让用户看见一颗"点了必然白框"的按钮）。 */
-        featOn = {
-            ocr: !c || c.ocrEnable !== false,
-            img: !c || c.imgEnable !== false,
-            trans: !c || c.transEnable !== false,
-        };
-        jlog('regionAdjust=' + holdMode + ' lastAct=' + (lastAct || '(none)')
-            + ' feat=' + JSON.stringify(featOn));
-        /* 配置比"拖框"慢到时（偶尔会比首帧晚几十毫秒）：
-         *   · 松手已经发生、正挂着 → 现在可以决定"停"还是"执行"了；
-         *   · 已经在 adjust → 重建动作条（成员可能因为开关变了）。
-         * ⚠ buildBar() 现在**结构没变就不重建 DOM**，所以这里不会把用户
-         *   正按着的那颗按钮换掉（那会导致 click 永远不派发）。 */
-        if (pendingRelease) {
-            pendingRelease = false;
-            applyRelease();
-        } else if (phase === 'adjust') {
-            buildBar();
-            paint();
-        }
-    }).catch((e) => {
-        // 读不到就按默认（框完直接执行）走 —— 那才是主路径，不能因为读配置失败就变成"停下来问"
-        jlog('get_config failed: ' + ((e && e.message) || e) + ' -> 按「框完直接执行」处理');
-        // 挂起的松手必须有结果，否则用户会卡在"框好了但什么都不发生"
-        holdMode = (MODE === 'any');
-        if (pendingRelease) {
-            pendingRelease = false;
-            applyRelease();
-        }
-    });
-}
+/* v2.23.5：这里原来还有一个 `MODE === 'app'` 分支（点一下窗口 → pick_app_at）。
+ *
+ * 它早就是死代码了：`MODE` 只可能是 ocr / img / qr / any（见上面那段解析），
+ * "点选程序"走的是独立的 `picker.html`。留着它的坏处不是占几行，而是让读代码的
+ * 人以为 region 还兼着点选，进而把 `TIP_IDLE` / `bail` 里那些为它写的注释当真。
+ * app 的提示语与 `bail` 里那句"用 bailing 不用 done"的理由一并删掉。 */
+invoke('get_config').then((c) => {
+    /* 默认**关**：读不到配置也按"框完直接执行"走（那才是主路径）。
+     * 只有用户显式打开「框选后可调整」才停。
+     * ⚠ `mode=any`（万能框选）**永远停**：它存在的意义就是让用户挑，
+     *   那个开关只管"具体功能要不要也停"。 */
+    holdMode = (MODE === 'any') || !!(c && c.regionAdjust);
+    lastAct = (c && typeof c.regionLastAction === 'string') ? c.regionLastAction : '';
+    /* 各功能开关：动作条只画开着的（后端那几条路也会再查一次，这里是为了
+     * 不让用户看见一颗"点了必然白框"的按钮）。 */
+    featOn = {
+        ocr: !c || c.ocrEnable !== false,
+        img: !c || c.imgEnable !== false,
+        trans: !c || c.transEnable !== false,
+    };
+    jlog('regionAdjust=' + holdMode + ' lastAct=' + (lastAct || '(none)')
+        + ' feat=' + JSON.stringify(featOn));
+    /* 配置比"拖框"慢到时（偶尔会比首帧晚几十毫秒）：
+     *   · 松手已经发生、正挂着 → 现在可以决定"停"还是"执行"了；
+     *   · 已经在 adjust → 重建动作条（成员可能因为开关变了）。
+     * ⚠ buildBar() 现在**结构没变就不重建 DOM**，所以这里不会把用户
+     *   正按着的那颗按钮换掉（那会导致 click 永远不派发）。 */
+    if (pendingRelease) {
+        pendingRelease = false;
+        applyRelease();
+    } else if (phase === 'adjust') {
+        buildBar();
+        paint();
+    }
+}).catch((e) => {
+    // 读不到就按默认（框完直接执行）走 —— 那才是主路径，不能因为读配置失败就变成"停下来问"
+    jlog('get_config failed: ' + ((e && e.message) || e) + ' -> 按「框完直接执行」处理');
+    // 挂起的松手必须有结果，否则用户会卡在"框好了但什么都不发生"
+    holdMode = (MODE === 'any');
+    if (pendingRelease) {
+        pendingRelease = false;
+        applyRelease();
+    }
+});
 
 /* 失焦兜底 —— **故意不做**，这里只留一段说明，免得后人再把它加回来。
  *
@@ -887,7 +877,8 @@ if (MODE === 'app') {
  *     ① 遮罩窗口还盖在屏幕上（`always_on_top`），视觉上没变；
  *     ② Esc 的退出走的是 Rust 那侧**全局低级键盘钩子**，全系统都收得到，
  *        跟哪个窗口在前台**无关**，照样能退出；
- *     ③ Rust 另有「页面 5 秒无心跳就关窗」+「90 秒总闸」两道硬兜底。
+ *     ③ Rust 另有「5 秒没心跳就关窗」+「30 秒总闸」两道硬兜底
+ *        （v2.23.5 起心跳判据是"最近一次心跳距今多久"，提交动作后同样成立）。
  *   所以：宁可让遮罩在失焦时多留一会儿（用户还能按 Esc），也不能让它
  *   在用户正要框选时自己消失。真出问题的兜底全在 Rust 侧。 */
 

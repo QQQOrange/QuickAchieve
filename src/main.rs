@@ -9812,11 +9812,32 @@ fn clear_ocr_note() {
     }
 }
 
-/// 框选页面的心跳。页面加载后每 2 秒调一次 `region_beat` 把这里置成非 0；
-/// 0 表示「本次窗口还没活过来」。看门狗靠它区分两种状态：
-///   页面活着只是没框完 —— 留着等用户；
-///   页面压根没跑起来 —— 留着就是一层吞输入的透明玻璃，必须尽早关窗。
+/// 框选页面的心跳。页面加载后每 2 秒调一次 `region_beat` 把这里置成
+/// **上一次心跳的时间戳（epoch 毫秒）**；0 表示「本轮窗口还没活过来」。
+///
+/// ⚠ v2.23.5：判据从"有没有心跳"改成"**最近一次心跳有多久**"。
+///   以前只看 `== 0`，而它只会被写成非零 —— 于是提交动作（页面 `stopBeat()`）
+///   之后那条「5 秒没心跳就关窗」永远不再成立，遮罩只能等 30 秒总闸。
 static REGION_BEAT: AtomicU64 = AtomicU64::new(0);
+
+/// 框选窗口的**轮次号**：每开一次 +1。
+///
+/// 看门狗线程靠它认领"自己那一轮"——窗口名是全进程共用的，上一轮的看门狗
+/// 若不退出，会把下一轮刚建好、心跳还没来的新遮罩当成"页面没活"强杀掉。
+static REGION_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// 框选页面的心跳算不算"已经停了"。
+///
+/// * `beat` = 最近一次心跳的 epoch 毫秒，0 表示本轮还一次都没收到；
+/// * `now_ms` = 现在。
+///
+/// ⚠ v2.23.5 修的就是这里：判据必须是"距今多久"，不能是"是不是 0"。
+///   页面在 `commit()` 里会 `stopBeat()`，于是最后一次心跳永远停在一个非零值上——
+///   只看 `== 0` 的话，"5 秒没心跳就关窗"在用户提交之后就再也不成立了。
+///   时钟回拨（`beat > now`）按"刚跳过"处理，免得一次校时就误杀遮罩。
+fn region_beat_stale(beat: u64, now_ms: u64) -> bool {
+    beat == 0 || now_ms.saturating_sub(beat) > 5_000
+}
 
 fn close_window(name: &str) {
     if let Some(w) = app().get_webview_window(name) {
@@ -9832,6 +9853,13 @@ fn close_window(name: &str) {
 ///
 /// 参数 `why` 只进日志，方便事后看出是哪一层兜底救回来的。
 fn hard_close_region(why: &str) {
+    /* v2.23.5：先走一遍**统一取消流程**。
+     *
+     * 这个函数是"最后一道防线"（Esc 兜底 / 页面没活 / 30 秒总闸），
+     * 而它以前只 `close_window("region")` —— 「二维码 → 重新框选」时藏起来的
+     * 结果窗就永远回不来了（用户看到的是"结果窗凭空消失"）。
+     * `cancel_region_flow` 是幂等的，关窗也一样，重复调没有副作用。 */
+    cancel_region_flow();
     close_window("region");
     /* 等最多 600ms 看主线程有没有真的把窗口关掉。
      *
@@ -9958,6 +9986,14 @@ fn open_region_window_mode(mode: &str) {
     }
     REGION_BEAT.store(0, Ordering::SeqCst);
     REGION_HWND.store(0, Ordering::SeqCst);
+    /* v2.23.5：**每次开窗领一个号**。
+     *
+     * 看门狗线程是"跟着某一次开窗"活的。以前它只认窗口名，于是：
+     * 上一次的看门狗还没退出、用户已经重新开了遮罩 → 它在下一次 tick 里
+     * `get_webview_window("region")` 拿到的是**新窗口**，再把新窗口强杀掉
+     * （新窗口此时心跳还是 0，正好命中"页面没活"那条）。
+     * 拿到号之后，每轮先比号：不是自己那一轮就直接退出。 */
+    let gen = REGION_GEN.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
     let (vx, vy, vw, vh) = win::virtual_screen();
     win::log(&format!("region: virtual screen {vw}x{vh} at ({vx},{vy})"));
     let a2 = a.clone();
@@ -10060,6 +10096,11 @@ fn open_region_window_mode(mode: &str) {
         loop {
             std::thread::sleep(Duration::from_millis(500));
             tick += 1;
+            /* 不是自己那一轮了（用户已经关了又重开）→ 立刻收工。
+             * 少了这一条，上一轮的看门狗会把新遮罩当成"页面没活"杀掉。 */
+            if REGION_GEN.load(Ordering::SeqCst) != gen {
+                return;
+            }
             let Some(w) = a3.get_webview_window("region") else {
                 // 窗口已经没了（正常关闭走的都是这条路）。顺手把句柄清掉，
                 // 别留一个陈旧 hwnd 将来被强杀逻辑误用。
@@ -10070,8 +10111,18 @@ fn open_region_window_mode(mode: &str) {
             if let Ok(h) = w.hwnd() {
                 REGION_HWND.store(h.0 as isize, Ordering::SeqCst);
             }
-            if REGION_BEAT.load(Ordering::SeqCst) == 0 && t0.elapsed() > Duration::from_secs(5) {
-                win::log("region: 页面 5 秒无心跳，判定未存活，强制关闭");
+            /* 页面是否还活着 = 最近一次心跳距今多久。
+             * 以前判 `== 0`（从没心跳），提交动作之后页面 `stopBeat()`，
+             * 最后一次心跳仍是旧的非零值 → 这条硬兜底永久失效。 */
+            let beat = REGION_BEAT.load(Ordering::SeqCst);
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            if region_beat_stale(beat, now_ms) && t0.elapsed() > Duration::from_secs(5) {
+                win::log(&format!(
+                    "region: 页面 5 秒无心跳（last={beat}），判定未存活，强制关闭"
+                ));
                 hard_close_region("页面未存活");
                 return;
             }
@@ -12796,9 +12847,21 @@ fn region_any_start() {
     });
 }
 
-#[crate::t::command]
-fn ocr_cancel() {
-    win::log("ocr: cancelled");
+/// 取消一次框选：**所有**取消路径都必须走这里。
+///
+/// 除了关遮罩，还要把「二维码 → 重新框选」时藏起来的结果窗还回去。
+///
+/// # 为什么要抽出来（v2.23.5）
+///
+/// 这段逻辑以前只写在 `ocr_cancel` 里。而全局低级键盘钩子的 Esc 兜底
+/// （`kbd(up): ESC -> close region`）是直接调 `hard_close_region` 的 ——
+/// 它绕过了这里。钩子那条路**通常先于**页面拿到 Esc（低级钩子比 WebView 的
+/// 消息循环早），所以用户按 Esc 取消时：
+///   遮罩关了 → 结果窗永远不回来 → 只能重新框一次才有结果窗。
+/// 正是 `ocr_cancel` 里那句注释声称已经修好的那个 bug。
+///
+/// 现在 `hard_close_region` 也调它（幂等：`QR_HIDDEN_FOR_PICK` 用 `swap`）。
+fn cancel_region_flow() {
     REGION_HWND.store(0, Ordering::SeqCst);
     close_window("region");
     /* 这一轮如果是「二维码 → 重新框选」，遮罩起来之前我们把结果窗藏了。
@@ -12812,6 +12875,12 @@ fn ocr_cancel() {
             }
         }
     }
+}
+
+#[crate::t::command]
+fn ocr_cancel() {
+    win::log("ocr: cancelled");
+    cancel_region_flow();
 }
 
 /* ================================================================== */
@@ -24984,6 +25053,27 @@ mod tests {
                 "action {bad:?} 应该回落到 OCR"
             );
         }
+    }
+
+    /// v2.23.5：**"心跳停了"的判据必须是时间差，不能是"有没有心跳过"**。
+    ///
+    /// 用户报的形状：遮罩提交动作之后本该 5 秒内被兜底关掉，实际却要等 30 秒总闸。
+    /// 根因是页面在 `commit()` 里 `stopBeat()`，最后一次心跳**永远停在一个非零值**上；
+    /// 老判据 `REGION_BEAT == 0` 于是再也成立不了，那道硬兜底等于失效。
+    #[test]
+    fn region_beat_staleness_uses_age_not_zero() {
+        // 从没心跳 → 算停（页面根本没跑起来）
+        assert!(region_beat_stale(0, 1_000_000));
+        // 刚跳过 → 不算停
+        assert!(!region_beat_stale(1_000_000, 1_000_000));
+        assert!(!region_beat_stale(1_000_000, 1_004_999), "4.999 秒还在容差内");
+        // 刚好 5 秒 → 还算活着（判据是"超过"）
+        assert!(!region_beat_stale(1_000_000, 1_005_000));
+        // 超过 5 秒 → 算停（这正是老代码漏掉的那条：beat 非零但已经陈旧）
+        assert!(region_beat_stale(1_000_000, 1_005_001));
+        assert!(region_beat_stale(1_000_000, 1_600_000));
+        // 时钟回拨（心跳时间戳比 now 还新）→ 按刚跳过处理，别误杀遮罩
+        assert!(!region_beat_stale(2_000_000, 1_000_000));
     }
 
     /// v2.14.0：划选触发的两道闸门 —— 总开关 + 触发方式（互斥）。
