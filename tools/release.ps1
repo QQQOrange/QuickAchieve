@@ -93,7 +93,10 @@ try {
 
     Step '4/7 把 SHA256 写进发布说明'
     $text = [System.IO.File]::ReadAllText($Notes, [System.Text.Encoding]::UTF8)
-    $patched = [regex]::Replace($text, '(?m)^\*\*SHA256:\s*[0-9A-Fa-f]{0,64}\*\*\s*$', "**SHA256: $sha**")
+    # ⚠ 行尾只吃空格/制表符（[ \t]*），不能用 \s* —— 那会把后面的换行一起吃掉，
+    #   每跑一次少一个空行，发布说明的文件会越跑越瘪。
+    $patched = [regex]::Replace($text, '(?m)^\*\*SHA256:[ \t]*[0-9A-Fa-f]{0,64}\*\*[ \t]*$',
+        "**SHA256: $sha**")
     if ($patched -notmatch [regex]::Escape($sha)) {
         Fail "$NotesRel 里找不到 `"**SHA256: ...**`" 那一行，没法自动填"
     }
