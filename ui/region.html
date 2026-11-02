@@ -252,11 +252,14 @@ let gesture = {
     start: null,       // 按下时的 rect 快照
 };
 
-/* 框选后是否"先停一下"（配置项，默认开）。
+/* 框选后是否留一点"调整时间"（配置项，默认开）。
  *
- * 为什么要有开关：这一版默认改成"松手先停"，好处是能微调 + 换用途；
- * 但一定有人就喜欢"松手即走"，所以给一个开关让它能退回老行为。
- * 读配置失败一律当 true（新行为），因为这是主路径。 */
+ * 好处是框歪 5 像素能拖角微调、还能临时换用途；
+ * 但一定有人就喜欢"松手即走"，所以给一个开关让它退回老行为。
+ * 读配置失败一律当 true（主路径）。
+ *
+ * ⚠ v2.23.2：**"停留"不等于"要你再确认一次"** —— 松手 600ms 后自动按 ?mode=
+ *   执行（见 `armAutoRun`）。这个开关关掉就退回"松手立刻执行"。 */
 let holdMode = true;
 
 /* 上次在动作条上点过的动作（后端记的）。双击/回车执行的就是它 ——
@@ -272,11 +275,63 @@ function defaultAct() {
     return (lastAct && ACT_NAME[lastAct]) ? lastAct : MODE;
 }
 
+/* 松手后**自动执行一开始选好的那个用途**（v2.23.2）。
+ *
+ * 用户报的原话：「我选择了文本识别，画完框之后它不会默认进行文本识别，还会弹出
+ * 一个横条来问你是要翻译、图片识别还是什么。我都一开始选了文本识别，为什么
+ * 后续还要再选一个？」
+ *
+ * 所以「停留」的语义改成：**照样停下来给你微调、也能换用途，但不再要求你确认** ——
+ * 松手 600ms 后自动按 `MODE`（这次框选本来的用途）执行；这 600ms 里只要动了鼠标
+ * （去拖角、去点按钮）就立刻取消，退回手动模式（双击执行 / 点按钮换用途，和以前一样）。
+ *
+ * ⚠ 自动执行用的是 `MODE`，**不是** `defaultAct()`。后者是"上次点过的动作"，
+ *   记忆生效时会变成"用户明明点了识别，自动跑的却是翻译" —— 那比多问一句更糟。
+ *   记忆只留给**双击/回车**这种显式手势（动作条上写着双击会执行哪个）。 */
+const AUTO_RUN_MS = 600;
+let autoTimer = null;
+let autoArmed = false;
+/** 松手时的指针位置：用来判断"用户是不是要动手调整了"。 */
+let releaseAt = null;
+
+/** 武装自动执行：600ms 后按 MODE 跑。任何鼠标动作都会先 `disarmAutoRun()`。 */
+function armAutoRun() {
+    disarmAutoRun(false);
+    autoArmed = true;
+    if (autoTimer) clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => {
+        autoTimer = null;
+        if (!autoArmed) return;
+        autoArmed = false;
+        if (done || phase !== 'adjust') return;
+        jlog('auto-run: ' + MODE + ' ' + JSON.stringify(rect));
+        commit(MODE);
+    }, AUTO_RUN_MS);
+    buildBar();   // 高亮 + 文案切到「马上会自动执行 MODE」
+    tip.textContent = '自动' + (ACT_NAME[MODE] || '执行') + '中：拖角可微调 · 点按钮可换 · Esc 取消';
+    paint();
+}
+
+/** 取消自动执行。`rebuild === false` 时不动动作条（窗口正在关/已经在提交）。 */
+function disarmAutoRun(rebuild) {
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+    if (!autoArmed) return;
+    autoArmed = false;
+    if (rebuild !== false) {
+        buildBar();   // 切回「双击执行 X」的手动文案
+        if (phase === 'adjust') {
+            tip.textContent = '还能调整：拖角改大小 · 双击执行 · Esc 取消';
+        }
+    }
+}
+
 /* 真正执行：把这块区域交给后端，按 action 分流。 */
 let committed = false;
 function commit(action) {
     if (committed) return;
     committed = true;
+    // 自动执行的定时器要先撤掉：否则它可能在窗口已经关掉之后又来一次 commit
+    disarmAutoRun(false);
     phase = 'committed';
     stopBeat();
     actbar.style.display = 'none';
@@ -330,6 +385,8 @@ let bailing = false;
 function bail(msg) {
     if (bailing) return;
     bailing = true;
+    // 退出路径必须撤掉自动执行：否则 600ms 后它还会在已关闭的遮罩上 commit 一次
+    disarmAutoRun(false);
     done = true;
     committed = true;
     phase = 'committed';
@@ -471,12 +528,17 @@ function hitTest(x, y) {
 function buildBar() {
     actbar.textContent = '';
     const list = ['ocr', 'trans', 'img', 'qr', 'copy'];
+    /* 自动执行武装中 → 高亮并写明"马上会自动跑 MODE"；一旦被鼠标取消，
+     * 就回到"双击执行 defaultAct()"的老文案。两者必须一起变，
+     * 否则会出现"高亮翻译、实际自动跑了识别"这种自相矛盾的画面。 */
+    const auto = autoArmed ? MODE : '';
+    const hi = auto || defaultAct();
     for (const a of list) {
         const b = document.createElement('button');
         b.dataset.act = a;
         b.textContent = ACT_NAME[a];
-        // 高亮"双击会执行的那一个"（上次用过的 → 否则这次框选本来的用途）
-        if (a === defaultAct()) b.classList.add('on');
+        // 高亮"接下来会执行的那一个"
+        if (a === hi) b.classList.add('on');
         b.addEventListener('click', (e) => {
             e.stopPropagation();
             commit(a);
@@ -488,8 +550,11 @@ function buildBar() {
     actbar.appendChild(sep);
     const hint = document.createElement('span');
     hint.className = 'hint';
-    /* 写清"双击会执行哪一个"：不然记忆生效之后，用户会以为双击还是识别 */
-    hint.innerHTML = '拖角调整 · 双击<b>' + (ACT_NAME[defaultAct()] || '执行') + '</b> · <b>Esc</b> 取消';
+    /* 写清"接下来会执行哪一个"：不然记忆生效之后，用户会以为双击还是识别 */
+    hint.innerHTML = auto
+        ? (AUTO_RUN_MS / 1000).toFixed(1) + ' 秒后自动<b>' + (ACT_NAME[auto] || '执行')
+          + '</b> · 动一下鼠标就停 · <b>Esc</b> 取消'
+        : '拖角调整 · 双击<b>' + (ACT_NAME[defaultAct()] || '执行') + '</b> · <b>Esc</b> 取消';
     actbar.appendChild(hint);
 }
 
@@ -501,6 +566,9 @@ function buildBar() {
 
 document.addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || done || phase === 'committed') return;
+    /* 用户动手了（要去拖角 / 点动作条 / 重开一个框）—— 自动执行让位，
+     * 之后完全按手动来。放在最前面：点动作条上那颗按钮也要先撤掉定时器。 */
+    if (autoArmed) disarmAutoRun();
     // 点在动作条上：交给按钮自己处理，别在这里开新框
     if (actbar.contains(e.target)) return;
 
@@ -531,6 +599,11 @@ document.addEventListener('pointermove', (e) => {
     const x = e.clientX, y = e.clientY;
 
     if (phase === 'idle' || phase === 'adjust') {
+        /* 自动执行等待期间，指针挪开 6px 就当成"他要自己来"—— 撤掉定时器。
+         * 6px 的容忍是为了不把"松手时手指/鼠标的抖动"误判成操作。 */
+        if (autoArmed && releaseAt) {
+            if (Math.hypot(x - releaseAt.x, y - releaseAt.y) > 6) disarmAutoRun();
+        }
         // 只改光标，不画任何东西（idle 时鼠标划过不该有任何反馈）
         const kind = phase === 'adjust' ? hitTest(x, y) : 'new';
         document.body.style.cursor = CURSOR[kind] || 'crosshair';
@@ -608,11 +681,15 @@ document.addEventListener('pointerup', (e) => {
         if (holdMode) {
             // v2.16.0：停下来 —— 可以拖角微调、也能换用途
             phase = 'adjust';
+            releaseAt = { x: e.clientX, y: e.clientY };
             buildBar();
             tip.textContent = '还能调整：拖角改大小 · 双击执行 · Esc 取消';
             paint();
             document.body.style.cursor = 'move';
             jlog('adjust: ' + JSON.stringify(rect));
+            /* v2.23.2：**不再要求用户为已经选过的用途再确认一次**。
+             * 松手 600ms 后自动按 MODE 执行；这期间动鼠标就取消（见 pointermove）。 */
+            armAutoRun();
         } else {
             // 关掉「框选后停留」→ 老行为：松手就走
             phase = 'adjust';

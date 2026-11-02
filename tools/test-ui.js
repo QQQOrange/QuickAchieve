@@ -3837,10 +3837,12 @@ async function testRegion() {
     console.log('');
     console.log('=== OCR 框选层（ui/region.html）===');
 
-    /* v2.16.0 起流程变了：松手**先停在「可调整」阶段**，动作条亮出来，
-     * 由用户双击（或点动作条 / 回车）才真正执行；后端只认一条
-     * `region_action(action, x, y, w, h, dpr)`，不再有独立的 ocr_region 调用。
-     * 所以这里断言的是"停 → 选 → 发一条 region_action"。 */
+    /* 流程经历过两次变化，断言跟着改成现在这套：
+     *   · v2.16.0：松手**先停在「可调整」阶段**，动作条亮出来；
+     *   · v2.23.2：停留只用于**微调 / 换用途**，不再要求用户确认 ——
+     *     用户原话「我一开始选了文本识别，画完框还要再问我翻译还是识图？」
+     *     所以松手 600ms 后自动按 ?mode= 执行，动鼠标则取消、退回手动。
+     * 后端始终只认一条 `region_action(action, x, y, w, h, dpr)`。 */
     const env = makeEnv('ui/region.html', {});
     const calls = env.calls;
     const { w } = env;
@@ -3852,28 +3854,79 @@ async function testRegion() {
     mouse(env, 'mouseup', 300, 320);
     await flush();
 
-    ok('【框选】松手后先停在「可调整」阶段，**不立刻**执行',
+    const actbarEl = () => w.document.getElementById('actbar');
+    const tipEl = () => w.document.getElementById('tip');
+    ok('【框选】松手的那一刻**还没**执行（留出微调窗口）',
         !env.lastCmd('region_action'), JSON.stringify(calls.map((c) => c.cmd)));
     ok('【框选】动作条亮出来（识别 / 翻译 / 识图 / 二维码 / 复制图片）',
-        w.document.getElementById('actbar').style.display === 'flex'
+        actbarEl().style.display === 'flex'
         && w.document.querySelectorAll('#actbar button[data-act]').length === 5);
-    ok('【框选】提示里写明"双击执行"',
-        /双击/.test(w.document.getElementById('tip').textContent),
-        w.document.getElementById('tip').textContent);
+    ok('【框选】动作条写明「X 秒后自动识别」，不再要用户确认',
+        /秒后自动/.test(actbarEl().textContent), actbarEl().textContent);
+    ok('【框选】高亮的是**这次框选的用途**（识别），不是别的',
+        (w.document.querySelector('#actbar button.on') || {}).dataset
+        && w.document.querySelector('#actbar button.on').dataset.act === 'ocr',
+        '高亮=' + ((w.document.querySelector('#actbar button.on') || {}).textContent || '(无)'));
+    ok('【框选】顶部提示也换成"自动执行中"',
+        /自动/.test(tipEl().textContent), tipEl().textContent);
 
-    // ---- 双击执行默认动作 ----
-    dblclick(env, 200, 250);
-    await flush();
+    // ---- 什么都不动 → 到点自动执行（这就是用户要的那个修复）----
+    await new Promise((r) => setTimeout(r, 750));
     const r = env.lastCmd('region_action');
-    ok('【框选】双击执行发的是 region_action', !!r, JSON.stringify(calls.map((c) => c.cmd)));
+    ok('【框选】松手后不动鼠标 → 自动执行，不用再点一次',
+        !!r, JSON.stringify(calls.map((c) => c.cmd)));
     if (r) {
         const a = r.args;
-        eq('【框选】没点过动作条时，默认动作 = 这次框选的用途（ocr）', a.action, 'ocr');
+        eq('【框选】自动执行的是「这次选的用途」= ocr', a.action, 'ocr');
         ok('【框选】四个坐标全是有限数字（NaN 会让命令根本不执行）',
             ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(a[k])),
             JSON.stringify(a));
         eq('【框选】x/y 取左上角', [a.x, a.y], [100, 200]);
         eq('【框选】w/h 是正的', [a.w, a.h], [200, 120]);
+    }
+    env.dom.window.close();
+
+    // ---- 松手后动鼠标 = "我要自己来" → 取消自动执行，留在手动模式 ----
+    {
+        const e2 = makeEnv('ui/region.html', { regionLastAction: 'trans' });
+        await flush();
+        mouse(e2, 'mousedown', 100, 100);
+        mouse(e2, 'mousemove', 300, 240);
+        mouse(e2, 'mouseup', 300, 240);
+        await flush();
+        // 挪开 > 6px（真实场景：去拖角 / 去点动作条）
+        mouse(e2, 'mousemove', 400, 400);
+        await flush();
+        await new Promise((r) => setTimeout(r, 750));
+        ok('【框选】松手后动了鼠标 → 自动执行取消（留给手动微调）',
+            !e2.lastCmd('region_action'),
+            JSON.stringify(e2.calls.map((c) => c.cmd)));
+        ok('【框选】取消后动作条改回「双击<记住的那个>」',
+            /双击/.test(e2.w.document.getElementById('actbar').textContent)
+            && /翻译/.test(e2.w.document.getElementById('actbar').textContent),
+            e2.w.document.getElementById('actbar').textContent);
+        // 双击仍然可用，且走的是"记住的动作"
+        dblclick(e2, 200, 150);
+        await flush();
+        const rr = e2.lastCmd('region_action');
+        ok('【框选】取消后双击执行的是记住的动作（trans）',
+            !!rr && rr.args.action === 'trans', JSON.stringify(rr && rr.args));
+        e2.dom.window.close();
+    }
+
+    // ---- 记忆不能盖掉"这次明确选的用途" ----
+    {
+        const e3 = makeEnv('ui/region.html', { regionLastAction: 'trans' });
+        await flush();
+        mouse(e3, 'mousedown', 50, 50);
+        mouse(e3, 'mousemove', 250, 180);
+        mouse(e3, 'mouseup', 250, 180);
+        await flush();
+        await new Promise((r) => setTimeout(r, 750));
+        const r3 = e3.lastCmd('region_action');
+        ok('【框选】上次点过「翻译」也不影响自动执行 —— 仍按这次选的 ocr',
+            !!r3 && r3.args.action === 'ocr', JSON.stringify(r3 && r3.args));
+        e3.dom.window.close();
     }
     // ---- 反向拖（右下 → 左上）也要归一化 ----
     {

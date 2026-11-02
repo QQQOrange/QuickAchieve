@@ -1317,7 +1317,9 @@ window.QS_I18N.add({
     "每句话的第一个字母大写（按 . ! ? 和换行断句）": "Capitalize the first letter of each sentence (split on . ! ? and line breaks)",
     "对识别结果做文本处理（先划一段就只处理那一段）": "Run text tools on the result (select a range to process only that part)",
     "识别结果会出现在这里…": "Recognition results will appear here…",
-    "还没解析出内容": "Nothing decoded yet"
+    "还没解析出内容": "Nothing decoded yet",
+    "框选后留一点调整时间": "Pause briefly after selecting a region",
+    "开着：松开鼠标会停 0.6 秒 —— 这期间能拖角微调，也能临时换成识别 / 识图 / 二维码 / 复制图片；不操作就自动按你一开始选的用途执行，动一下鼠标则改为手动（双击或回车执行）。关掉：松手立刻执行（老行为）": "On: the selection pauses for 0.6s — drag the handles to fine-tune, or switch to OCR / translate / image search / QR / copy image. Do nothing and it runs the purpose you picked when you started; move the mouse and it switches to manual (double-click or Enter). Off: it runs the moment you release the button (old behaviour)."
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */
