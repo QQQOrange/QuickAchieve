@@ -9847,13 +9847,24 @@ fn quit_with_sync(code: i32) {
      *
      * 现在：起一个线程做同步，主线程最多等 5 秒（超时就不等了，直接退）。
      * 网络通畅时行为和以前一样；网络不通时也不会让退出变得更卡。 */
+    /* v2.23.11：退出前先把托盘图标摘掉 —— 否则进程没了、图标还挂在通知区，
+     * 要等鼠标划过才消失（用户会看到一个点了没反应的僵尸图标）。 */
+    crate::trayhost::remove();
     if cfg_with(|c| c.webdav_on_exit && !c.webdav_url.trim().is_empty()) {
-        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        /* ⚠ v2.23.11：**主线程不再等这 6 秒**。
+         *
+         * 原来这里 `recv_timeout(6s)` —— 而托盘菜单的回调本身就在主线程上
+         * （`TrackPopupMenu` 的调用栈里），于是点「退出」之后菜单消失了、
+         * 整个程序却卡 6 秒不重绘，用户以为没点上，接着再点。
+         *
+         * 现在：同步线程跑完（或超时）由**它自己**调 `exit`，主线程立刻返回。
+         * 代价是"退出"变成异步的：真有未同步的数据，进程会晚几秒才消失 ——
+         * 但界面是活的，行为也更符合"点了就有反应"。 */
         std::thread::spawn(move || {
             exit_sync_if_needed();
-            let _ = tx.send(());
+            app().exit(code);
         });
-        let _ = rx.recv_timeout(Duration::from_secs(6));
+        return;
     }
     app().exit(code);
 }
@@ -9955,6 +9966,14 @@ static OCR_PNG_GEN: AtomicU64 = AtomicU64::new(0);
 
 /// 结果窗是不是**正在建**（见 `open_ocr_window` 里的守卫说明）。
 static OCR_WIN_BUILDING: AtomicBool = AtomicBool::new(false);
+
+/* v2.23.11：两个 epoch 毫秒时间戳，用来判断"这次回来的结果，是不是用户
+ * 已经关掉的那一轮"（见 `open_ocr_window` 开头的守卫）。
+ *   · `OCR_FLOW_EPOCH`  —— 这一轮识别什么时候开跑（`ocr_start_flow` 盖）；
+ *   · `OCR_CLOSE_EPOCH` —— 用户最后一次主动关结果窗什么时候（`close_ocr_window` 盖）。
+ * 用时间戳而不是布尔标志：布尔标志最怕"设了没复位"，时间戳天然自愈。 */
+static OCR_FLOW_EPOCH: AtomicU64 = AtomicU64::new(0);
+static OCR_CLOSE_EPOCH: AtomicU64 = AtomicU64::new(0);
 
 /// 引擎结果缓存：(截图代次, 引擎名, 清理后文本, 原始文本, 引擎标签)。
 ///
@@ -10173,14 +10192,13 @@ fn ocr_tell(msg: impl Into<String>, important: bool) {
 }
 
 /// 打开全屏框选窗口。
-/// 「正在开框选窗口」的闸门 + RAII 复位（见 open_region_window）。
+/// 「正在开框选窗口」的闸门。
+///
+/// ⚠ v2.23.11：闸门**只在真正 build 的那一小段**被占住（见
+/// `open_region_window_mode` 里主线程闭包开头的 swap），不再由 RAII guard
+/// 从函数入口一路占到返回 —— 那样"函数返回了但窗口还没建"会留出重复开窗的
+/// 窗口期（两次 build 会让 `WINS.insert` 静默销毁前一个原生窗口）。
 static OPENING_REGION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-struct OpeningRegionGuard;
-impl Drop for OpeningRegionGuard {
-    fn drop(&mut self) {
-        OPENING_REGION.store(false, std::sync::atomic::Ordering::SeqCst);
-    }
-}
 
 /// 打开框选遮罩。`mode` = `"ocr"`（默认，框完送进文字识别）或 `"img"`
 /// （框完送进识图搜索）—— 同一个遮罩窗口复用两套用途，靠 URL 参数区分。
@@ -10194,11 +10212,13 @@ fn open_region_window_mode(mode: &str) {
     //   调用好几次；而下面 close+wait_until(800) 超时后照样继续 build —— 短时间
     //   连开多个全屏遮罩 WebView2（全屏置顶、吃鼠标），用户会卡在连续的蒙版里。
     //   闸门用 compare_exchange 抢占，抢不到说明上一次还没落地。
-    if OPENING_REGION.swap(true, Ordering::SeqCst) {
+    if OPENING_REGION.load(Ordering::SeqCst) {
         win::log("open_region_window: 上一次还在开，忽略这次重复触发");
         return;
     }
-    let _guard = OpeningRegionGuard;
+    /* ⚠ v2.23.11：外层**不再占住**这个标志（原来这里有个 RAII guard）。
+     * 函数返回时 build 还没发生，"闸门放开但窗口还没建"正是重复开窗的窗口期。
+     * 真正需要互斥的是 build 那一小段，所以闸门挪进下面的主线程闭包里抢。 */
     let a = app();
     if let Some(w) = a.get_webview_window("region") {
         let _ = w.close();
@@ -10222,6 +10242,27 @@ fn open_region_window_mode(mode: &str) {
     let mode_owned: String = mode.to_string();
     let url_path: std::path::PathBuf = format!("region.html?mode={mode_owned}").into();
     let _ = a.run_on_main_thread(move || {
+        /* ⚠ v2.23.11：**闸门要在真正 build 的那一刻再抢一次**。
+         *
+         * 外面那个 `OPENING_REGION` 是 RAII 的，`open_region_window_mode` 一返回
+         * 就放开了 —— 而 build 要等主线程跑这个闭包。中间这段空窗期里，
+         * 连按热键 / 热键 + 托盘同时触发，两次都能过外面的检查，于是投递两个
+         * build：`WINS.insert(same label)` 会**静默销毁前一个原生窗口**，
+         * 用户看到遮罩闪一下重建、正在拖的框作废。
+         *
+         * 这里在闭包里再抢一次，抢不到就直接放弃这次；抢到了就一路持有到
+         * build 结束（RAII，panic 也会复位）。 */
+        if OPENING_REGION.swap(true, Ordering::SeqCst) {
+            win::log("region: 已有一次 build 在跑，忽略这次重复触发");
+            return;
+        }
+        struct BuildGate;
+        impl Drop for BuildGate {
+            fn drop(&mut self) {
+                OPENING_REGION.store(false, Ordering::SeqCst);
+            }
+        }
+        let _gate = BuildGate;
         win::log("region: 主线程闭包开始装配 builder");
         // App() 要的是 URL 路径（PathBuf）
         let mut b = WebviewWindowBuilder::new(&a2, "region", WebviewUrl::App(url_path))
@@ -11232,6 +11273,29 @@ async fn trans_open_docs(engine: String) -> Result<String, String> {
 }
 
 fn open_ocr_window(text: String) {
+    /* ⚠ v2.23.11：**用户刚关掉结果窗，就别替他把窗再弹回来**。
+     *
+     * 场景（B1）：多引擎并行时第二家还在跑，用户先把结果窗关掉了；
+     * 那一路回来之后仍然会走到这里 → 窗口"自己"又冒出来。
+     * 用户原话是"我明明关了它又弹出来"。
+     *
+     * 判据用两个时间戳，不靠布尔标志（不会被漏复位）：
+     *   · `OCR_FLOW_EPOCH`：这一轮识别是什么时候开跑的；
+     *   · `OCR_CLOSE_EPOCH`：用户最后一次主动关窗是什么时候。
+     * 只要"关窗晚于开跑"且还在 5 秒内，就认为这扇窗是用户不要的，跳过。
+     * 用户重新发起识别 → `ocr_start_flow` 会刷新 FLOW_EPOCH → 立刻恢复。 */
+    let now_ms = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    };
+    let closed = OCR_CLOSE_EPOCH.load(Ordering::SeqCst);
+    let flow = OCR_FLOW_EPOCH.load(Ordering::SeqCst);
+    if closed > flow && now_ms().saturating_sub(closed) < 5_000 {
+        win::log("open_ocr_window: 用户刚关掉结果窗，这次不重建（新一轮识别会立刻恢复）");
+        return;
+    }
     if let Ok(mut g) = OCR_LAST.lock() {
         *g = text.clone();
     }
@@ -11435,6 +11499,15 @@ fn ocr_plan_with_local_fallback(cfg: &config::Config) -> (Vec<String>, bool) {
 
 /// 进入 OCR 流程（横条上的按钮、Ctrl+Alt+O、托盘菜单都走这里）
 fn ocr_start_flow(force_engine: Option<String>) {
+    /* v2.23.11：给这一轮识别盖个时间戳。`open_ocr_window` 用它判断
+     * "这次回来的是不是用户已经关掉的那一轮"（见那里的注释）。 */
+    OCR_FLOW_EPOCH.store(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        Ordering::SeqCst,
+    );
     /* 每进一次流程都重设一次（普通入口传 None → 清掉上一次的绑定），
      * 免得在网格里点过"百度 OCR"之后，横条上的通用 OCR 也一直只用百度。 */
     set_ocr_force_engine(force_engine);
@@ -13625,6 +13698,14 @@ fn close_ocr_window() {
     close_window("ocr");
     // 关窗即清场：OCR 的缓存是临时的，结果页一关就不该再留着（用户要求）
     clear_ocr_session();
+    // v2.23.11：记下"用户主动关窗"的时刻 —— 还在跑的那一路回来时别再替他弹窗（见 open_ocr_window）
+    OCR_CLOSE_EPOCH.store(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        Ordering::SeqCst,
+    );
 }
 
 /// 按引擎识别一张图（JPEG/PNG 字节）。`engine` = "baidu" | "windows"。

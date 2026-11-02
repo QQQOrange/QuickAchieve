@@ -16,8 +16,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{CreateBitmap, DeleteObject, HGDIOBJ};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_MODIFY,
-    NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE,
+    NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
@@ -323,6 +323,34 @@ pub fn install(def: TrayDef, icon_png: &[u8], on_menu: MenuFn, on_event: EventFn
 /// 都由 Windows 说了算，用户要求"内置提示 + 时长可配"。
 /// 保留这个函数是为了托盘菜单里的系统级提示还有路可走，别再往业务上用。
 #[allow(dead_code)]
+/// 退出前把通知区图标摘掉（`NIM_DELETE`）。
+///
+/// 不摘的后果：进程没了、图标还挂在通知区，**要等鼠标划过才消失** ——
+/// 用户会看到一个点了没反应的僵尸图标（有人的托盘里能同时留着好几个）。
+/// 这条路以前是空的（`t.rs` 早期注释里就写着 "trayhost::remove 被删了"）。
+pub fn remove() {
+    let Some(hwnd) = ensure_msg_window() else { return };
+    let hicon = {
+        let g = match SLOT.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        match g.as_ref() {
+            Some(s) => s.hicon,
+            None => return,
+        }
+    };
+    let mut nid = NOTIFYICONDATAW::default();
+    fill_nid(&mut nid, hwnd, hicon, "");
+    unsafe {
+        let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+        if hicon != 0 {
+            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyIcon(HICON(
+                hicon as *mut core::ffi::c_void,
+            ));
+        }
+    }
+}
 pub fn balloon(title: &str, text: &str) {
     let Some(hwnd) = ensure_msg_window() else { return };
     let (hicon, tip) = {
@@ -353,8 +381,7 @@ pub fn balloon(title: &str, text: &str) {
 }
 
 pub fn set_icon(png: &[u8]) {
-    let Some(hwnd) = ensure_msg_window() else { return };
-    let hicon = match hicon_from_png(png) {
+    let Some(hwnd) = ensure_msg_window() else { return };    let hicon = match hicon_from_png(png) {
         Some(h) => h,
         None => return,
     };

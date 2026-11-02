@@ -652,8 +652,51 @@ impl WebviewWindow {
         Ok(())
     }
 
+    /// 关窗。
+    ///
+    /// # ⚠ v2.23.11：**编程式关窗也要走一遍关窗事件**
+    ///
+    /// 这里以前直接 `destroy()`，而 `destroy()` 是"同步摘表 + 投递拆窗"——
+    /// 于是 `on_window_event` 里挂的那些清场逻辑（`iconedit::clear_session`、
+    /// `clear_ocr_session`、设置窗的 `SETTINGS_HIDDEN_AT`…）**只在用户点 X 时**
+    /// 才会跑，后端主动关窗的时候一个都不跑。
+    ///
+    /// 代价很具体：识别结果窗/图标编辑器的"本轮会话"会串到下一轮（上一轮的
+    /// 图、上一轮的引擎列表还在），只能靠每个调用点手写补偿（`close_ocr_window`
+    /// 里那句 `clear_ocr_session()` 就是补丁）。漏一处就是一个"莫名其妙带着
+    /// 上轮状态"的窗口。
+    ///
+    /// 现在：先派发 `CloseRequested`（给业务一次收尾的机会）和 `Destroyed`，
+    /// 再真正拆窗。**程序主动关 = 一定要关**，所以这里不理会 `prevent_close`
+    /// （那只约束用户点 X 的那条路，见 `handle_win_event`）。
     pub fn close(&self) -> Result<()> {
+        self.dispatch_close_events();
         self.destroy()
+    }
+
+    /// 把 `CloseRequested` / `Destroyed` 派发给这个 label 的监听者。
+    fn dispatch_close_events(&self) {
+        let handlers: Vec<Arc<dyn Fn(&WindowEvent) + Send + Sync>> = self
+            .app
+            .0
+            .handlers
+            .lock()
+            .ok()
+            .and_then(|g| g.get(&self.label).cloned())
+            .unwrap_or_default();
+        if handlers.is_empty() {
+            return;
+        }
+        for ev in [
+            WindowEvent::CloseRequested {
+                api: CloseApi::default(),
+            },
+            WindowEvent::Destroyed,
+        ] {
+            for h in &handlers {
+                h(&ev);
+            }
+        }
     }
 
     pub fn destroy(&self) -> Result<()> {
@@ -1804,6 +1847,15 @@ fn handle_window_event(window_id: WindowId, event: &tao::event::WindowEvent) {
                 }
                 if let Ok(mut st) = app.0.states.lock() {
                     st.remove(&label2);
+                }
+                /* v2.23.11：**监听器也要一起摘**。
+                 *
+                 * 这条路径（用户点 X、没有 prevent）原来只清 labels/states，
+                 * handlers 留着 —— 同名窗口下次重建时会把旧 handler 一起挂上：
+                 * 事件触发两次、三次，越用越多；里面若捕获了旧窗口的对象，
+                 * 还会对着已经销毁的窗口做操作。 */
+                if let Ok(mut h) = app.0.handlers.lock() {
+                    h.remove(&label2);
                 }
             }
             WINS.with(|m| {
