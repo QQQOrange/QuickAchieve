@@ -8,7 +8,7 @@
 A Windows 10 / 11 desktop app built on a **native host (wry + system WebView2)**, with no
 bundled runtime dependencies.
 
-> **Size (v2.15.0)**: a single **7.4 MiB** executable with the frontend embedded and
+> **Size (v2.23.6)**: a single **7.6 MiB** executable with the frontend embedded and
 > compressed — copy one `.exe` anywhere and it runs, with no resource folder beside it.
 >
 > **Renamed in v2.15.0**: the app is now **Quick Achieve** (formerly Quick Search), and the
@@ -40,7 +40,9 @@ bundled runtime dependencies.
 | **Two pop-ups** | Selecting text shows the thin bar; a hotkey (**Ctrl+Shift+G** by default) opens a **grid page** — rows/columns, cell size and items are configured separately, and both support per-app binding |
 | **Grid editing** | In edit mode a click only edits, never runs. **Long-press a tile for 0.4 s to lift and drag it** — the other tiles make room and the new order is saved on release (same feel with mouse and touch). Hold it at the **left or right edge** for 0.4 s and it is sent to the end of the neighbouring page |
 | **Multi-model tiles** | "Add to this cell" can bind several OCR / image-search / translation models to one tile and run them **in parallel**, each with its own result section |
-| **Region action bar** | Releasing the mouse pauses: drag a corner to fine-tune, drag inside to move, then pick **recognize / translate / image search / QR code / copy image** for that region; double-click runs **the one you used last time** (this selection's own action the first time), or click a button (turn the switch off and it runs on release again) |
+| **Runs on release** | Whichever entry you opened is the only thing it does — OCR recognizes, image search searches, QR decodes; **it runs as soon as you release the mouse**, with no action bar asking you to choose again |
+| **Universal capture** | Want "frame first, decide after"? Add this tile (bar or grid page) and it shows the action bar — **recognize / translate / image search / QR code / copy image** — pick one to run. **Copy image** only exists on this path |
+| **Exclusive hotkeys** | When your recorded hotkey clashes with another program, it fires **this app only** — neither the system nor the other program receives that keystroke (swallowed in the low-level keyboard hook). On by default, can be turned off; shell-reserved combos (`Ctrl+Alt+Del` / `Win+L` / `Win+Tab`) cannot be taken over |
 | **Shift multi-select** | **Shift+click** a tile on the bar to tick it (nothing runs, the bar stays); a plain click then runs all ticked tiles **as one job** — several results for the same text without selecting it again |
 | **Long-press reorder** | Hold any tile on the bar for ~0.3 s and drag it to a new spot — the other tiles make room and the order is saved on release; separators drag too, and letting go never counts as a click. **Drag it out of the bar** and release to remove that tile (it turns red first) |
 | **Hover hints** | Rest the pointer on a tile for 0.16 s and its name appears (the system tooltip takes about a second); a self-drawn popup window that follows the light/dark theme and stays out of the way while dragging |

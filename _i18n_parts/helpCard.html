@@ -151,7 +151,7 @@
 <div class="help-body">
 <p>Besides the bar there is a <b>grid</b>: press <b>Ctrl+Shift+G</b> (changeable on the “Grid” page) and a whole page of tiles drops down; click whichever one you need. No text selection required — it fits “I want to do a thing” rather than “I want to process this text”.</p>
 <ul>
-<li><b>A tile can be</b>: a built-in action (text recognition / image search / translation / QR decode and generate / wrapping symbols / text cleanup), a specific engine, an app, a URL, or a favorites folder;</li>
+<li><b>A tile can be</b>: a built-in action (text recognition / image search / translation / <b>universal capture</b> / QR decode and generate / wrapping symbols / text cleanup), a specific engine, an app, a URL, or a favorites folder;</li>
 <li><b>Editing needs edit mode</b>: click the ✏️ at the top right before you can add content, remove a tile with ×, or drag it around; in read-only mode a click simply runs the tile, so nothing is changed by accident;</li>
 <li><b>Long-press to drag</b>: even in read-only mode, <b>holding a tile for about 0.4 s</b> switches to edit mode and lifts it up, following the mouse or your finger; the other tiles make room and it lands in the new position when you let go. Touch and mouse behave identically;</li>
 <li><b>An empty slot is “add”</b>: click it to open “Add to this cell”, which offers <b>built-in actions</b>, <b>models</b> (follow the default / pin one / pick several) and <b>engines and apps</b>;</li>
@@ -360,6 +360,11 @@
             </ul>
             <p>To record a hotkey, click the button and press the combo you want (it has to include Ctrl / Alt /
                Shift). Changed your mind halfway? Press Esc, or click somewhere else.</p>
+            <p><b>What if the combo clashes with something else?</b> “General → Trigger →
+               <b>Exclusive hotkeys</b>” (on by default) makes the combo fire <b>this app only</b> — neither the
+               system nor any other program receives that keystroke, because we swallow it in the low-level
+               keyboard hook. Turn it off and both react, as before. Combos the shell keeps for itself
+               (<b>Ctrl+Alt+Del, Win+L, Win+Tab</b>) cannot be taken over, even if you record them.</p>
             <p><b>Image search</b> has no hotkey for now; enter it from the 🖼 on the bar (see ⑤b).
                When a local file path shows up on screen, select it and the bar gains a 📁;
                click it to jump to that path (see ⑤c).</p>
