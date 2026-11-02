@@ -25,6 +25,12 @@ pub const APP_DIR: &str = "QuickAchieve";
  * ══════════════════════════════════════════════════════════════════════ */
 static LOCKED: AtomicBool = AtomicBool::new(false);
 
+/// v2.23.17：这一轮启动是不是「从备份救回来的」。
+///
+/// 是的话，读完配置要**强制写回主文件** —— 否则那份坏掉的 `config.json`
+/// 会一直躺在原地，下次启动再走一遍同样的救援（用户看到"每次启动都丢设置"）。
+static RECOVERED: AtomicBool = AtomicBool::new(false);
+
 /// 本次运行是不是处于「主文件解不开、已锁写」的状态（设置页可以据此提示）。
 pub fn is_locked() -> bool {
     LOCKED.load(Ordering::SeqCst)
@@ -3320,7 +3326,11 @@ pub fn load_from(path: &std::path::Path) -> Config {
                         crate::win::log(&format!("config: config.json 解析失败（{e}），尝试读备份"));
                         preserve_broken(path, &s);
                         match load_backup_of(path) {
-                            Some(c) => Some(c),
+                            Some(c) => {
+                                // v2.23.17：从备份救回来了 → 标记，稍后强制写回主文件
+                                RECOVERED.store(true, Ordering::SeqCst);
+                                Some(c)
+                            }
                             None => {
                                 crate::win::log("config: 备份也没有，用默认配置启动（坏文件已留档）");
                                 None
@@ -3334,6 +3344,18 @@ pub fn load_from(path: &std::path::Path) -> Config {
                     match load_backup_of(path) {
                         Some(c) => {
                             crate::win::log("config: 主文件解不开，但备份能用 —— 本次按备份启动");
+                            /* ⚠ v2.23.17：**从备份救回来就把锁解开**。
+                             *
+                             * 原来的写法只置 LOCKED、从不清除 —— "主文件解不开"
+                             * 这一下会把整个进程的保存全部锁死：明明已经从滚动备份
+                             * 里救回了一份好配置，却既不写回、之后所有保存也都是
+                             * 空操作（只写日志）。用户看到的是"设置改了立刻生效、
+                             * 重启全没了"，每次启动都复现，只能手工删 config.json。
+                             *
+                             * 备份可用 = 数据没丢 → 解除锁；下面的写回逻辑会把这份
+                             * 好配置落到主文件（坏文件已由 `preserve_broken` 留档）。 */
+                            LOCKED.store(false, Ordering::SeqCst);
+                            RECOVERED.store(true, Ordering::SeqCst);
                             Some(c)
                         }
                         None => None,
@@ -3373,7 +3395,10 @@ pub fn load_from(path: &std::path::Path) -> Config {
     let raw = parsed.map(sanitize).unwrap_or_default();
     if let (Some(before), true) = (&before, path.exists()) {
         let after = serde_json::to_value(&raw).unwrap_or_default();
-        if before != &after {
+        /* v2.23.17：从备份救回来的情况，即使归一没有改动也要写回 ——
+         * 否则那份坏掉的 config.json 原地不动，下次启动再救一遍，
+         * 用户看到的是"每次启动都丢设置"。 */
+        if before != &after || RECOVERED.swap(false, Ordering::SeqCst) {
             /* ⚠ r99：这里必须写回**刚读的那个 path**，不能写 `save()`。
              *
              * `save()` 写的是全局 `config_path()`（真实 `%APPDATA%`）。而
@@ -4698,10 +4723,24 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
                 continue;
             }
             let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
-            // 读一下这份旧备份的完整度（读不出来当 0 —— 它本来就是坏的）
-            let q = read_backup_config(&p, &backup_pw)
-                .map(|c| backup_quality(&c))
-                .unwrap_or(0);
+            /* ⚠ v2.23.17：**读不出来的备份不参与轮转删除**。
+             *
+             * 原来把"读不出内容"当成完整度 0（`unwrap_or(0)`）—— 于是换过备份
+             * 密码之后旧备份全变 0 分，下面那条"比本次更有价值的备份一律不删"
+             * 直接失效（`0 > new_quality` 恒假），几轮保存就把 8 份旧备份全删光。
+             * 而它们也许正是用户还能用旧密码打开的唯一存档。
+             *
+             * 现在：解不开/读不出 = "不知道它多重要" → 一律保留，
+             * 只按时间淘汰**确认可读**的那些。 */
+            let q = match read_backup_config(&p, &backup_pw) {
+                Some(c) => backup_quality(&c),
+                None => {
+                    crate::win::log(&format!(
+                        "config: 旧备份 {name} 读不出来（可能是旧密码），不参与轮转删除"
+                    ));
+                    continue;
+                }
+            };
             /* ⚠ 核心保护：**比本次更有价值的备份一律不删**。
              *   本次写的是"默认配置"（q=0）时，所有有内容的旧备份都会被保住。 */
             if q > new_quality {

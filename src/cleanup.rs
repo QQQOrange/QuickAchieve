@@ -60,11 +60,18 @@ fn is_new_snapshot(name: &str) -> bool {
 /// 这些是**真·垃圾**：命名口径早就换了，旧名字的文件不参与任何保留策略 /
 /// 列表渲染，会一直躺在目录里。
 fn is_legacy_file(name: &str) -> bool {
-    name == "config.json.bak"
-        // 老快照固定名 / 老式带序号快照
-        || (name.starts_with("config.before-webdav") && !is_new_snapshot(name))
-        // 统一命名之前的固定云端文件名
-        || (name.starts_with("quickachieve-backup") && name.ends_with(".json"))
+    /* ⚠ v2.23.17：**别再删 `config.json.bak` 和老式 webdav 快照**。
+     *
+     * `config::load_backup_of` 把 `config.json.bak` 当成"主文件坏了之后的
+     * 最后兜底候选"（见那里注释 ①②③④），备份清单里也把它列成可恢复的一项。
+     * 而这里以前把它当"旧命名垃圾"删掉 —— 于是"主文件损坏 + 只剩这份老 bak"
+     * 的升级用户，唯一能救命的文件会被清理逻辑悄悄拿走。
+     *
+     * 老式带序号的 `config.before-webdav-*.json` 同理：它不在保留策略里，
+     * 删掉也没人记得，但它同样可能是一份**能读**的配置。
+     *
+     * 现在只剩真正没有任何代码引用的那一族算垃圾：统一命名之前的固定云端文件名。 */
+    name.starts_with("quickachieve-backup") && name.ends_with(".json")
 }
 
 /// 损坏留档：`preserve_broken` 写出来的 `config.json.bad-0` … `.bad-8`。
@@ -452,9 +459,11 @@ mod tests {
     fn legacy_detection_does_not_swallow_new_names() {
         // 新名字是「恢复前快照」，归 ② 管，不能被当成遗留垃圾删掉
         assert!(!is_legacy_file("config.before-webdav(2026-10-13 10-57-15).QuickAchieve"));
-        // 老名字要认出来
-        assert!(is_legacy_file("config.before-webdav-3.json"));
-        assert!(is_legacy_file("config.json.bak"));
+        /* v2.23.17：老名字**不再**算垃圾 —— 它们仍然可能是一份能读的配置，
+         * `config::load_backup_of` 也还把它们当兜底候选（见 is_legacy_file 的注释）。 */
+        assert!(!is_legacy_file("config.before-webdav-3.json"));
+        assert!(!is_legacy_file("config.json.bak"));
+        // 真正没有任何代码引用的那一族才算垃圾
         assert!(is_legacy_file("quickachieve-backup(2026-10-12 10-00-00).json"));
         // 正常的备份不是遗留
         assert!(!is_legacy_file("config(2026-10-13 09-55-03).QuickAchieve"));
