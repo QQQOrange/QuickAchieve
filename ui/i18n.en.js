@@ -1323,7 +1323,9 @@ window.QS_I18N.add({
     "框选后可调整 / 换用途": "Adjust or switch purpose after selecting",
     "默认关：框完立刻执行你打开的那个功能（识别就是识别、识图就是识图），不弹动作条、不问你第二遍。打开：松手后停在选区上 —— 四角出拖角手柄可微调，旁边浮出动作条可临时换成识别 / 翻译 / 识图 / 二维码 / 复制图片（「复制图片」只在打开这项时可用），双击或回车才执行": "Off (default): the function you opened runs as soon as you release the mouse — no action bar, no second question. On: the selection stays put — drag the corner handles to fine-tune, or use the action bar to switch to OCR / translate / image search / QR / copy image (\"copy image\" is only available with this on); double-click or press Enter to run.",
     "快捷键独占": "Exclusive hotkeys",
-    "开着：这个快捷键只激发本软件 —— 系统的、别的软件的同一个组合都收不到这次按键（我们在键盘钩子里就把它截住了）。关掉：两家一起响应（老行为）。Ctrl+Alt+Del / Win+L / Win+Tab 这类系统保留键拦不住，录了也不会独占": "On: the hotkey triggers only this app — the same combo no longer reaches the system or any other program (we swallow it in the low-level keyboard hook). Off: both react, as before. Combos the shell keeps for itself (Ctrl+Alt+Del, Win+L, Win+Tab) cannot be taken over, even if you record them."
+    "开着：这个快捷键只激发本软件 —— 系统的、别的软件的同一个组合都收不到这次按键（我们在键盘钩子里就把它截住了）。关掉：两家一起响应（老行为）。Ctrl+Alt+Del / Win+L / Win+Tab 这类系统保留键拦不住，录了也不会独占": "On: the hotkey triggers only this app — the same combo no longer reaches the system or any other program (we swallow it in the low-level keyboard hook). Off: both react, as before. Combos the shell keeps for itself (Ctrl+Alt+Del, Win+L, Win+Tab) cannot be taken over, even if you record them.",
+    "没取到文字就不弹": "No text, no bar",
+    "开着：只有真的选到文字才弹条 —— 拖滚动条、拖画布、拖图片，以及没选中任何东西就按 Ctrl+C，都不会再冒空条。关掉：拖一下就弹一条空条（Ctrl+C 也立刻弹），自绘界面取不到词时也能拿它点「识图 / OCR」": "On: the bar only appears when text is genuinely selected — dragging a scrollbar, a canvas or an image, or pressing Ctrl+C with nothing selected, no longer summons an empty bar. Off: any drag pops an empty bar (and Ctrl+C pops one immediately), which self-drawn interfaces and games still need to reach image search / OCR."
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

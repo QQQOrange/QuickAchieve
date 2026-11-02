@@ -1,0 +1,4 @@
+{
+  "没取到文字就不弹": "No text, no bar",
+  "开着：只有真的选到文字才弹条 —— 拖滚动条、拖画布、拖图片，以及没选中任何东西就按 Ctrl+C，都不会再冒空条。关掉：拖一下就弹一条空条（Ctrl+C 也立刻弹），自绘界面取不到词时也能拿它点「识图 / OCR」": "On: the bar only appears when text is genuinely selected — dragging a scrollbar, a canvas or an image, or pressing Ctrl+C with nothing selected, no longer summons an empty bar. Off: any drag pops an empty bar (and Ctrl+C pops one immediately), which self-drawn interfaces and games still need to reach image search / OCR."
+}

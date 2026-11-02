@@ -3134,8 +3134,12 @@ const SWITCHES = [
     ['s-triggerCopy', 'triggerCopy'],
     // v2.6.7：右下角"正在使用什么功能"的通知（默认开，见 config.rs default_true）
     ['s-notifyFeature', 'notifyFeature'],
-    // 2026-10-23：划选没取到文字就不弹（误触乱弹的主要来源，默认开）
-    // 2026-10-24：只管划选 —— Ctrl+C 一定弹，见 main.rs 的 ctrl_copy_bar
+    // 2026-10-23：没取到文字就不弹（误触乱弹的主要来源，默认开）
+    // 2026-10-24：一开始只管划选 —— Ctrl+C 一定弹
+    // v2.23.8：**Ctrl+C 也归它管了**。用户报「没选中文字也会弹出横条」，
+    //   查下来两条来路：① 没选中就按 Ctrl+C → 立刻弹空条；
+    //   ② 拖选复核时用"屏幕识别"当证据 → 拖滚动条/画布也可能认到字。
+    //   现在两条都按这个开关走：开着就只认"真的选到了文字"。
     ['s-barNeedText', 'barNeedText'],
     // v2.23.3：框选后可调整 / 换用途 —— **默认关**（框完立刻执行打开的那个功能）
     ['s-regionAdjust', 'regionAdjust'],
@@ -9451,6 +9455,16 @@ function webviewLabel() {
  *  但日志内容没跟着走）。现在**每条都写死自己的版本号**，
  *  发新版时**同时**加一条，对不上就是漏了。 */
 const CHANGELOG = [
+    {
+        ver: 'v2.23.8',
+        en: 'The bar no longer pops up when nothing is selected: pressing Ctrl+C with an empty selection used to show an empty bar immediately, and the drag path accepted "screen OCR found some words" as proof of a selection — so dragging a scrollbar or a canvas could summon it. Both now follow "no text, no bar" (on by default). Also in this round: region capture runs the entry you opened instead of asking again, a new Universal capture tile picks the action afterwards, and Exclusive hotkeys make a clashing combo trigger this app only.',
+        items: [
+            '<b>没选中文字就不弹横条（这次修的就是它）</b> —— 以前有两条路会冒空条：① <b>什么都没选中就按 Ctrl+C</b>，立刻弹一条空的；② 拖选复核时把「屏幕上认出了字」当成"选中了字"的证据，于是<b>拖滚动条、拖画布、拖窗口</b>，只要落点附近有文字就可能弹。现在两条都归「<b>没取到文字就不弹</b>」管（默认开）：只有复制 / 系统接口真的拿到文字才弹；关掉开关则恢复老行为（自绘界面、游戏那种复制不通的地方仍然靠它）。',
+            '<b>框选：打开哪个就只做哪个</b> —— 点 OCR 就识别、点识图就搜图、点二维码就读码，<b>框完立刻执行</b>，不再弹一条横条问你"要识别还是翻译还是识图"。想微调就打开「通用 → 触发 → 框选后可调整 / 换用途」。',
+            '<b>新的「万能框选」格</b> —— 想"先框再决定"就把它加进横条或网格页：框完才浮出<b>识别 / 翻译 / 识图 / 二维码 / 复制图片</b>，挑一个再执行（「复制图片」只在这条路上有）。',
+            '<b>快捷键独占</b> —— 你录的热键和其它软件撞车时，<b>只激发本软件</b>：系统的、别家的同一个组合都收不到这次按键（我们在键盘钩子里就截住了）。默认开，可在「通用 → 触发」关掉；Ctrl+Alt+Del / Win+L / Win+Tab 这类系统保留键拦不住。',
+        ],
+    },
     {
         ver: 'v1.5.16',
         en: 'Translation is no longer "one engine, one model": eight engines share one list in Settings (pick a default, tick a few extras), models can be pulled from your account instead of typed by hand, and every engine now gets its own box in the translation window, filled in parallel. When one engine fails, only its own box goes red — the others still deliver.',

@@ -3690,11 +3690,25 @@ fn copy_trigger(before: u32) {
             }
             CopyBar::OcrImage => show_ocr_only_bar(),
             CopyBar::Empty => {
-                /* 空条先弹（用户按了 Ctrl+C，就得立刻看见反应），之后 900ms
-                 * 内复制真落地了再补进去 —— 同一根横条，不重新摆窗，看不见跳动。
-                 * 这条补丁顺带兜住"复制慢"（远程桌面 / 剪贴板管理器转一手）。 */
-                let gen = show_bar(String::new(), true, true, None);
-                late_text_patch(before, gen, fg_pid);
+                /* ⚠ v2.23.8：**没取到文字就别弹了**（用户报的"没选中文字也弹横条"）。
+                 *
+                 * 以前这里立刻弹一条空横条，然后等 900ms 看有没有"迟到的复制"
+                 * 补进去。问题是"没选中任何文字时按 Ctrl+C"走的也是这条路 ——
+                 * 用户只是复制/手滑按了一下，屏幕上就冒出一条空横条。
+                 *
+                 * 现在：开着「没取到文字就不弹」（默认开）就先**别弹**，
+                 * 等复制真落地再说；落地了才弹（远程桌面 / 剪贴板管理器那种
+                 * 慢半拍的复制照样能被接住，只是横条晚 0.9 秒出现）。
+                 * 关掉这个开关则维持老行为：立刻弹空条 + 迟到补字。 */
+                if cfg_with(|c| c.bar_need_text) {
+                    late_show_if_text(before, fg_pid);
+                } else {
+                    /* 空条先弹（用户按了 Ctrl+C，就得立刻看见反应），之后 900ms
+                     * 内复制真落地了再补进去 —— 同一根横条，不重新摆窗，看不见跳动。
+                     * 这条补丁顺带兜住"复制慢"（远程桌面 / 剪贴板管理器转一手）。 */
+                    let gen = show_bar(String::new(), true, true, None);
+                    late_text_patch(before, gen, fg_pid);
+                }
             }
         });
     if spawned.is_err() {
@@ -3717,6 +3731,45 @@ fn clipboard_owned_by_pid(pid: u32) -> bool {
         pid
     };
     clipboard_owner_trusted(&[trusted])
+}
+
+/// 「没取到文字就不弹」时的迟到**首弹**：等复制落地，真有字才弹横条。
+///
+/// 和 `late_text_patch` 的区别：那个是"横条已经弹了，补文字"，
+/// 这个是"**横条还没弹**，等确认有字再弹"（v2.23.8）。
+///
+/// 为什么要等：用户按下 Ctrl+C 的那一刻我们读到的还是旧剪贴板（空/旧的），
+/// 真正的复制要几十到几百毫秒才落地；远程桌面、剪贴板管理器转一手还要更久。
+/// 不等就直接判"没字"，正版用户偶尔会被冤枉少一次横条；等 900ms 再判，
+/// 代价只是"没选中文字时什么都不会发生"（这正是用户要的）。
+fn late_show_if_text(before: u32, fg_pid: u32) {
+    if !win::wait_until(900, || clip::seq() != before) {
+        win::log("copy path: 没取到文字且开着「没取到文字就不弹」—— 这次不弹条");
+        return;
+    }
+    // 有的程序分两步写剪贴板，多等一拍再读
+    std::thread::sleep(Duration::from_millis(20));
+    if !clipboard_owned_by_pid(fg_pid) {
+        win::log("copy path: 迟到的复制归属校验没过（不是前台程序写的），不弹");
+        return;
+    }
+    let t = {
+        let _clip = lock_clip();
+        clip::read_text_any_within(30)
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default()
+    };
+    if !t.is_empty() {
+        win::log(&format!("copy path: 复制落地了（{} 字），弹条", t.chars().count()));
+        show_bar(t, true, true, None);
+        return;
+    }
+    if clip::has_image() && cfg_with(|c| c.ocr_enable) {
+        win::log("copy path: 迟到的是图片 → 弹「识别图片文字」横条");
+        show_ocr_only_bar();
+        return;
+    }
+    win::log("copy path: 剪贴板变了但没有任何文字 —— 不弹条");
 }
 
 /// 迟到的复制补丁 —— 「立刻弹 + 迟到补」里的后半截（见 `read_current`）。
@@ -4087,6 +4140,21 @@ fn ocr_region_text(drag: (i32, i32, i32, i32)) -> Option<String> {
 ///   不能把用户晾在那里。快通道 700ms 拿不到就直接看屏幕 —— 而"看屏幕"
 ///   正好就是微信这条路的唯一证据来源。
 fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option<String> {
+    /* ⚠ v2.23.8：**屏幕识别不再算"选中了文字"的证据**（当「没取到文字就不弹」开着时）。
+     *
+     * 用户报的是"没选中文字也会弹出横条"。查下来这条兜底就是主因：
+     * 复制 / UIA 都没拿到文字时，这里改成"看看屏幕上有没有字"—— 可屏幕上有字
+     * 跟"你选中了它"完全是两件事：拖一下滚动条、拖一下窗口、拖一下画布，
+     * 只要落点附近有文字，OCR 就会认出来，于是**每一次拖动都可能冒出一条横条**。
+     *
+     * 现在的口径：
+     *   · 开关开着（默认）→ 只认**复制 / UIA** 这种"真的有选区"的证据；
+     *     拿不到就当作没选中，不弹；
+     *   · 开关关掉 → 老行为（自绘界面 / 游戏的用户需要它：那些地方复制不通，
+     *     只能靠看屏幕确认）。
+     *
+     * 换句话说：宁可漏一次，也不要误弹一次。 */
+    let need_text = cfg_with(|c| c.bar_need_text);
     /* ⚠ 终端里**不模拟 Ctrl+C**。
      *
      * 控制台类窗口里 Ctrl+C 不是"复制"而是**中断信号**：没有选区时按下它，
@@ -4095,11 +4163,19 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
      * 终端里改走"看屏幕"，一样能确认有没有选中文字，还不会误杀进程。 */
     let start = win::window_under_point(drag.0, drag.1);
     if is_console_window(start) || is_console_window(win::root_window(start)) {
+        if need_text {
+            win::log("confirm: 起点在终端里，且「没取到文字就不弹」开着 —— 不模拟 Ctrl+C、也不看屏幕，不弹");
+            return None;
+        }
         win::log("confirm: 起点在终端里 —— 不模拟 Ctrl+C（会打断正在跑的命令），直接看屏幕");
         return ocr_region_text(drag).filter(|t| !t.trim().is_empty());
     }
     if let Some(t) = capture_selection_fast(target_pid, 700).filter(|t| !t.trim().is_empty()) {
         return Some(t);
+    }
+    if need_text {
+        win::log("confirm: 复制通道没拿到文字，且「没取到文字就不弹」开着 —— 不拿屏幕识别顶替，不弹");
+        return None;
     }
     win::log("confirm: 复制通道没拿到 —— 改看屏幕（本地识别）确认选区");
     ocr_region_text(drag).filter(|t| !t.trim().is_empty())
