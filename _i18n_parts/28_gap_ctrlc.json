@@ -1,0 +1,4 @@
+{
+  "复制时弹横条（Ctrl+C）": "Pop the bar on copy (Ctrl+C)",
+  "按 Ctrl+C 复制时顺手弹横条并取词；没复制到文字就不弹（见下面「没取到文字就不弹」）。它只管 Ctrl+C 这条路 —— 网格页的快捷键在「网格页」里单独设": "Pressing Ctrl+C pops the bar and grabs the selected text; with no text grabbed it stays hidden (see “No text, no bar” below). This switch only covers the Ctrl+C route — the grid hotkey is configured separately under “Grid”."
+}

@@ -71,7 +71,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowLongPtrW, SetWindowPos, ShowWindow, WindowFromPoint, GUITHREADINFO, GWL_EXSTYLE,
     HWND_TOPMOST, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
     SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE,
-    SW_SHOWNORMAL, WS_EX_NOACTIVATE, WS_EX_TRANSPARENT,
+    SW_SHOWNORMAL, WS_EX_NOACTIVATE, WS_EX_TRANSPARENT, WS_EX_LAYERED,
     WS_EX_TOOLWINDOW, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT,
     IsWindow, WM_CLOSE, WM_SYSCOMMAND, SC_CLOSE,
     // UIA 探针唤醒用：带超时的消息发送，防对方进程卡死把我们也拖住
@@ -2976,6 +2976,136 @@ pub fn window_under_point(x: i32, y: i32) -> HWND {
     unsafe { WindowFromPoint(POINT { x, y }) }
 }
 
+/// 读一个 exe **磁盘上**的文件版本，返回 `(主, 次, 修订)`。
+///
+/// 用途只有一个：让正在运行的进程知道"我现在这个 exe 还是不是最新的"
+/// （见 `main.rs` 的 `spawn_binary_update_watch`）。
+///
+/// 为什么不能用别的手段代替：
+///   · 进程自己编译进去的版本（`CARGO_PKG_VERSION`）是**启动那一刻**的值；
+///   · 而我给它换新版的方式是"先把旧 exe 改名、再把新 exe 拷到原路径"——
+///     此时进程里的代码还是旧的，`current_exe()` 指向的却已经是新文件。
+///   两个一对比就知道"磁盘上已经换了人"，于是可以自己交班重启。
+///
+/// ⚠ 用户机器上这个是**管理员权限**在跑（普通权限杀不掉），所以"自动接管"
+///   不只是方便 —— 不自动接管的话，用户不手动重启就永远在跑旧代码
+///   （这一次就是这么被坑的：13:35 起的进程，16:52 部署的新版一直没生效）。
+pub fn exe_file_version(path: &std::path::Path) -> Option<(u16, u16, u16)> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+    };
+
+    /// `VS_FIXEDFILEINFO` 的布局（Win32 SDK 固定，不依赖 windows crate 有没有导出）。
+    #[repr(C)]
+    struct VsFixedFileInfo {
+        signature: u32,
+        struc_version: u32,
+        file_version_ms: u32,
+        file_version_ls: u32,
+        product_version_ms: u32,
+        product_version_ls: u32,
+        file_flags_mask: u32,
+        file_flags: u32,
+        file_os: u32,
+        file_type: u32,
+        file_subtype: u32,
+        file_date_ms: u32,
+        file_date_ls: u32,
+    }
+
+    unsafe {
+        let wide: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut handle = 0u32;
+        let size = GetFileVersionInfoSizeW(PCWSTR(wide.as_ptr()), Some(&mut handle));
+        if size == 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; size as usize];
+        GetFileVersionInfoW(PCWSTR(wide.as_ptr()), None, size, buf.as_mut_ptr() as *mut _).ok()?;
+        let mut ptr: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut len = 0u32;
+        // 根块就是空字符串（"\")：只取 VS_FIXEDFILEINFO 那一段
+        let sub: Vec<u16> = "\\".encode_utf16().chain(std::iter::once(0)).collect();
+        if !VerQueryValueW(
+            buf.as_ptr() as *const _,
+            PCWSTR(sub.as_ptr()),
+            &mut ptr,
+            &mut len,
+        )
+        .as_bool()
+        {
+            return None;
+        }
+        if ptr.is_null() || (len as usize) < std::mem::size_of::<VsFixedFileInfo>() {
+            return None;
+        }
+        let info = &*(ptr as *const VsFixedFileInfo);
+        if info.signature != 0xFEEF_04BD {
+            return None;
+        }
+        Some((
+            (info.file_version_ms >> 16) as u16,
+            (info.file_version_ms & 0xFFFF) as u16,
+            (info.file_version_ls >> 16) as u16,
+        ))
+    }
+}
+
+/// 这个窗口是不是"盖在别人身上、用户其实点不到的"浮层。
+///
+/// 判据只用扩展样式，都是点一下就能查的：
+///   · `WS_EX_TRANSPARENT` —— 点击穿透（鼠标消息直接穿过它落到下面）；
+///   · `WS_EX_LAYERED | WS_EX_TOOLWINDOW` —— 分层工具窗（贴纸、悬浮球、
+///     输入法候选、屏幕增强类工具常见这一套）。
+///
+/// 为什么要认它们（v2.23.10，来自用户日志）：拖选时 `WindowFromPoint` 落在
+/// 一个第三方工具窗上（日志里是 `HwndWrapper[MouseWheelEnhancement.App…]`），
+/// 于是我们拿它的 pid 当"选词目标"—— 和前台浏览器对不上，`capture_selection_fast`
+/// 里的归属校验就判"前台已经换人"，**连 Ctrl+C 都不发**，结果是浏览器里
+/// 选了一整段字却什么都不弹。用户看不到任何原因。
+pub fn is_click_through_overlay(hwnd: HWND) -> bool {
+    if hwnd.0.is_null() {
+        return false;
+    }
+    unsafe {
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let transparent = (ex & WS_EX_TRANSPARENT.0) != 0;
+        let layered_tool = (ex & WS_EX_LAYERED.0) != 0 && (ex & WS_EX_TOOLWINDOW.0) != 0;
+        /* 纯工具窗也当浮层：正常应用的主窗口**不会**是 WS_EX_TOOLWINDOW
+         * （它不显示在任务栏、也不参与 Alt+Tab）。鼠标底下出现一个工具窗，
+         * 基本都是贴纸 / 悬浮球 / 屏幕增强 / 输入法候选这类盖在上面的东西。
+         * 用户日志里那个 `HwndWrapper[MouseWheelEnhancement.App…]` 就是这种。 */
+        let tool = (ex & WS_EX_TOOLWINDOW.0) != 0;
+        transparent || layered_tool || tool
+    }
+}
+
+/// 取「用户以为自己在操作的那个窗口」—— 浮层会被跳过，改用前台窗口。
+///
+/// 只给"判断这次选词属于哪个应用"用（黑名单、剪贴板归属校验），
+/// **不改** `window_under_point` 本身的语义：别处（比如判断是不是落在横条上）
+/// 仍然需要"鼠标底下真实是谁"。
+pub fn window_under_point_app(x: i32, y: i32) -> HWND {
+    let h = window_under_point(x, y);
+    if h.0.is_null() {
+        return h;
+    }
+    let root = root_window(h);
+    if is_click_through_overlay(root) || is_click_through_overlay(h) {
+        let fg = foreground_window();
+        if !fg.0.is_null() {
+            return fg;
+        }
+    }
+    h
+}
+
 pub fn set_foreground(hwnd: HWND) {
     unsafe {
         let _ = SetForegroundWindow(hwnd);
@@ -4391,6 +4521,20 @@ pub mod tip {
                 r.right - r.left,
                 r.bottom - r.top
             )
+        }
+    }
+}
+
+#[cfg(test)]
+mod version_probe_tests {
+    /// 诊断用：`QA_VERSION_PROBE=<exe 路径> cargo test version_probe -- --nocapture`
+    /// 验证"读磁盘 exe 的文件版本"这条路真的能拿到版本号。
+    #[test]
+    fn version_probe() {
+        let Some(p) = std::env::var("QA_VERSION_PROBE").ok() else { return };
+        match super::exe_file_version(std::path::Path::new(&p)) {
+            Some(v) => println!("PROBE OK {p} -> {}.{}.{}", v.0, v.1, v.2),
+            None => println!("PROBE FAIL {p} -> None"),
         }
     }
 }

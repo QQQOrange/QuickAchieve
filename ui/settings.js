@@ -3220,6 +3220,10 @@ const SWITCH_DEFAULT = {
     // v1.2.0：自动更新默认**开**。功能名就叫"自动更新"，默认不勾等于默认没这功能；
     // 用户取消勾选后彻底不检测（见 main.rs 的 auto_check_on_start）。
     autoUpdate: true,
+    // v2.23.10：这两条 Rust 侧的默认值都是 true（`default_true`），
+    // 之前漏登记 → 配置还没送到时开关显示成"关"，用户以为默认是关的。
+    notifyFeature: true,
+    hotkeyExclusive: true,
     // r54：识图搜索默认开着、默认加到横条（与 config.rs 的 default_true 对齐）
     imgEnable: true,
     imgAddToBar: true,

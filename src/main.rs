@@ -1700,8 +1700,13 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
             _ => false,
         };
         if fg != target_pid && fg != me && !same_app {
+            /* v2.23.10：把两边的 exe 也写进日志。
+             * 光看 pid 分不清"真的是两个软件"还是"同一个软件的不同进程"
+             * （浏览器就是主进程 + 一堆渲染进程）—— 上一次排查就是卡在这。 */
             win::log(&format!(
-                "capture(exact): 前台已经换人（pid {fg}，目标 {target_pid}）—— 不发 Ctrl+C，放弃这次复核"
+                "capture(exact): 前台已经换人（pid {fg}={:?}，目标 {target_pid}={:?}）—— 不发 Ctrl+C，放弃这次复核",
+                win::process_exe(fg),
+                win::process_exe(target_pid)
             ));
             return None;
         }
@@ -4162,7 +4167,18 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
      * （`post_show_copy_fill` 对空文字的拖选一律复制），趁这次把口子堵上：
      * 终端里改走"看屏幕"，一样能确认有没有选中文字，还不会误杀进程。 */
     let start = win::window_under_point(drag.0, drag.1);
-    if is_console_window(start) || is_console_window(win::root_window(start)) {
+    /* ⚠ v2.23.10：**浮层下面如果是终端，也绝不能发 Ctrl+C**。
+     *
+     * 判据以前只看"鼠标底下那个窗口"，可鼠标底下可能盖着一层穿透浮层
+     * （贴纸 / 悬浮球 / 屏幕增强工具），这时 `start` 是浮层、不是终端 ——
+     * 我们照样把 Ctrl+C 发出去，落到下面的终端里就是**中断信号**，
+     * 用户正在跑的编译 / 脚本当场被杀。
+     * 现在把"鼠标底下的窗口"和"用户以为自己在操作的那个窗口"都查一遍。 */
+    let app_win = win::window_under_point_app(drag.0, drag.1);
+    let is_con = [start, win::root_window(start), app_win, win::root_window(app_win)]
+        .iter()
+        .any(|h| is_console_window(*h));
+    if is_con {
         if need_text {
             win::log("confirm: 起点在终端里，且「没取到文字就不弹」开着 —— 不模拟 Ctrl+C、也不看屏幕，不弹");
             return None;
@@ -5519,6 +5535,64 @@ fn set_fav_pinned(on: bool) {
     win::log(&format!("fav pinned = {on}"));
 }
 
+/// 本进程**编译进去**的版本 —— "我现在跑的是哪一版"。
+const RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// 磁盘上的 exe 换人了就自动交班重启。
+///
+/// # 为什么必须有（v2.23.10）
+///
+/// 用户这台机器上的程序是**管理员权限**在跑（普通权限杀不掉），而我们换新版
+/// 的做法是"先把旧 exe 改名、再把新 exe 拷回原路径"——进程本身仍然在跑旧代码，
+/// 只有重启才会切过去。
+///
+/// 代价非常真实：我这边修好、测试全绿、发版、部署，**他那边一直跑着几小时前的
+/// 旧版本**，报上来的问题我这边怎么都复现不了。这次就吃了这个亏 ——
+/// 13:35 启动的进程，16:52 部署的 2.23.9 一直没生效，白折腾了好几轮。
+///
+/// 所以：每 20 秒看一眼磁盘上 exe 的文件版本，和自己的版本号对不上就在**空闲时**
+/// 交班重启（新进程带 `QS_TAKEOVER=1`，会等单实例互斥体让出来）。
+/// 横条开着、框选遮罩在、拾取器在，都算"忙"，绝不打断用户。
+fn spawn_binary_update_watch() {
+    win::log(&format!("binwatch: 我这一版是 {RUNTIME_VERSION}，开始盯着 exe 有没有被换"));
+    std::thread::Builder::new()
+        .name("qs-binwatch".into())
+        .spawn(|| {
+            // 启动后会有一堆事（建窗、装钩子、云同步），先别插队
+            std::thread::sleep(Duration::from_secs(45));
+            loop {
+                std::thread::sleep(Duration::from_secs(20));
+                let Ok(exe) = std::env::current_exe() else { continue };
+                let Some(v) = win::exe_file_version(&exe) else { continue };
+                let disk = format!("{}.{}.{}", v.0, v.1, v.2);
+                if disk == RUNTIME_VERSION {
+                    continue;
+                }
+                /* ⚠ 先记日志、再判断忙不忙。
+                 * 这条日志是"为什么没自动重启"的唯一线索：如果它出现了却没重启，
+                 * 说明当时正忙；如果它压根没出现，说明版本比对没走到（读不到版本、
+                 * 或 `current_exe()` 指向的还是旧名）。 */
+                win::log(&format!(
+                    "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 准备交班（检查是否空闲）"
+                ));
+                let busy = is_bar_shown()
+                    || app().get_webview_window("region").is_some()
+                    || app().get_webview_window("picker").is_some();
+                if busy {
+                    // 用户正在用，下次再看
+                    win::log("binwatch: 当前有横条/框选在进行，稍后再试");
+                    continue;
+                }
+                win::log(&format!(
+                    "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 自动交班重启"
+                ));
+                update_restart();
+                return;
+            }
+        })
+        .ok();
+}
+
 fn spawn_detector() {
     let (tx, rx) = std::sync::mpsc::channel::<Ev>();
     // v2.23.6：装钩子之前先把"要独占的热键"推过去 ——
@@ -5671,7 +5745,15 @@ fn spawn_detector() {
                             let bo_end = is_bar_outer(x, y);
                             let bo_start = is_bar_outer(sx, sy);
                             let ok_sel = should_try_select(sx, sy);
-                            let tgt = win::window_under_point(sx, sy);
+                            /* v2.23.10：**跳过穿透浮层**再认"这次选词属于谁"。
+                             *
+                             * 用户日志里：拖选落点是一个第三方工具窗
+                             * （`HwndWrapper[MouseWheelEnhancement.App…]`），
+                             * 我们拿它的 pid 当目标 → 和前台浏览器对不上 →
+                             * `capture_selection_fast` 判"前台已经换人"、连
+                             * Ctrl+C 都不发 → 浏览器里选了一整段却什么都不弹。
+                             * 浮层只是盖在上面，用户以为自己点的是下面那个应用。 */
+                            let tgt = win::window_under_point_app(sx, sy);
                             let br = bar_rects()
                                 .map(|(o, _)| format!("{}x{}@({},{})", o.2 - o.0, o.3 - o.1, o.0, o.1))
                                 .unwrap_or_else(|| "hidden".to_string());
@@ -6819,6 +6901,15 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
         win::log(&format!(
             "apply_view: 备份里有 {pruned_apps} 个指向已删除外部软件的横条哨兵，已剪掉"
         ));
+    }
+    /* v2.23.10：**界面语言也要跟着恢复**。
+     *
+     * `config_view` 一直在广播 `uiLang`，`apply_view` 却漏了这一项 ——
+     * 于是「整份备份 / 挑选导出」恢复之后，别的设置都回来了，界面语言还是
+     * 恢复前那个。用户看到的是"我把配置导回来了，但语言没回来"。
+     * 这类"广播有、应用没有"的漏项很难自己发现，靠的是逐键比对。 */
+    if let Some(l) = s("uiLang") {
+        cfg.ui_lang = config::normalize_ui_lang(&l);
     }
 }
 
@@ -9986,10 +10077,22 @@ fn hard_close_region(why: &str) {
      * （本文件自己也承认它可能过期），上一个遮罩销毁后句柄会被系统复用 ——
      * 强杀一个"看起来还在"的旧句柄，风险是打到别人的窗口上。
      * 现在改成显式循环：每 50ms 重查一次，最多 12 次。 */
-    let a = app();
+    /* ⚠ v2.23.10：判据从"label 表里还有没有"换成 **`REGION_HWND` 还活不活**。
+     *
+     * `close_window()` 会**同步**把 label 从表里摘掉（t.rs 的 `destroy`），
+     * 真正的原生窗口却要等主线程那一拍 Job 才拆 —— 所以 `get_webview_window("region")
+     * .is_none()` **第一次查就为 true**，这个循环永远立刻 `gone = true` 直接返回，
+     * 下面那段"Win32 强杀"成了永远走不到的死代码。
+     *
+     * 后果正是这段兜底存在的唯一理由：主线程被别的建窗/命令卡住时按 Esc
+     * （或页面 5 秒没心跳、或 30 秒总闸），日志写"已关闭"，屏幕上那块全屏遮罩
+     * **还在吃鼠标** —— 用户满屏点不动、连任务栏都点不到，只能杀进程。
+     *
+     * 现在按"原生窗口还在不在"判：句柄为 0 或 `IsWindow` 为假才算真没了。 */
     let mut gone = false;
     for _ in 0..12 {
-        if a.get_webview_window("region").is_none() {
+        let raw = REGION_HWND.load(Ordering::SeqCst);
+        if raw == 0 || !win::is_window(HWND(raw as *mut _)) {
             gone = true;
             break;
         }
@@ -17700,7 +17803,12 @@ fn fav_pick_image() -> Value {
     if !queued {
         return json!({ "ok": false, "error": "弹不出文件选择框（主线程忙），稍后再试" });
     }
-    let Ok(Some(path)) = rx.recv() else {
+    /* ⚠ v2.23.10：这里原来是**无超时**的 `rx.recv()`。
+     * `run_on_main_thread` 在没有内联执行的那个版本里，这个 Job 永远轮不到 ——
+     * 于是点「添加图片」= 整个程序永久冻死，只能任务管理器杀。
+     * 现在那条已经改成"在主线程就内联执行"，正常不会再卡；但这里仍然加超时兜底：
+     * 万一将来又出类似回归，用户看到的是"2 分钟后提示超时"，而不是死机。 */
+    let Ok(Some(path)) = rx.recv_timeout(Duration::from_secs(120)) else {
         return json!({ "ok": false, "error": "cancelled" });
     };
     // 文件本身可能很大（几十 MB 的原图），先按体积挡一道再读进内存
@@ -20920,7 +21028,22 @@ fn main() {
      */
     let elevate_wanted = match read_local_elevate_pref() {
         Some(v) => v,
-        None => !QS_LITE_PORTABLE && config::load().auto_elevate,
+        None => {
+            /* ⚠ v2.23.10：用户从没表达过意愿时，**按配置里的默认值办，并且立刻钉住**。
+             *
+             * 这里原来是 `!QS_LITE_PORTABLE && config::load().auto_elevate` ——
+             * 本仓库 `QS_LITE_PORTABLE = true`，于是**永远是 false**：
+             * 设置页的「默认以管理员身份运行」显示着开、实际以普通权限跑。
+             * 而微信 / QQ 这类管理员权限的程序，UIPI 会让普通权限进程的全局钩子
+             * 收不到任何输入 —— 表现就是"在微信里划词不弹条、快捷键也不灵"，
+             * 用户怎么查都查不出原因（开关明明是开的）。
+             *
+             * 现在：首次启动按 `auto_elevate` 的实际值决定，并**写进 elevate.pref**，
+             * 让"显示的状态"和"真实行为"从此一致（之后按用户拨过的开关走）。 */
+            let v = config::load().auto_elevate;
+            write_local_elevate_pref(v);
+            v
+        }
     };
     if !no_elevate && elevate_wanted && !win::is_admin() {
         win::log("not admin, trying to relaunch as admin");
@@ -21262,6 +21385,8 @@ fn main() {
             if stress.is_none() {
                 spawn_detector();
                 spawn_rbutton_watch();
+                // v2.23.10：磁盘上的 exe 换人了就自动交班（见函数注释）
+                spawn_binary_update_watch();
                 spawn_bar_topmost_watch();
                 // 2026-10-23：鼠标走远了自动收起（"这个横条我不会要了"）
                 spawn_bar_away_guard();

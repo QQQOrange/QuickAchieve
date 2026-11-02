@@ -22,7 +22,7 @@
 <p>How long it waits after you let go is set by “<b>General → Trigger → Show delay</b>”; 100–200 ms
                avoids the “it pops up while I'm still dragging” feeling.</p>
             <p>If it gets in the way in some apps (games, remote desktop, an editor while you take notes),
-               add them to the blocklist under “<b>General → Scope</b>”; if you only want it in a handful of
+               add them to the blocklist under “<b>Scope</b>”; if you only want it in a handful of
                apps, switch that to allowlist mode instead.</p>
         </div>
     </details>
@@ -35,7 +35,7 @@
             <ul>
                 <li><b>Color</b>: the backdrop follows “<b>Appearance theme</b>” — “Follow system” tracks
                     Windows light / dark mode, and you can also pin it to light or dark;</li>
-                <li><b>Style (pick one)</b>: switch under “<b>General → Bar style</b>”; the page only shows the
+                <li><b>Style (pick one)</b>: switch under “<b>Bar look → Bar style</b>”; the page only shows the
                     options belonging to the current style — <b>Default</b> = a solid plate; <b>Frosted</b> =
                     blurs the screen behind the bar; <b>Liquid glass</b> = grabs a patch of the desktop behind
                     it as a texture and does real refraction / chromatic aberration / rim light, and with video
@@ -49,9 +49,9 @@
                     is no room below); turn on “<b>Anchor the bar to the pointer</b>” and it always follows the
                     mouse.</li>
                 <li><b>Size</b>: icon size, padding, opacity and frost strength are all adjustable — change them
-                    under “<b>General → Preview</b>” and the real thing updates immediately.</li>
-                <li>Move the pointer to a tile's edge, or hold Space and drag, to move the bar; press <b>Esc</b>
-                    to put it away.</li>
+                    under “<b>Bar look → Preview</b>” and the real thing updates immediately.</li>
+                <li>The bar's position comes from where it pops up (next to the selection / the pointer —
+                    see “Bar look → Position”); press <b>Esc</b> to put it away.</li>
                 <li><b>Rest the pointer on a tile for about 0.16 s</b> and its name pops up (far quicker than the
                     system tooltip), disappearing as soon as you move away; it stays quiet while you drag tiles.</li>
                 <li><b>Long-press to reorder</b> (v2.17.0): hold a tile for about 0.3 s and it turns
@@ -154,7 +154,7 @@
 <li><b>A tile can be</b>: a built-in action (text recognition / image search / translation / <b>universal capture</b> / QR decode and generate / wrapping symbols / text cleanup), a specific engine, an app, a URL, or a favorites folder;</li>
 <li><b>Editing needs edit mode</b>: click the ✏️ at the top right before you can add content, remove a tile with ×, or drag it around; in read-only mode a click simply runs the tile, so nothing is changed by accident;</li>
 <li><b>Long-press to drag</b>: even in read-only mode, <b>holding a tile for about 0.4 s</b> switches to edit mode and lifts it up, following the mouse or your finger; the other tiles make room and it lands in the new position when you let go. Touch and mouse behave identically;</li>
-<li><b>An empty slot is “add”</b>: click it to open “Add to this cell”, which offers <b>built-in actions</b>, <b>models</b> (follow the default / pin one / pick several) and <b>engines and apps</b>;</li>
+<li><b>An empty slot is “add”</b>: click it to open “Add to this cell”, which lists 8 flat groups — <b>extra actions</b> (recognize / translate / image search / universal capture / QR / wrap…), <b>text tools</b>, <b>smart links</b>, <b>favorites</b>, <b>OCR models</b>, <b>image-search models</b>, <b>translation models</b> and <b>engines</b> (web, app and hotkey engines combined);</li>
 <li><b>Models can run in parallel</b>: choose “Multiple models (parallel)…” and tick several, and that tile then runs all of them — each result gets its own section (the same for text recognition, image search and translation). “Default (follow settings)” behaves exactly like clicking OCR on the bar;</li>
 <li><b>Several pages</b>: you can create more than one page and switch between them; “Per app” additionally lets you pin one page to one application — press the hotkey inside that app and only that page appears;</li>
 <li><b>Moving across pages</b>: drag a tile to the <b>left or right edge</b> of the grid and hold for about 0.4 s — it is <b>sent to the end of the neighbouring page</b> and the view flips over so you can see where it landed. Dragging left on the first page (or right on the last) does not wrap around: with no page on that side, nothing happens.</li>
@@ -175,7 +175,7 @@
                <b>Engine → Engines on the bar → “+ Add to bar”</b> (you can put it on the grid page too, <b>Ctrl+Shift+G</b>).
                Click it, drag a box, and an action bar appears — <b>recognize / translate / image search / QR code /
                copy image</b> — pick one and it runs. <b>Copy image</b> (put the region on the clipboard as an image)
-               only exists on that path.</p>
+               comes with the action bar — always present for Universal capture, and for plain OCR / image search / QR only when you turn on “Adjust after selecting” above.</p>
             <p>Turn on “<b>Adjust or switch purpose after selecting</b>” under <b>General → Trigger</b> and the OCR /
                image search / QR tiles also pause after the drag so you can fine-tune the box by its corners;
                leave it off (the default) and each tile just runs what you opened.</p>
@@ -200,7 +200,7 @@
                     block), the rest fold down to a single name each; the bar button / hotkey / selection
                     fallback all follow the default engine — there is no such thing as “added but never used”.
                     Two families:
-                    <br>· <b>LLM-based</b> (SiliconFlow, Kimi, Zhipu, Alibaba Cloud Bailian, Volcano Ark, OpenAI,
+                    <br>· <b>LLM-based</b> (SiliconFlow, Kimi, Zhipu GLM-4V, Qwen (DashScope), Volcano Ark, OpenAI,
                     Gemini, OpenRouter, custom): OpenAI-compatible APIs — fill in the Key, click
                     <b>“Fetch models”</b> and pick a model (vision-capable ones first, and you can type a name by
                     hand);
@@ -254,8 +254,8 @@
                     itself, gets the <b>result page URL</b> and then opens the browser — your box selection lands
                     on the results, nothing left to do. The defaults are the two that passed hands-on testing in
                     this mode (Yandex + SauceNAO);
-                    <br>· <b>Open the page</b> (Doubao / Tongyi / Kimi / Zhipu / Yuanbao / Ernie): opens that
-                    engine's page with the screenshot placed on the clipboard; these six also send <b>Ctrl+V</b>
+                    <br>· <b>Open the page</b> (Doubao / Tongyi / Kimi / Zhipu / Yuanbao / Wenxin): opens that
+                    engine's page with the screenshot placed on the clipboard; these six also send <b>Ctrl+V</b> (by default they do <b>not</b> when you tick more than one — see “turn off auto-keys for multiple”)
                     for you (since r66 a further Enter follows, so the image goes out and it answers directly);
                     <br>· <b>By image URL</b> (the URL variant of Yandex / trace.moe): only accepts <b>a public
                     image link you fill in yourself</b>. The app <b>deliberately does not</b> upload your
@@ -276,7 +276,7 @@
                     so an upload may be refused — when that happens the app falls back to opening its upload
                     page, and you click “Upload from computer” and pick that temp image; the flow never
                     dead-ends;</li>
-                <li><b>Whether it appears on the bar</b>: the “Add to selection bar” switch on the “Image
+                <li><b>Whether it appears on the bar</b>: the “Add the image-search entry to the selection bar” switch on the “Image
                     search” page controls that 🖼. Turn it off and image search still works, it just has to be
                     started from the settings page;</li>
                 <li>The 🖼 only shows on the bar when the feature itself is on <b>and</b> “Add to selection bar”
@@ -351,7 +351,7 @@
         <summary>⑦ Hotkeys at a glance (all changeable, all removable)</summary>
         <div class="help-body">
             <ul>
-                <li><b>Ctrl+C</b> — summon the bar (can be turned off under “General → Trigger”). Popping up as
+                <li><b>Ctrl+C</b> — summon the bar (can be turned off with “Pop the bar on Ctrl+C” under “General → Trigger”). Popping up as
                     you copy a selection is its best entry point;</li>
                 <li><b>Ctrl+Alt+O</b> — start a box selection for <b>text recognition</b> (the whole feature can
                     be turned off on the “Text recognition” page);</li>
@@ -360,8 +360,8 @@
             </ul>
             <p>To record a hotkey, click the button and press the combo you want (it has to include Ctrl / Alt /
                Shift). Changed your mind halfway? Press Esc, or click somewhere else.</p>
-            <p><b>What if the combo clashes with something else?</b> “General → Trigger →
-               <b>Exclusive hotkeys</b>” (on by default) makes the combo fire <b>this app only</b> — neither the
+            <p><b>What if the combo clashes with something else?</b> “<b>Grid → Features →
+               Exclusive hotkeys</b>” (on by default) makes the combo fire <b>this app only</b> — neither the
                system nor any other program receives that keystroke, because we swallow it in the low-level
                keyboard hook. Turn it off and both react, as before. Combos the shell keeps for itself
                (<b>Ctrl+Alt+Del, Win+L, Win+Tab</b>) cannot be taken over, even if you record them.</p>
@@ -409,9 +409,9 @@
             <ul>
                 <li><b>Backup</b> (<code>.QuickAchieve</code>) = <b>the whole configuration</b>, encryptable,
                     restored by <b>overwriting everything</b> — use it for a new computer or a reinstall;</li>
-                <li><b>Plain-text export</b> (<code>.qsconf</code>) = <b>a few chosen items</b>,
-                    <b>unencrypted</b>, imported by <b>overwriting only those items and leaving the rest
-                    alone</b> — use it to hand a colleague a set of settings.</li>
+                <li><b>Picked export</b> (<code>.qsconf</code>) = <b>a few chosen items</b>, plain text by
+                    default and optionally <b>encrypted</b>, imported by <b>overwriting only those items and
+                    leaving the rest alone</b> — use it to hand a colleague a set of settings.</li>
             </ul>
             <p>On the “<b>Data</b>” page click “Export”, then tick what you want:</p>
             <ul>
@@ -421,15 +421,20 @@
                     your keys;</li>
                 <li>The button then reads “Export 3 items…” according to what's ticked; <b>with nothing ticked it
                     opens no dialog</b> (there's nothing to export, so it doesn't bother you);</li>
-                <li>The exported file is <b>plain JSON</b> that Notepad can open and edit, <b>unencrypted</b> —
-                    which is exactly why it <b>can</b> be sent to someone else to import, and exactly why you
-                    shouldn't move passwords with it;</li>
+                <li><b>Encrypt the export</b>: ticking “Encrypt” asks for a password and writes ciphertext that
+                    only the same password can import. <b>Ticking any private item (API key / favorites /
+                    backup settings) forces encryption</b> — the box ticks itself and locks, because those items
+                    unencrypted are a password on a postcard;</li>
+                <li>With encryption unticked the exported file is <b>plain JSON</b> that Notepad can open and
+                    edit — which is exactly why it <b>can</b> be sent to someone else to import, and exactly why
+                    you shouldn't move passwords with it;</li>
                 <li><b>Import merges</b>: only the items present in the file are poured back, and your current
                     favorites and hotkeys are not touched by a single character. The flip side is that using it
                     to “restore the scene” will not delete what you have extra right now — for a full overwrite
                     take the ⑧ Backup route;</li>
-                <li><b>Plain-text import only accepts plain-text exports</b>: feeding it an encrypted backup (or
-                    a whole backup file) is rejected outright, with a pointer to the “Backup” page — the two
+                <li><b>Import has to match</b>: an encrypted export asks for the password when imported (right
+                    password, it goes in). A <b>whole backup file</b> (<code>.QuickAchieve</code>) fed to
+                    picked-import is rejected outright, with a pointer to the “Backup” page — the two
                     routes each do one job, and “import” never quietly turns into “full overwrite”.</li>
             </ul>
         </div>
@@ -440,7 +445,7 @@
         <div class="help-body">
             <p><b>Double-click</b> the tray icon = open the settings window directly (a single click does
                nothing — the tray sits next to the clock, and a stray click popping a window is annoying).</p>
-            <p><b>Right-click</b> the tray icon = menu: open settings, back up now, start recognition, quit.</p>
+            <p><b>Right-click</b> the tray icon = menu: <b>Settings…</b> / <b>Pause</b> (for meetings; turns into “Resume”) / <b>Capture text (Ctrl+Alt+O)</b> / <b>Sync to cloud now</b> / <b>Open config folder</b> / <b>Quit Quick Achieve</b>.</p>
             <p>To quit for good, click “Quit” in the tray menu — closing the settings window does not exit the
                app, which stays in the background waiting for your next selection.</p>
         </div>
@@ -462,7 +467,7 @@
                     is covered in <b>⑧b Plain-text import / export</b>. Whoever you decide to send that file to
                     is who ends up responsible for it.</li>
                 <li>Image-search screenshots and OCR screenshots are <b>temporary</b>: discarded once used and
-                    never left on the disk (except for the three “image URL” engines in image search — there the
+                    never left on the disk (except for the two “image URL” engines in image search — there the
                     public link is one <b>you</b> supplied and the app merely opens it).</li>
             </ul>
             <p><b>Sharing it with someone is safe</b>: the app itself contains no account information — OCR keys

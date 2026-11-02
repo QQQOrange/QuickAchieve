@@ -3122,7 +3122,10 @@ function imgIconNode() {
 }
 
 function syncImgBtn() {
-    const on = !!(CONF && CONF.imgEnable) && !!(CONF && CONF.imgAddToBar);
+    // v2.23.10：缺省必须是"开" —— 这个文件里别处（同函数上方 `on()`）都写的是
+  // `CONF[kind] !== false`，偏偏这一行用了 `!!CONF.x`：配置还没送到（或字段缺省）时
+  // 会被当成"关"，横条上就少一颗识图入口，等下一次广播才冒出来。
+  const on = !!(CONF && CONF.imgEnable !== false) && !!(CONF && CONF.imgAddToBar !== false);
     /* r72：识图进了 bar_list 之后，横条上那颗由 renderBar 画在引擎区里 ——
      * 固定位这颗必须让开，否则会同时出现两个识图按钮。 */
     const inList = (CONF && Array.isArray(CONF.barList) ? CONF.barList : []).indexOf(window.QS_IMG) >= 0;

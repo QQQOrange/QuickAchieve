@@ -2326,9 +2326,18 @@ impl Default for Config {
             delay_ms: 0,
             bar_idle_sec: default_bar_idle_sec(),
             bar_away_px: default_bar_away_px(),
-            // 便携测试版默认不拦（与原版用户的实际设置一致：浏览器里 UIA/OCR 常取不到字，
-            // 开着这条就表现为「选中了也不弹」）。正式版仍默认 true。
-            bar_need_text: !crate::QS_LITE_PORTABLE,
+            /* ⚠ v2.23.10：**三处默认值必须一致**。
+             *
+             * 之前这里是 `!QS_LITE_PORTABLE`（本仓库的构建开关是 true → 默认 false），
+             * 而 serde 字段级写的是 `default_true`、前端 `SWITCH_DEFAULT` 也是 true。
+             * 于是同一个开关在两种装机上行为相反：
+             *   · 全新配置（走 `Config::default()`）→ **关** → 没选中文字也弹空横条；
+             *   · 老配置（缺这个键，走 serde default）→ **开** → 不弹。
+             * 用户报的"没选中文字也弹横条"里，有一部分就是这么来的。
+             *
+             * 统一成 **true**：和帮助文字（「没取到文字就不弹（默认开）」）、
+             * 和前端开关的初值、和 serde 默认都对得上。 */
+            bar_need_text: true,
             bar_trigger_mode: default_bar_trigger_mode(),
             // 框选后是否停下给调整/换用途 —— 默认关：框完立刻执行打开的那个功能
             region_adjust: false,

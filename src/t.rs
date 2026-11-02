@@ -125,6 +125,17 @@ pub mod async_runtime {
             match self.0.try_recv() {
                 Ok(v) => std::task::Poll::Ready(Ok(v)),
                 Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    /* ⚠ v2.23.10：**不要 `wake_by_ref()` 立刻自唤醒**。
+                     *
+                     * `pollster::block_on` 收到 Pending + 立刻被唤醒 = 马上重 poll ——
+                     * 一轮 `try_recv` 失败就再转一圈，**把一个核跑到 100%** 直到
+                     * 工作线程结束。用户那边表现为：翻译 / 重新识别期间风扇狂转。
+                     *
+                     * 改成"睡 5ms 再看"：block_on 本来就是阻塞语义，5ms 的延迟
+                     * 对这类任务（网络请求、模型推理）完全无感，但 CPU 从满核降到接近 0。
+                     * 不去做真正的 park/unpark：这里的 waker 来自 pollster，
+                     * 它没有跨线程唤醒通道，硬接反而更容易写错。 */
+                    std::thread::sleep(std::time::Duration::from_millis(5));
                     cx.waker().wake_by_ref();
                     std::task::Poll::Pending
                 }
@@ -251,6 +262,27 @@ impl AppHandle {
 
     /// 事件循环线程同步执行即返回；别的线程则投递过去。
     pub fn run_on_main_thread<F: FnOnce() + Send + 'static>(&self, f: F) -> Result<()> {
+        /* ⚠ v2.23.10：**已经在主线程上就当场执行**（恢复 Tauri 语义）。
+         *
+         * 这里原来是"无条件 `send_event(Job)`"。而命令本身就是在主线程的
+         * `drain_ipc → run_ipc` 调用栈里同步跑的 —— 于是"投递一个弹框任务、
+         * 然后自己阻塞等结果"就成了**自己等自己**：
+         *
+         *   run_on_main_thread(弹文件对话框) → 投进事件队列
+         *   rx.recv_timeout(300s)            → 主线程卡住
+         *   主线程还在这个函数里，队列里那个 Job 永远轮不到 → 对话框永远不弹
+         *
+         * 用户看到的是：点「选择应用 / 挑图标 / 选模型目录 / 选备份目录」之后
+         * **整个界面冻住**，2~5 分钟后弹回"已取消"；收藏夹「添加图片」那条
+         * 没有超时，直接永久冻死，只能杀进程。
+         *
+         * 真 Tauri 里 `run_on_main_thread` 在主线程上就是**立刻执行**，
+         * 所以业务代码（和它们的注释）都按那个前提写。这里把它对齐，
+         * 那 8 条命令立刻恢复正常：对话框当场弹出（rfd 自己的模态循环会抽消息）。 */
+        if on_main() {
+            f();
+            return Ok(());
+        }
         send_event(HostEvent::Job(Box::new(f)));
         Ok(())
     }
@@ -1952,7 +1984,20 @@ impl Builder {
 
     pub fn run(self, _ctx: ()) -> Result<()> {
         std::panic::set_hook(Box::new(|info| {
-            trace(&format!("PANIC: {info}"));
+            /* ⚠ v2.23.10：panic **必须**落到 log.txt 里。
+             *
+             * 这里原来只写 `trace`，而 `trace` 默认不落盘（要 `QS_TRACE=1`）——
+             * 于是主线程上任何一次 panic（建窗、with_webview、命令里）的表现都是
+             * "程序突然没了"，日志里一行线索都没有。GUI 子系统下 stdout/stderr
+             * 本来就看不见，等于什么都没留下。
+             *
+             * `win::log` 走的是后台写盘线程（同步 `log_sync` 备用），
+             * 在 panic 现场调用是安全的：它只做一次 `try_send`。 */
+            let msg = format!("PANIC: {info}");
+            trace(&msg);
+            crate::win::log(&msg);
+            // panic 时进程可能马上 abort，再补一条同步落盘（最多多花几毫秒）
+            crate::win::log_sync(&msg);
         }));
         trace("run: enter");
         let mut map: HashMap<&'static str, Invoker> = HashMap::new();
