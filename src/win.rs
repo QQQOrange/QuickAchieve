@@ -21,7 +21,8 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::System::DataExchange::GetClipboardOwner;
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, UIA_TextPatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern,
+    TextPatternRangeEndpoint_End, TextPatternRangeEndpoint_Start, UIA_TextPatternId,
 };
 use windows::Win32::System::Threading::{
     CreateMutexW, GetCurrentProcess, GetCurrentThreadId, GetGuiResources, GetProcessHandleCount,
@@ -1975,13 +1976,26 @@ pub fn uia_probe(pt: Option<POINT>) {
                                 println!("uia:     选区数 = {n}");
                                 for i in 0..n {
                                     if let Ok(r) = ranges.GetElement(i) {
+                                        /* v2.23.9：**把"折叠"打出来**。
+                                         * 一个只有光标、没有选中任何字符的范围
+                                         * 也算一段选区 —— Chromium 系会把光标处
+                                         * 读成 1 个字符，正是"单击就弹条"的根因。
+                                         * 探针里不显示这一位，下次还会被它骗。 */
+                                        let collapsed = r
+                                            .CompareEndpoints(
+                                                TextPatternRangeEndpoint_End,
+                                                &r,
+                                                TextPatternRangeEndpoint_Start,
+                                            )
+                                            .map(|v| v == 0)
+                                            .unwrap_or(false);
                                         match r.GetText(120) {
                                             Ok(b) => println!(
-                                                "uia:     选区[{i}] = {:?}",
+                                                "uia:     选区[{i}] = {:?}　折叠={collapsed}（折叠=true 表示只有光标，不是选区）",
                                                 b.to_string()
                                             ),
                                             Err(e) => {
-                                                println!("uia:     选区[{i}] GetText 失败：{e}")
+                                                println!("uia:     选区[{i}] GetText 失败：{e}（折叠={collapsed}）")
                                             }
                                         }
                                     }
@@ -2056,6 +2070,33 @@ fn text_from_text_pattern(pat: &IUIAutomationTextPattern) -> Option<String> {
         let mut out = String::new();
         for i in 0..n {
             let Ok(r) = ranges.GetElement(i) else { continue };
+            /* ⚠ v2.23.9：**折叠的插入点不是选区**。
+             *
+             * 用户报「双击也会出现横条，哪怕没选中文字」。抓日志看到的是：
+             *   `uia: 读到选区（耗时 4ms）`
+             *   `start_capture: UIA 通道拿到 1 chars`
+             *   `mouseup: drag=false ... at=(2236,804)`   ← 就是一次单击
+             * 也就是说 Chromium 系（`Chrome_RenderWidgetHostHWND`）在**只有光标、
+             * 没有任何选区**时，`GetSelection()` 仍然返回一个"落在光标处"的范围，
+             * 而 `GetText()` 把它读成 1 个字符 —— 于是任何一次单击都像是"选中了
+             * 一个字"，横条就弹出来了。双击只是按了两次而已。
+             *
+             * 判据用 `CompareEndpoints(End, r, Start)`：== 0 表示起止是同一个
+             * 端点（空选区 / 光标）。这类范围一律跳过，不当成文字。
+             * 只选了一个字（真的用鼠标选）时起止端点不同，不会被误杀。 */
+            let collapsed = match r.CompareEndpoints(
+                TextPatternRangeEndpoint_End,
+                &r,
+                TextPatternRangeEndpoint_Start,
+            ) {
+                Ok(v) => v == 0,
+                // 拿不到比较结果时**不要**因此丢掉真实选区：退回原判据
+                Err(_) => false,
+            };
+            if collapsed {
+                log("uia: 跳过折叠选区（只有光标，没有选中任何字符）");
+                continue;
+            }
             if let Ok(b) = r.GetText(MAX_CHARS) {
                 out.push_str(&b.to_string());
                 // 已经够长了就别再拼下一段（多选区的极端情况）
