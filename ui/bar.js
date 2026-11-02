@@ -3387,7 +3387,11 @@ function togglePanel(force) {
     stage.style.removeProperty('padding-left');
     stage.style.removeProperty('padding-top');
     westOv = 0;
-    favPinned = false;
+    /* v2.23.23：**只有收起时才取消钉住**。
+     * 这段代码在 togglePanel 里，打开面板时也会跑 —— 于是用户刚钉住，
+     * 再按一次收藏夹快捷键（打开面板）就被静默取消钉住了，他完全不知道。
+     * 打开时保留 pin，收起时再清。 */
+    if (!want) favPinned = false;
     winOffX = 0;
     winOffY = 0;
     barEl.classList.remove('ghost');
@@ -4039,7 +4043,26 @@ function toggleGridEdit() {
 }
 
 /** 把第 i 项从网格页移出（不删智能直达/引擎本身）。 */
+/* v2.23.23：**网格的增删必须串行**。
+ *
+ * 这两处都是"读当前页 → 改数组 → `await set_grid_items` → 回写"。
+ * 在编辑态里快速连点两个格子的 ×，两次调用会在**任何一次 await 返回之前**
+ * 读到同一份 `pg.items`，后返回的那次用旧数组整份覆盖 —— 前一次的结果被吞掉
+ * （移出的项又回来了 / 先加的那项没加上），前后端内容此后不一致，
+ * 要等下次唤起才对齐。用一个 promise 链把这类写操作排成队。 */
+let gridWriteChain = Promise.resolve();
+function gridWrite(fn) {
+    const next = gridWriteChain.then(fn, fn);
+    // 链上任何一次失败都不能把后面的堵死
+    gridWriteChain = next.catch(() => {});
+    return next;
+}
+
 async function gridRemoveAt(i) {
+    return gridWrite(() => gridRemoveAtNow(i));
+}
+
+async function gridRemoveAtNow(i) {
     const pg = gridPageNow();
     const cur = (Array.isArray(pg.items) ? pg.items : []).slice();
     if (i < 0 || i >= cur.length) return;
@@ -4721,6 +4744,10 @@ async function gridPickMultiCommit() {
 
 /** 把 `name` 加到被点的那一格。落库走 `set_grid_items`，和其它改动同一套。 */
 async function gridAddItem(name) {
+    return gridWrite(() => gridAddItemNow(name));
+}
+
+async function gridAddItemNow(name) {
     if (!name) return;
     const pg = gridPageNow();
     const cur = (Array.isArray(pg.items) ? pg.items : []).slice();
@@ -5330,6 +5357,10 @@ function ensureGridIcon(host, name) {
 
 function renderGrid(g) {
     gridOn = true;
+    /* v2.23.22/23：网格登场要**确保不带着淡出态**。
+     * 上一次文字横条在「淡出延迟」到点前被收起时，`qs-dim` 会留在 barEl 上 ——
+     * 网格随后登场就是半透明的，要等鼠标进出一次才恢复。 */
+    barEl.classList.remove('qs-dim');
     // 记住这一次的载荷：往格子里加完内容要按它重画（后端广播只带 config，
     // 不会重发 grid 载荷），见 gridAddItem。
     gridLast = g;
@@ -5642,7 +5673,20 @@ function runEngineSearch(engine, forceText) {
 
 /** 回车时用的默认引擎：上次用过的那个，没记录就横条上第一个。 */
 function defaultEngine() {
-    return (CONF && CONF.lastEngine) || barList()[0] || '';
+    /* v2.23.23：**哨兵不能当"默认搜索引擎"**。
+     *
+     * `barList()[0]` 可能是 `@ocr` / `@fav:xxx` / `@go:xxx` 这类功能格 ——
+     * 拿它去 `open_search` 必然被后端拒掉。以前只有"首次使用、还没记录
+     * lastEngine、横条第一格又是功能格"时才会踩到：回车毫无反应，
+     * 只在控制台留一条 unhandledrejection。
+     * 现在跳过所有 `@` 开头的项，取第一颗真引擎。 */
+    const last = (CONF && CONF.lastEngine) || '';
+    if (last && last.charAt(0) !== '@') return last;
+    const list = (typeof barList === 'function' ? barList() : []) || [];
+    for (const x of list) {
+        if (typeof x === 'string' && x && x.charAt(0) !== '@') return x;
+    }
+    return '';
 }
 
 /** 激活面板里一颗格子（点击 / 过滤框回车两条路共用）。
@@ -5916,7 +5960,12 @@ function beginBarDrag(x, y) {
     barDrag.gx = x - r.left;
     barDrag.gy = y - r.top;
     document.body.appendChild(g);
-    el.setPointerCapture && el.setPointerCapture(barDrag.pointerId);
+    /* v2.23.23：`setPointerCapture` 要包 try —— 元素已经被重画掉（脱离文档）时，
+     * Chromium 会抛异常；抛在 setTimeout 里只进错误日志，而 `barDrag.active`
+     * 会一直留在 true、body 上留一个幽灵，直到下一次 pointerup 才被救回来。 */
+    try {
+        if (el.setPointerCapture && el.isConnected) el.setPointerCapture(barDrag.pointerId);
+    } catch (_) { }
     /* v2.20.0：拖动期间挂起「鼠标移远就收起」—— 用户拖出横条是想把它**移出**，
      * 窗口先被收掉的话，这一拖就断在半路，看起来像"拖出去就崩"。 */
     barDrag.holdOn = true;
@@ -5975,6 +6024,14 @@ document.addEventListener('pointermove', (e) => {
         enginesEl.insertBefore(el, kids[at]);
     }
 }, true);
+
+/* v2.23.23：长按拖动只有 pointerup 一条收尾路径。
+ * 长按的那 320ms 里横条被重画（配置广播 / tip 的 renderBar(true)），
+ * 或触控被系统手势打断时，`barDrag` 会挂在那儿：幽灵留在 body 上、
+ * `barDrag.active` 一直是 true，直到下一次 pointerup 才被"回滚"救回来。
+ * 补两条兜底，任何异常中断都直接收干净。 */
+window.addEventListener('pointercancel', () => { try { dragCleanup(); } catch (_) { } }, true);
+window.addEventListener('blur', () => { try { dragCleanup(); } catch (_) { } }, true);
 
 document.addEventListener('pointerup', (e) => {
     if (!barDrag) return;
@@ -6042,7 +6099,13 @@ inputQ.addEventListener('keydown', (e) => {
      *   一次 IME 判断都没有。 */
     if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter') {
-        runEngineSearch(defaultEngine());
+        /* v2.23.23：补 catch —— 没有引擎可搜（首格是功能哨兵且没记录 lastEngine）时
+         * 以前是一条静默的 unhandledrejection，界面毫无反应。 */
+        const eng = defaultEngine();
+        if (!eng) { showBarTip('横条上还没有可搜索的引擎，去设置里加一个'); return; }
+        runEngineSearch(eng).catch((err) => {
+            showBarTip('打开失败：' + String((err && err.message) || err || '').slice(0, 40));
+        });
     } else if (e.key === 'Escape') {
         e.stopPropagation();
         if (inputQ.value) inputQ.value = '';
