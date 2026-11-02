@@ -1335,6 +1335,21 @@ function curTa() {
     // 活动框 = 用户刚点/聚焦过的那个；它被藏起来或已经不在 DOM 里就退回 #text
     if (activeTa && activeTa.isConnected && !activeTa.hidden
         && activeTa.offsetParent !== null) return activeTa;
+    /* ⚠ v2.23.16：**「都看」多框模式下绝不能退回隐藏的 #text**。
+     *
+     * `renderResultText` 在多框模式下跳过 `setText`，所以 #text 里躺着的是
+     * **上一张图**的文字（或冷启动时的空串）。于是：
+     *   · 冷启动就点「复制」→ 提示"没有可复制的文字"，看着像按钮坏了；
+     *   · 先单框、后转多框 → 复制 / 翻译 / 「打开链接」拿到上一张图的内容，
+     *     甚至把上一张图里的网址打开。
+     *
+     * 现在：多框时优先取"第一个有内容的框"，都没有就取第一个框。 */
+    if (multiOn) {
+        const wrap = $('panesMulti');
+        const tas = wrap ? Array.from(wrap.querySelectorAll('textarea')) : [];
+        const filled = tas.find((t) => (t.value || '').trim());
+        return filled || tas[0] || $('text');
+    }
     return $('text');
 }
 function markActiveTa(el) { if (el) activeTa = el; }
@@ -1378,6 +1393,15 @@ function setMultiLayout(on, plan, keepValues) {
     wrap.hidden = !multiOn;
     if (!multiOn) { wrap.innerHTML = ''; wrap.dataset.sig = ''; return; }
     const sig = plan.join('|');
+    /* ⚠ v2.23.16：换名单（用户在设置里勾/取消一家「同时识别」）时会重建
+     * 这些框，而重建 = `innerHTML = ''` —— 屏幕上已经显示的结果**会被清空**。
+     * 之前只靠 `keepValues`（而它只保留"已存在的框"的值，新名单下全空）。
+     * 现在先把每个引擎已有的文字按 engine id 存一份，重建后回填。 */
+    const keepByEng = Object.create(null);
+    for (const d of wrap.querySelectorAll('.pm')) {
+        const t = d.querySelector('textarea');
+        if (t && t.value) keepByEng[d.dataset.eng] = t.value;
+    }
     if (wrap.dataset.sig !== sig) {
         wrap.dataset.sig = sig;
         wrap.innerHTML = '';
@@ -1406,6 +1430,8 @@ function setMultiLayout(on, plan, keepValues) {
         const e = d.dataset.eng;
         const ta = d.querySelector('textarea');
         if (!ta) continue;
+        // v2.23.16：重建时把该引擎上一帧的文字回填回来（见上面的 keepByEng）
+        if (!ta.value && keepByEng[e]) ta.value = keepByEng[e];
         if (keepValues) { ta.classList.toggle('ghost', !ta.value); continue; }
         const v = partText(e) || lastPart[e] || '';
         if (ta.value !== v) ta.value = v;

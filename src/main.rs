@@ -8538,7 +8538,15 @@ fn stash_before_restore(why: &str) {
     }
     /* 和 `stash_local_config` 一样"只留最近 N 份"：恢复是个可以反复做的动作，
      * 不裁的话点几次就堆一屏快照。这里按**整个 before- 家族**裁
-     * （webdav 快照 + 本地恢复快照共用额度），和 cleanup.rs 的口径一致。 */
+     * （webdav 快照 + 本地恢复快照共用额度），和 cleanup.rs 的口径一致。
+     *
+     * ⚠ v2.23.16：**不能按整个文件名排序**。
+     * 家族里有两类名字：`config.before-restore(时间)` 和
+     * `config.before-webdav(时间)`；按字符串比，`r` < `w` ——
+     * 刚写的 restore 快照永远排第一，下面 `remove(0)` 立刻把它删掉，
+     * 日志却理直气壮写着"恢复前已留本机副本"。等 webdav 快照攒满额度，
+     * 用户挑错备份就**没有退路**了。
+     * 现在按文件**修改时间**排序（最新的排最后，只淘汰最旧的）。 */
     let mut all: Vec<std::path::PathBuf> = match std::fs::read_dir(&dir) {
         Ok(rd) => rd
             .filter_map(|e| e.ok())
@@ -8552,7 +8560,11 @@ fn stash_before_restore(why: &str) {
             .collect(),
         Err(_) => Vec::new(),
     };
-    all.sort();
+    all.sort_by_key(|p| {
+        std::fs::metadata(p)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    });
     while all.len() > KEEP_SNAPSHOTS {
         let p = all.remove(0);
         let _ = std::fs::remove_file(p);

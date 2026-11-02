@@ -573,8 +573,16 @@ function buildPanes(list) {
 /** 当前「活动」结果框。被摘掉 / 藏起来就退回第一家。 */
 function curTa() {
     if (activeTa && activeTa.isConnected && !activeTa.hidden) return activeTa;
-    const first = panes.values().next();
-    return first.done ? null : first.value.ta;
+    /* ⚠ v2.23.16：`first.done` 是**迭代器**的 done，不是「这一格翻完了」。
+     * 原来的写法恒取第一家 —— 同时翻两家、第一家失败（框是空的）、第二家出了
+     * 译文时，用户不点任何框直接点「复制译文」，拿到的是空串 + 一句"还没有译文"，
+     * 而旁边那格明明满屏文字。现在优先取"第一个有内容且已完成的框"。 */
+    let fallback = null;
+    for (const p of panes.values()) {
+        if (!fallback) fallback = p.ta;
+        if ((p.ta.value || "").trim()) return p.ta;
+    }
+    return fallback;
 }
 function markActiveTa(el) {
     if (!el) return;
@@ -644,8 +652,18 @@ function appendDelta(id, delta) {
  *  文本取原文框此刻的内容（不是唤起时那份）—— 用户很可能改了几个字再点。
  *  失败时错误原样进那一格的说明：Rust 那边已经分好类了（缺 Key / 401 /
  *  429 / 网络不通各有各的说法，还带厂商名），界面不再自己猜。 */
+let rerunPending = false;
+
 async function runAll() {
-    if (busy) return;
+    if (busy) {
+        /* ⚠ v2.23.16：**忙着的时候不能把新文字丢掉**。
+         * 场景：翻译窗正在翻长文，用户又从横条/OCR 窗送一段新文字进来。
+         * 原文框和标题当场就换成了新的，可这一轮译文还在流式写进来 ——
+         * 原文和译文对应的两段不同文字，新文字要等本轮结束再手点一次才翻。
+         * 现在记一笔，本轮结束后自动按新原文重跑。 */
+        rerunPending = true;
+        return;
+    }
     const text = $('src').value;
     if (!text.trim()) { toast('没有可翻译的文字'); return; }
     const target = curTarget();
@@ -667,6 +685,9 @@ async function runAll() {
         )
     );
     const done = await Promise.all(jobs);
+    /* v2.23.16：这一轮如果在等待期间被作废（用户点了「清空」、或又送进新文字
+     * 触发了重跑），**不要再往框里填** —— 否则"清空了又自己冒出来"。 */
+    if (curRound !== round) { setBusy(false); return; }
     const fails = done.filter((r) => !r.ok);
     for (const r of done) fillPane(r.id, r.ok ? r.out : '', r.ok ? null : r.err);
     if (fails.length) {
@@ -676,6 +697,11 @@ async function runAll() {
             : (fails.length + ' 家没翻出来，第一家是：' + fails[0].err), true);
     }
     setBusy(false);
+    // v2.23.16：本轮结束前又送进来过新文字 —— 立刻按新原文重跑（见 runAll 开头）
+    if (rerunPending) {
+        rerunPending = false;
+        runAll();
+    }
 }
 
 /** 收到"新的一段文字"（窗口已经开着，横条 / OCR 窗又点了一次翻译）。
@@ -793,6 +819,10 @@ $('btnCopySrc').addEventListener('click', async () => {
 });
 
 $('btnClear').addEventListener('click', () => {
+    /* v2.23.16：清空要**作废当前这一轮** —— 否则还在路上（1~3 秒）的旧译文
+     * 会照着 round 校验一路填回空框里，用户看到"清空了又自己冒出来"。 */
+    curRound = '';
+    rerunPending = false;
     $('src').value = '';
     clearPanes();
     showNote('');
