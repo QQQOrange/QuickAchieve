@@ -5575,6 +5575,13 @@ fn spawn_binary_update_watch() {
                 win::log(&format!(
                     "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 准备交班（检查是否空闲）"
                 ));
+                /* 更新正在进行时别插手：更新器自己会"改名 → 换新 → 重启"，
+                 * 我们这时候再起一次只会和它抢同一条交班路径（最坏是两个新进程
+                 * 争单实例，一个立刻退出）。 */
+                if UPDATE_BUSY.load(Ordering::SeqCst) {
+                    win::log("binwatch: 更新正在进行，交给更新流程");
+                    continue;
+                }
                 let busy = is_bar_shown()
                     || app().get_webview_window("region").is_some()
                     || app().get_webview_window("picker").is_some();
