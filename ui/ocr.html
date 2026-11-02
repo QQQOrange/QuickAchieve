@@ -995,6 +995,8 @@ async function recleanWith(mode, btn, on) {
     btn.disabled = true;
     const origText = btn.innerHTML;
     btn.innerHTML = '<span class="spinner"></span>处理中';
+    // v2.23.21：整理也走一遍扫描态 —— 期间不许再点别的重跑按钮（会并发 OCR）
+    setScanning(true);
     try {
         const st = await invoke('ocr_reclean', {
             mode,
@@ -1012,9 +1014,9 @@ async function recleanWith(mode, btn, on) {
          * 顺带：多框模式下 `saved` 取的是**隐藏的** `#text`，回滚过去更没意义。 */
         toast('文本整理失败：' + ((e && e.message) || e));
     } finally {
-        // ⚠ 还原成**当前**该有的禁用态，而不是无条件 false：这一趟进行中可能
-        //   有另一路（段控）开了扫描，那时这些按钮必须保持禁用。
-        btn.disabled = scanning;
+        setScanning(false);
+        // 自己那颗也要放开（setScanning 管不到"发起它的那颗按钮"的 disabled）
+        btn.disabled = false;
         btn.innerHTML = origText;
     }
 }
@@ -1131,6 +1133,13 @@ $('btnRerun').addEventListener('click', async () => {
     const saved = ta.value;
     ta.value = '正在重新识别…';
     ta.classList.add('ghost');
+    /* v2.23.21：**真正进入扫描态**。
+     *
+     * `setScanning()` 以前只在自检里被调用 —— 也就是说"识别中不许再点"
+     * 这套保护从来没生效过：点完「重新识别」，用户还能顺手再点一次，
+     * 同一张图并发跑两次 OCR（多打一次网络请求、多跑一次本地识别），
+     * 最后留在框里的是后返回的那一次。截图区的"识别中"扫描动画同理。 */
+    setScanning(true);
     try {
         const out = await invoke('ocr_rerun');
         // 后端把结果推过来后会自动填到文本框；这里只兜底：万一没推，至少把
@@ -1145,8 +1154,8 @@ $('btnRerun').addEventListener('click', async () => {
         ta.classList.remove('ghost');
         toast('重新识别失败：' + (e && e.message || e));
     } finally {
-        // ⚠ 同 recleanWith：还原成当前该有的禁用态（扫描中要保持禁用）
-        btn.disabled = scanning;
+        setScanning(false);
+        btn.disabled = false;
         btn.classList.remove('busy');
         btn.innerHTML = origText;
     }

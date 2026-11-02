@@ -443,48 +443,30 @@ pub fn set_icon(png: &[u8]) {
 }
 
 pub fn set_tooltip(tip: &str) {
+    /* v2.23.21：这段原来是**三次独立加锁 + 一段死代码**
+     * （`clone_def()` 拷一份又丢掉、`let _ = hicon;`），读起来像在改图标，
+     * 实际只是更新提示文字。现在收成一次加锁：取 hwnd + hicon，
+     * 同时把 SLOT 里的 tip 换掉（菜单重建等地方会读它）。 */
     let Some(hwnd) = ensure_msg_window() else { return };
     let hicon = {
-        let g = match SLOT.lock() {
-            Ok(g) => g,
-            Err(e) => e.into_inner(),
-        };
-        match g.as_ref() {
-            Some(s) => {
-                let mut g2 = s.def.clone_def();
-                g2.tip = tip.to_string();
-                s.def.tip.clone()
-            }
-            None => return,
-        }
-    };
-    let _ = hicon;
-    {
         let mut g = match SLOT.lock() {
             Ok(g) => g,
             Err(e) => e.into_inner(),
         };
-        if let Some(s) = g.as_mut() {
-            s.def.tip = tip.to_string();
-        }
-    }
-    let hicon2 = {
-        let g = match SLOT.lock() {
-            Ok(g) => g,
-            Err(e) => e.into_inner(),
-        };
-        match g.as_ref() {
-            Some(s) => s.hicon,
+        match g.as_mut() {
+            Some(s) => {
+                s.def.tip = tip.to_string();
+                s.hicon
+            }
             None => return,
         }
     };
     let mut nid = NOTIFYICONDATAW::default();
-    fill_nid(&mut nid, hwnd, hicon2, tip);
+    fill_nid(&mut nid, hwnd, hicon, tip);
     unsafe {
         let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
     }
 }
-
 pub fn set_menu(items: Vec<(String, String, bool)>) {
     let mut g = match SLOT.lock() {
         Ok(g) => g,

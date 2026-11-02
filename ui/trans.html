@@ -776,9 +776,21 @@ function applyPlan(list) {
  *  ⚠ 不能直接拿广播里的 CONF 拼名单：那份算法在 Rust（config::trans_plan），
  *  前端拼一份迟早对不上；也不能每来一次广播就重建 —— 用户正在看译文时
  *  把框全冲掉等于"设置页动一下、译文全没了"。 */
+/* v2.23.21：**这个处理器可重入，必须只认最后一次**。
+ *
+ * 配置广播来得密（改一个设置就一次），而这里要 await 两次 IPC。
+ * 两次广播交错时，先发的慢响应可能后到 —— 于是**旧名单覆盖新名单**，
+ * 用户看到"刚在设置里加的一家引擎没进来 / 删掉的那家又出现了"，
+ * 而且界面不会自己纠正（除非再改一次设置）。
+ * 加个序号，回来时不是最后一次就直接丢掉。 */
+let cfgSeq = 0;
 listen('qs://config', async () => {
-    CONF = await invoke('get_config').catch(() => CONF);
+    const my = ++cfgSeq;
+    const conf = await invoke('get_config').catch(() => CONF);
+    if (my !== cfgSeq) return;   // 期间又来了新的广播，这次的结果已经过期
+    CONF = conf;
     const s = await invoke('trans_session').catch(() => null);
+    if (my !== cfgSeq) return;
     if (s && Array.isArray(s.plan) && s.plan.length) applyPlan(s.plan);
     else syncCaps();
 });
