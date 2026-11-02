@@ -6080,7 +6080,7 @@ fn config_view() -> Value {
         // 没取到文字就不弹（默认开）—— 误触乱弹的主要来源。
         "barNeedText": cfg.bar_need_text,
         // v2.16.0：框选之后先停一下（可拖角微调 + 换用途）。关掉 = 松手立即执行。
-        "regionHold": cfg.region_hold,
+        "regionAdjust": cfg.region_adjust,
         // v2.18.1：上次在动作条上点的动作 —— 页面拿它当"双击执行"的默认项
         "regionLastAction": cfg.region_last_action,
         // v2.14.0：横条触发方式（"always" = 选中即弹 / "ctrl" = 按住 Ctrl 才弹）。
@@ -6414,7 +6414,7 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     if let Some(x) = n("barAwayPx") { cfg.bar_away_px = x.clamp(0, 4000) as i32; }
     if let Some(x) = b("barNeedText") { cfg.bar_need_text = x; }
     // v2.16.0：老备份没有这个键 → 保持当前值（默认 true）
-    if let Some(x) = b("regionHold") { cfg.region_hold = x; }
+    if let Some(x) = b("regionAdjust") { cfg.region_adjust = x; }
     /* v2.14.0：触发方式。老备份里没有这个键 → 保持当前值（= always），
      * 不要因为恢复一份 2026 年之前的备份就把用户改成"必须按 Ctrl"。 */
     if let Some(x) = s("barTriggerMode") {
@@ -6789,8 +6789,10 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
             cfg.bar_away_px = value.as_i64().unwrap_or(400).clamp(0, 4000) as i32
         }
         "barNeedText" => cfg.bar_need_text = value.as_bool().unwrap_or(true),
-        // v2.16.0：框选后停留（默认开）。关掉 = 松手立即执行（老行为）。
-        "regionHold" => cfg.region_hold = value.as_bool().unwrap_or(true),
+        /* v2.23.3：框选后是否停下给调整/换用途。**默认关** ——
+         * 框完立刻执行你打开的那个功能（识别 / 识图 / 二维码），不再弹动作条。
+         * 开着才有手柄 + 动作条（也才有"复制图片"那条路）。 */
+        "regionAdjust" => cfg.region_adjust = value.as_bool().unwrap_or(false),
         // v2.18.1：上次动作。白名单之外（手改、老页面）一律清空 = 按本次用途执行。
         "regionLastAction" => {
             cfg.region_last_action = normalize_region_action(value.as_str().unwrap_or(""))
@@ -12759,6 +12761,27 @@ fn ocr_start(engine: Option<String>) {
     std::thread::spawn(move || ocr_start_flow(engine));
 }
 
+/// v2.23.3：**万能框选**（`@any` 哨兵）。只开遮罩，框完由用户在动作条上挑。
+///
+/// 和 `ocr_start` / `qr_start` 的区别：这里**不预设任何用途** ——
+/// 不预热 token、不查凭据、不弹"还没配凭据"，因为用户此刻还没说要做什么。
+/// 真正的动作在页面把 `region_action(action, …)` 发回来时才分发。
+///
+/// 和其它入口一样必须**脱开命令调用栈**：建 WebView2 会回头等命令尚未释放的锁
+/// （详见 `ocr_start` 的注释），直接建就是死锁。
+#[crate::t::command]
+fn region_any_start() {
+    if app_locked() {
+        focus_lock_window();
+        return;
+    }
+    std::thread::spawn(|| {
+        dismiss_bar();
+        notify_feature("万能框选");
+        open_region_window_mode("any");
+    });
+}
+
 #[crate::t::command]
 fn ocr_cancel() {
     win::log("ocr: cancelled");
@@ -15797,6 +15820,10 @@ fn icon_edit_name(key: &str) -> String {
     if key == config::BAR_TRANS {
         return "翻译".to_string();
     }
+    // v2.23.3：万能框选（@any）—— 换图标 / 编辑图标时用它当标题
+    if key == config::BAR_ANY {
+        return "万能框选".to_string();
+    }
     if let Some(id) = key.strip_prefix("@app:") {
         return cfg_with(|c| {
             c.apps
@@ -17032,6 +17059,10 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
         && engine != config::BAR_QR
         /* v2.12.2：二维码生成（@qrmake）同理 —— 它也要能被摆进横条。 */
         && engine != config::BAR_QRMAKE
+        /* v2.23.3：万能框选（@any）同理。少了这一行，设置页那颗「＋ 加进横条」
+         * 会在后端被当成"不认识的引擎"静默拒掉：点了没反应、列表也不变
+         * （和上面几条注释里记的是同一个坑）。 */
+        && engine != config::BAR_ANY
         && !config::is_wrap_sentinel(engine)
         && !config::is_text_sentinel(engine)
         /* v2.13.1：绑定模型的格子（`@ocr:baidu` / `@ocr:a+b` / `@img:<id>` /
@@ -20790,6 +20821,8 @@ fn main() {
             webdav_restore_named,
             grab_foreground_app,
             ocr_start,
+            // v2.23.3：万能框选（@any 哨兵）—— 只开遮罩，框完让用户挑用途
+            region_any_start,
     // r54：识图搜索（横条上的「识图」按钮 → 框选 → 以图搜图）
     img_start,
     img_region,

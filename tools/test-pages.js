@@ -126,7 +126,8 @@ async function makePage(file, opts) {
         runScripts: 'dangerously',
         resources: 'usable',
         pretendToBeVisual: true,
-        url: 'file:///' + encodeURI(abs),
+        // opts.query：给页面带查询串（region.html 靠 `?mode=` 分用途）
+        url: 'file:///' + encodeURI(abs) + (opts.query || ''),
         virtualConsole: vc,
         beforeParse: install,
     });
@@ -403,6 +404,45 @@ const clean = (errs) => errs.filter((e) =>
             [...w.document.querySelectorAll('button')].map((b) => b.textContent.trim()).join(' / '));
         ok('  体积按 MB 显示（不是原始字节串）', /8(\.0)?\s*MB/i.test(w.document.body.textContent),
             (w.document.body.textContent.match(/[\d.]+\s*[KM]B/gi) || []).join(','));
+        env.dom.window.close();
+    }
+
+    /* ==================== 8. 万能框选（region.html?mode=any）==================== */
+    {
+        console.log('');
+        console.log('=== 万能框选（ui/region.html?mode=any）===');
+        const env = await makePage('region.html', {
+            query: '?mode=any',
+            stubs: { region_action: () => null, region_beat: () => null, ocr_cancel: () => null },
+        });
+        const { w, calls } = env;
+        const errs = clean(env.errors);
+        ok('页面加载无未捕获异常', errs.length === 0, errs.join(' | '));
+
+        const pe = (type, x, y) => w.document.dispatchEvent(new w.MouseEvent(type, {
+            bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+        }));
+        pe('pointerdown', 100, 100);
+        pe('pointermove', 300, 240);
+        pe('pointerup', 300, 240);
+        await new Promise((r) => setTimeout(r, 60));
+
+        ok('框完**先不执行**（万能框选就是让用户挑）',
+            !calls.some((c) => c.cmd === 'region_action'),
+            JSON.stringify(calls.map((c) => c.cmd)));
+        ok('  动作条亮出来，5 个用途都在',
+            w.document.getElementById('actbar').style.display === 'flex'
+            && w.document.querySelectorAll('#actbar button[data-act]').length === 5);
+        ok('  动作条上有「识别 / 翻译 / 识图 / 二维码 / 复制图片」',
+            ['ocr', 'trans', 'img', 'qr', 'copy'].every(
+                (a) => w.document.querySelector('#actbar button[data-act="' + a + '"]')));
+
+        const tr = w.document.querySelector('#actbar button[data-act="trans"]');
+        if (tr) tr.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 30));
+        const ra = calls.filter((c) => c.cmd === 'region_action').pop();
+        ok('  点「翻译」→ region_action(action=trans)',
+            !!ra && ra.args.action === 'trans', JSON.stringify(ra && ra.args));
         env.dom.window.close();
     }
 

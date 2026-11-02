@@ -28,6 +28,13 @@ window.QS_OCR = '@ocr';
 /** r61：横条上那颗「识图搜索」按钮的哨兵。
  *  和 @ocr 同一套地位：能出现在「横条上的引擎」列表里、能用 pick_icon 换图标。 */
 window.QS_IMG = '@img';
+/** v2.23.3：**万能框选**的哨兵。
+ *
+ *  和 `@ocr` / `@img` / `@trans` / `@qr` 同一套地位：能进 `bar_list`、能进网格页、
+ *  能换图标、能被移出。区别只在点击之后：那几颗**打开谁就只做谁**，
+ *  这一颗框完弹动作条让用户挑（识别 / 翻译 / 识图 / 二维码 / 复制图片）。
+ *  Rust 侧 config::BAR_ANY 必须与之保持一致。 */
+window.QS_ANY = '@any';
 /** v1.5.16：横条上那颗「翻译」按钮的哨兵。
  *  和 @ocr / @img 同一套地位：bar_list 成员、可拖拽排序、可换图标、可移出。
  *  Rust 侧 config::BAR_TRANS 必须与之保持一致。 */
@@ -186,7 +193,7 @@ window.qsGoLabel = function (it) {
  *    · 列表里出现 `@qr` / `@qrmake` 这种内部代号（用户报的"qr qrmake"）；
  *    · 网格条目行 / 实时预览里画出一个字母徽标「Q」而不是那颗二维码图标。
  *  收成一份之后，上述三处都改成问 `qsIsFuncSentinel()`，不会再各写一遍。 */
-window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@wrap', '@txt', '@qr', '@qrmake'];
+window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@any', '@wrap', '@txt', '@qr', '@qrmake'];
 
 /** 这一项是不是内置功能（`@ocr`、`@wrap`、`@qr`、绑定模型的 `@ocr:<id>` …）。
  *  `@go:` / `@app:` / `@fav:` 不在这里 —— 它们是"用户数据"，各有各的图标与名字来源。 */
@@ -307,6 +314,9 @@ window.qsDisplayName = function (name) {
         ocr: '文字识别',
         trans: '翻译',
         img: '识图',
+        /* v2.23.3：万能框选 —— 框完弹动作条让用户挑"识别 / 翻译 / 识图 /
+         * 二维码 / 复制图片"。漏了这一项的话界面上会显示成英文单词「any」。 */
+        any: '万能框选',
         /* 包裹符号：以前漏了这一项，`@wrap` 落到下面的兜底分支，`@` 被剥掉之后
          * 界面上显示成一个英文单词「wrap」（用户报的"wrap 选项看不懂"）。
          * 它在网格里是一颗**功能格子**：点开一组符号（“” 《》 【】 等），
@@ -542,6 +552,9 @@ window.qsFuncIcon = function (name) {
         }
         return img;
     }
+    if (name === window.QS_ANY && window.qsAnyIconNode) {
+        return window.qsAnyIconNode();
+    }
     if (name === window.QS_TRANS && window.qsTransIconNode) {
         return window.qsTransIconNode();
     }
@@ -753,6 +766,50 @@ window.qsTransIconNode = function () {
     span.textContent = '译';
     span.setAttribute('data-i18n-skip', '');
     return span;
+};
+
+/* ------------------------------------------------------------------ */
+/* 万能框选（@any）的图标                                              */
+/* ------------------------------------------------------------------ */
+
+/** 「万能框选」那一格：四角选框 + 中间两条横线 —— "框完从里面挑一个"。
+ *
+ *  为什么不复用 OCR / 二维码的图：这三颗会并排出现在横条上，必须一眼分清
+ *  「这颗是认字」「这颗是读码」「这颗是框完让我挑」。
+ *  优先级：用户换过的图（`overrideIcons['@any']`）→ 内置矢量图。 */
+window.qsAnyIconNode = function () {
+    const conf = window.CONF || {};
+    const custom = conf.overrideIcons ? conf.overrideIcons[window.QS_ANY] : null;
+    if (custom) {
+        const img = document.createElement('img');
+        img.src = custom;
+        img.alt = '';
+        img.draggable = false;
+        if (window.qsApplyOpticalScale) {
+            window.qsApplyOpticalScale(img, conf.unifyIcons !== false);
+        }
+        return img;
+    }
+    const box = document.createElement('span');
+    box.className = 'qs-any-tag';
+    box.setAttribute('data-i18n-skip', '');
+    // 内联样式而不是加 CSS：这条链上有横条 / 网格 / 设置 / 预览四个页面，
+    // 各引各的 css，只为一枚图标去四处加规则不划算。
+    box.style.cssText = 'display:inline-flex;width:100%;height:100%;'
+        + 'align-items:center;justify-content:center;';
+    box.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"'
+        + ' style="display:block;width:100%;height:100%;max-width:22px;max-height:22px">'
+        + '<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".85">'
+        + '<path d="M4 9V6.6C4 5.7 4.7 5 5.6 5H8"/>'
+        + '<path d="M16 5h2.4c.9 0 1.6.7 1.6 1.6V9"/>'
+        + '<path d="M20 15v2.4c0 .9-.7 1.6-1.6 1.6H16"/>'
+        + '<path d="M8 19H5.6C4.7 19 4 18.3 4 17.4V15"/>'
+        + '</g>'
+        + '<g stroke="currentColor" stroke-width="2" stroke-linecap="round">'
+        + '<path d="M9 11h6"/><path d="M9 14.2h3.6"/>'
+        + '</g></svg>';
+    return box;
 };
 
 /* ------------------------------------------------------------------ */

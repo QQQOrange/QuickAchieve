@@ -828,6 +828,10 @@ function barList() {
         // v1.5.16：翻译（@trans）同理。
         if (n === QS_SEP || n === QS_OCR || n === window.QS_IMG
             || n === window.QS_TRANS || n === window.QS_WRAP
+            /* v2.23.3：万能框选（@any）和一众功能格同级 ——
+             * 不认这里的话，用户刚加进横条的那颗会被"必须是认识的名字"筛掉，
+             * 表现就是"加了但横条上看不见"。 */
+            || n === window.QS_ANY
             /* v2.12.0：二维码解析（@qr）和上面几颗一样，是横条上的一等成员 ——
              * 不认这里的话，用户刚加进横条的那格会被"必须是认识的名字"筛掉。 */
             || n === window.QS_QR
@@ -1203,6 +1207,29 @@ function renderBar(force) {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
                 invoke('img_start').catch(() => {});
+            });
+            enginesEl.appendChild(b);
+            engines++;
+            continue;
+        }
+        /* v2.23.3：**万能框选**（`@any`）。和 @ocr / @img / @trans / @qr 同一套地位
+         * （bar_list 成员、可拖可移出、可换图标、也能进网格页）。
+         *
+         * 区别只在点下去之后：那几颗"打开谁就只做谁"，这一颗只开遮罩，
+         * 框完弹动作条让用户挑（识别 / 翻译 / 识图 / 二维码 / 复制图片）。
+         * 用户原话：「可以设置一个万能框选，框选之后就会像现在一样提示你要识图
+         * 还是要识别文字，还是要翻译，还是要做二维码的相关功能。」 */
+        if (name === window.QS_ANY) {
+            const b = document.createElement('button');
+            b.className = 'ico engine qs-any-inbar';
+            b.title = '万能框选：框完让你挑 —— 识别 / 翻译 / 识图 / 二维码 / 复制图片';
+            b.dataset.any = '1';
+            // 右键菜单按 .engine + dataset.engine 认人（换图标 / 移出与普通引擎一致）
+            b.dataset.engine = window.QS_ANY;
+            b.appendChild(window.qsAnyIconNode ? window.qsAnyIconNode() : document.createTextNode('⊞'));
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                invoke('region_any_start').catch(() => {});
             });
             enginesEl.appendChild(b);
             engines++;
@@ -3479,6 +3506,8 @@ const GRID_SENTINELS = {
     '@ocr': { label: '文字识别' },
     '@trans': { label: '翻译' },
     '@img': { label: '识图' },
+    /* v2.23.3：万能框选 —— 点下去只开遮罩，框完弹动作条让你挑。 */
+    '@any': { label: '万能框选' },
     // 包裹符号：点一下直接打开包裹菜单（把剪贴板/当前这段文字套成一对符号）
     '@wrap': { label: '包裹符号' },
     /* 文本处理：具体是哪一件看名字里的 op（`@txt:trim`），标签走 qsDisplayName，
@@ -3651,6 +3680,12 @@ function runGridFunc(key) {
         gridOpenThenClose(() => invoke('ocr_start', ids ? { engine: ids } : {}), '文字识别', { ready: 'self' });
         return;
     }
+    if (base === '@any') {
+        /* v2.23.3：万能框选。和 OCR 一样先冻屏框选，但**不预设用途** ——
+         * 框完由页面弹动作条让用户挑，所以这里只发一条 region_any_start。 */
+        gridOpenThenClose(() => invoke('region_any_start'), '万能框选', { ready: 'self' });
+        return;
+    }
     if (base === '@qr') {
         /* 和 OCR 同一条路：先开全屏遮罩冻屏 → 框选 → 结果窗。产物是我们
          * 自己的窗口，所以等 self（窗口 ready 之后才收网格）。 */
@@ -3800,7 +3835,7 @@ function gridPickSections() {
      * 模型表还没拉回来时（刚开面板那几十毫秒）仍然回落到这里，保证它没消失。 */
     const modelKinds = ['ocr', 'img', 'trans'].filter((k) => (GRID_MODELS[k] || []).length);
     const builtin = [];
-    for (const key of ['@ocr', '@trans', '@img', '@qr', '@qrmake', '@wrap']) {
+    for (const key of ['@ocr', '@trans', '@img', '@any', '@qr', '@qrmake', '@wrap']) {
         const meta = GRID_SENTINELS[key];
         if (!meta) continue;
         if (modelKinds.indexOf(key.slice(1)) >= 0) continue;

@@ -817,6 +817,36 @@ async function testSettings() {
         eq('  行内不再有 ↑↓ 按钮（顺序只走拖拽）', arrows.length, 0);
     }
 
+    /* ---- v2.23.3：万能框选（@any）—— 金刚位之一，可加进横条/网格 ---- */
+    {
+        env.pushConfig(baseConf({ barList: ['百度'] }));
+        await flush();
+        const anyRow = [...$('barList').children].find((r) => r.classList.contains('any-add-row'));
+        ok('设置页给出「万能框选」的「＋ 加进横条」入口', !!anyRow,
+            [...$('barList').children].map((r) => r.className).join(' / '));
+        ok('  行名是「万能框选」，不是内部代号 @any',
+            !!anyRow && /万能框选/.test(anyRow.textContent) && !/@any/.test(anyRow.textContent),
+            anyRow && anyRow.textContent.slice(0, 40));
+        env.calls.length = 0;
+        if (anyRow) {
+            const addBtn = [...anyRow.querySelectorAll('.mini')].find((b) => /加进横条/.test(b.textContent));
+            ok('  有「＋ 加进横条」按钮', !!addBtn,
+                anyRow && [...anyRow.querySelectorAll('.mini')].map((b) => b.textContent).join('/'));
+            if (addBtn) addBtn.dispatchEvent(new w.Event('click', { bubbles: true }));
+        }
+        await flush();
+        const tc = env.lastCmd('toggle_bar_engine');
+        ok('  点它把 @any 加进横条（toggle_bar_engine on=true）',
+            !!tc && tc.args.engine === '@any' && tc.args.on === true,
+            JSON.stringify(tc && tc.args));
+        env.pushConfig(baseConf({ barList: ['@any'] }));
+        await flush();
+        ok('  加进横条后这一行就变成正式成员（入口行消失）',
+            ![...$('barList').children].some((r) => r.classList.contains('any-add-row')));
+        env.pushConfig(baseConf({ barList: ['百度', 'Google', '|', '知乎', '淘宝'] }));
+        await flush();
+    }
+
     // ---- 拖拽换位：下标换算（pointer 事件版）----
     // 行位置：r0=[100,140] r1=[140,180] r2=[180,220] r3=[220,260]，中点插位
     env.pushConfig(baseConf({ barList: ['A', 'B', 'C', 'D'] }));
@@ -1377,6 +1407,37 @@ async function testBar() {
     // ⚠ #sepTail 已按用户要求移除；这里改成断言"不要重新出现"。
     ok('  引擎区与右侧功能按钮之间仍然没有自动竖线',
         !$('sepTail') || $('sepTail').hidden === true);
+
+    // ---- v2.23.3：万能框选（@any）是横条上的一等成员 ----
+    {
+        env.pushConfig(baseConf({ barList: ['百度', '@any'] }));
+        await flush();
+        const anyBtn = $('engines').querySelector('button[data-any="1"]');
+        ok('横条能画出「万能框选」格子（不会被"必须是认识的名字"筛掉）', !!anyBtn,
+            [...$('engines').querySelectorAll('button')]
+                .map((b) => b.dataset.any ? '@any' : b.className).join(' / '));
+        ok('  悬停提示说清它是"框完让你挑"',
+            !!anyBtn && /万能框选/.test(anyBtn.title), anyBtn && anyBtn.title);
+        ok('  带上 dataset.engine（右键换图标 / 移出才认得出它）',
+            !!anyBtn && anyBtn.dataset.engine === '@any');
+        env.calls.length = 0;
+        if (anyBtn) anyBtn.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+        await flush();
+        ok('  点它发的是 region_any_start（不是 ocr_start）',
+            env.calls.some((c) => c.cmd === 'region_any_start')
+            && !env.calls.some((c) => c.cmd === 'ocr_start'),
+            JSON.stringify(env.calls.map((c) => c.cmd)));
+
+        /* 网格页走的是**同一个** runGridFunc（格子点击 → runGridFunc(name)），
+         * 所以这里直接调它：能证明"放进网格页也发同一条命令"，
+         * 不用去把整个网格 DOM 搭起来。 */
+        env.calls.length = 0;
+        if (typeof w.runGridFunc === 'function') w.runGridFunc('@any');
+        await new Promise((r) => setTimeout(r, 120));
+        ok('  网格里点同一格也发 region_any_start（横条与网格共用 runGridFunc）',
+            env.calls.some((c) => c.cmd === 'region_any_start'),
+            JSON.stringify(env.calls.map((c) => c.cmd)));
+    }
 
     // ---- 归一化：连续重复只留一条 ----
     env.pushConfig(baseConf({ barList: ['百度', '|', '|', '|', 'Google'] }));
@@ -3837,47 +3898,36 @@ async function testRegion() {
     console.log('');
     console.log('=== OCR 框选层（ui/region.html）===');
 
-    /* 流程经历过两次变化，断言跟着改成现在这套：
-     *   · v2.16.0：松手**先停在「可调整」阶段**，动作条亮出来；
-     *   · v2.23.2：停留只用于**微调 / 换用途**，不再要求用户确认 ——
-     *     用户原话「我一开始选了文本识别，画完框还要再问我翻译还是识图？」
-     *     所以松手 600ms 后自动按 ?mode= 执行，动鼠标则取消、退回手动。
+    /* 断言跟着**现在的**设计走（v2.23.3）：
+     *   · 默认（`regionAdjust` 关）：松手**立刻执行**你打开的那个功能，
+     *     不出现动作条、不问你第二遍。用户原话：
+     *     「我通过文本识别功能，就只要文本识别功能就可以了，不要识图，
+     *       不要翻译，也不要二维码。需要相关的功能，我会特别打开的。」
+     *   · 只有显式打开「框选后可调整 / 换用途」才走"停下 + 动作条"的老流程。
      * 后端始终只认一条 `region_action(action, x, y, w, h, dpr)`。 */
     const env = makeEnv('ui/region.html', {});
     const calls = env.calls;
     const { w } = env;
     await flush();
 
-    // ---- 正常从左上往右下拖 ----
+    // ---- 正常从左上往右下拖：松手就该发命令 ----
     mouse(env, 'mousedown', 100, 200);
     mouse(env, 'mousemove', 300, 320);
     mouse(env, 'mouseup', 300, 320);
     await flush();
 
     const actbarEl = () => w.document.getElementById('actbar');
-    const tipEl = () => w.document.getElementById('tip');
-    ok('【框选】松手的那一刻**还没**执行（留出微调窗口）',
-        !env.lastCmd('region_action'), JSON.stringify(calls.map((c) => c.cmd)));
-    ok('【框选】动作条亮出来（识别 / 翻译 / 识图 / 二维码 / 复制图片）',
-        actbarEl().style.display === 'flex'
-        && w.document.querySelectorAll('#actbar button[data-act]').length === 5);
-    ok('【框选】动作条写明「X 秒后自动识别」，不再要用户确认',
-        /秒后自动/.test(actbarEl().textContent), actbarEl().textContent);
-    ok('【框选】高亮的是**这次框选的用途**（识别），不是别的',
-        (w.document.querySelector('#actbar button.on') || {}).dataset
-        && w.document.querySelector('#actbar button.on').dataset.act === 'ocr',
-        '高亮=' + ((w.document.querySelector('#actbar button.on') || {}).textContent || '(无)'));
-    ok('【框选】顶部提示也换成"自动执行中"',
-        /自动/.test(tipEl().textContent), tipEl().textContent);
-
-    // ---- 什么都不动 → 到点自动执行（这就是用户要的那个修复）----
-    await new Promise((r) => setTimeout(r, 750));
     const r = env.lastCmd('region_action');
-    ok('【框选】松手后不动鼠标 → 自动执行，不用再点一次',
-        !!r, JSON.stringify(calls.map((c) => c.cmd)));
+    ok('【框选】松手**立刻**执行，不用再确认一次', !!r,
+        JSON.stringify(calls.map((c) => c.cmd)));
+    eq('【框选】执行的就是这次打开的用途（ocr）', r && r.args.action, 'ocr');
+    ok('【框选】**不弹动作条**（不再问"识别还是翻译还是识图"）',
+        actbarEl().style.display !== 'flex',
+        'actbar display=' + actbarEl().style.display);
+    ok('【框选】动作条里一颗按钮都没画',
+        w.document.querySelectorAll('#actbar button[data-act]').length === 0);
     if (r) {
         const a = r.args;
-        eq('【框选】自动执行的是「这次选的用途」= ocr', a.action, 'ocr');
         ok('【框选】四个坐标全是有限数字（NaN 会让命令根本不执行）',
             ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(a[k])),
             JSON.stringify(a));
@@ -3886,57 +3936,37 @@ async function testRegion() {
     }
     env.dom.window.close();
 
-    // ---- 松手后动鼠标 = "我要自己来" → 取消自动执行，留在手动模式 ----
+    // ---- 显式打开「框选后可调整」→ 才停下给微调 / 换用途 ----
     {
-        const e2 = makeEnv('ui/region.html', { regionLastAction: 'trans' });
+        const e2 = makeEnv('ui/region.html', { regionAdjust: true, regionLastAction: 'trans' });
         await flush();
         mouse(e2, 'mousedown', 100, 100);
         mouse(e2, 'mousemove', 300, 240);
         mouse(e2, 'mouseup', 300, 240);
         await flush();
-        // 挪开 > 6px（真实场景：去拖角 / 去点动作条）
-        mouse(e2, 'mousemove', 400, 400);
-        await flush();
-        await new Promise((r) => setTimeout(r, 750));
-        ok('【框选】松手后动了鼠标 → 自动执行取消（留给手动微调）',
+        ok('【框选】打开「框选后可调整」→ 停在选区，先不执行',
             !e2.lastCmd('region_action'),
             JSON.stringify(e2.calls.map((c) => c.cmd)));
-        ok('【框选】取消后动作条改回「双击<记住的那个>」',
-            /双击/.test(e2.w.document.getElementById('actbar').textContent)
-            && /翻译/.test(e2.w.document.getElementById('actbar').textContent),
-            e2.w.document.getElementById('actbar').textContent);
-        // 双击仍然可用，且走的是"记住的动作"
+        ok('【框选】  动作条亮出来，5 个动作都在',
+            e2.w.document.getElementById('actbar').style.display === 'flex'
+            && e2.w.document.querySelectorAll('#actbar button[data-act]').length === 5);
+        ok('【框选】  高亮的是记住的动作（trans）',
+            (e2.w.document.querySelector('#actbar button.on') || {}).dataset
+            && e2.w.document.querySelector('#actbar button.on').dataset.act === 'trans');
         dblclick(e2, 200, 150);
         await flush();
         const rr = e2.lastCmd('region_action');
-        ok('【框选】取消后双击执行的是记住的动作（trans）',
+        ok('【框选】  双击执行记住的动作（trans）',
             !!rr && rr.args.action === 'trans', JSON.stringify(rr && rr.args));
         e2.dom.window.close();
     }
-
-    // ---- 记忆不能盖掉"这次明确选的用途" ----
-    {
-        const e3 = makeEnv('ui/region.html', { regionLastAction: 'trans' });
-        await flush();
-        mouse(e3, 'mousedown', 50, 50);
-        mouse(e3, 'mousemove', 250, 180);
-        mouse(e3, 'mouseup', 250, 180);
-        await flush();
-        await new Promise((r) => setTimeout(r, 750));
-        const r3 = e3.lastCmd('region_action');
-        ok('【框选】上次点过「翻译」也不影响自动执行 —— 仍按这次选的 ocr',
-            !!r3 && r3.args.action === 'ocr', JSON.stringify(r3 && r3.args));
-        e3.dom.window.close();
-    }
-    // ---- 反向拖（右下 → 左上）也要归一化 ----
+    // ---- 反向拖（右下 → 左上）也要归一化（默认路径，松手即发）----
     {
         const env2 = makeEnv('ui/region.html', {});
         await flush();
         mouse(env2, 'mousedown', 800, 600);
         mouse(env2, 'mousemove', 400, 300);
         mouse(env2, 'mouseup', 400, 300);
-        await flush();
-        dblclick(env2, 600, 450);
         await flush();
         const r2 = env2.lastCmd('region_action');
         ok('【框选】反向拖也发 region_action', !!r2,
@@ -3946,9 +3976,9 @@ async function testRegion() {
             eq('【框选】反向拖的 w/h 仍然是正数', [r2.args.w, r2.args.h], [400, 300]);
         }
     }
-    // ---- 动作条上点「识图」= 这一次临时换用途（不改设置）----
+    // ---- 动作条上点「识图」= 这一次临时换用途（需要 opt-in）----
     {
-        const env2 = makeEnv('ui/region.html', {});
+        const env2 = makeEnv('ui/region.html', { regionAdjust: true });
         await flush();
         mouse(env2, 'mousedown', 100, 100);
         mouse(env2, 'mousemove', 300, 260);
@@ -3970,9 +4000,9 @@ async function testRegion() {
         mouse(env3, 'mousedown', 500, 500);
         mouse(env3, 'mouseup', 503, 502);
         await flush();
-        dblclick(env3, 501, 501);
         ok('【框选】误点一下不会去识别', !env3.lastCmd('region_action'),
             JSON.stringify(env3.calls.map((c) => c.cmd)));
+        env3.dom.window.close();
     }
 
     // ---- Esc 必须能退出（否则用户只能杀进程）----
@@ -3984,6 +4014,7 @@ async function testRegion() {
         await flush();
         ok('【框选】按 Esc 会调用 ocr_cancel 关掉遮罩', !!env4.lastCmd('ocr_cancel'),
             JSON.stringify(env4.calls.map((c) => c.cmd)));
+        env4.dom.window.close();
     }
 
     // ---- 执行失败也要退场，不能把用户困住 ----
@@ -3996,10 +4027,9 @@ async function testRegion() {
         mouse(env5, 'mousemove', 400, 400);
         mouse(env5, 'mouseup', 400, 400);
         await flush();
-        dblclick(env5, 250, 250);
-        await flush();
         ok('【框选】执行失败时兜底调用 ocr_cancel（不把用户困在遮罩里）',
             !!env5.lastCmd('ocr_cancel'), JSON.stringify(env5.calls.map((c) => c.cmd)));
+        env5.dom.window.close();
     }
 }
 

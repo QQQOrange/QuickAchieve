@@ -1319,7 +1319,13 @@ window.QS_I18N.add({
     "识别结果会出现在这里…": "Recognition results will appear here…",
     "还没解析出内容": "Nothing decoded yet",
     "框选后留一点调整时间": "Pause briefly after selecting a region",
-    "开着：松开鼠标会停 0.6 秒 —— 这期间能拖角微调，也能临时换成识别 / 识图 / 二维码 / 复制图片；不操作就自动按你一开始选的用途执行，动一下鼠标则改为手动（双击或回车执行）。关掉：松手立刻执行（老行为）": "On: the selection pauses for 0.6s — drag the handles to fine-tune, or switch to OCR / translate / image search / QR / copy image. Do nothing and it runs the purpose you picked when you started; move the mouse and it switches to manual (double-click or Enter). Off: it runs the moment you release the button (old behaviour)."
+    "开着：松开鼠标会停 0.6 秒 —— 这期间能拖角微调，也能临时换成识别 / 识图 / 二维码 / 复制图片；不操作就自动按你一开始选的用途执行，动一下鼠标则改为手动（双击或回车执行）。关掉：松手立刻执行（老行为）": "On: the selection pauses for 0.6s — drag the handles to fine-tune, or switch to OCR / translate / image search / QR / copy image. Do nothing and it runs the purpose you picked when you started; move the mouse and it switches to manual (double-click or Enter). Off: it runs the moment you release the button (old behaviour).",
+    "万能框选": "Universal capture",
+    "万能框选：框完让你挑 —— 识别 / 翻译 / 识图 / 二维码 / 复制图片": "Universal capture: frame first, then pick — OCR / translate / image search / QR / copy image",
+    "万能框选：框完不急着做，先让你挑 —— 识别 / 翻译 / 识图 / 二维码 / 复制图片": "Universal capture: it does nothing yet — you pick afterwards (OCR / translate / image search / QR / copy image)",
+    "框完让你挑：识别 / 翻译 / 识图 / 二维码 / 复制图片": "Pick after framing: OCR / translate / image search / QR / copy image",
+    "框选后可调整 / 换用途": "Adjust or switch purpose after selecting",
+    "默认关：框完立刻执行你打开的那个功能（识别就是识别、识图就是识图），不弹动作条、不问你第二遍。打开：松手后停在选区上 —— 四角出拖角手柄可微调，旁边浮出动作条可临时换成识别 / 翻译 / 识图 / 二维码 / 复制图片（「复制图片」只在打开这项时可用），双击或回车才执行": "Off (default): the function you opened runs as soon as you release the mouse — no action bar, no second question. On: the selection stays put — drag the corner handles to fine-tune, or use the action bar to switch to OCR / translate / image search / QR / copy image (\"copy image\" is only available with this on); double-click or press Enter to run."
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

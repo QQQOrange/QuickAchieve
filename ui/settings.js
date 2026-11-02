@@ -1050,6 +1050,43 @@ function renderBarList() {
         row.appendChild(ops);
         box.appendChild(row);
     }
+    /* v2.23.3：**万能框选**（@any）的入口行。
+     * 它没有"总开关"（不像 OCR / 翻译 / 识图各有一个 enable），所以只要横条上
+     * 还没有它，就一直给这一行 —— 用户想用就点一下加进去，不想用就当没看见。 */
+    if (!list.some((x) => x.name === window.QS_ANY)) {
+        const row = document.createElement('div');
+        row.className = 'item add-row any-add-row';
+
+        const grip = document.createElement('span');
+        grip.className = 'grip';
+        grip.style.visibility = 'hidden';
+
+        const ic = document.createElement('span');
+        ic.className = 'ic';
+        ic.appendChild(barItemIcon(window.QS_ANY, 24));
+
+        const nm = document.createElement('span');
+        nm.className = 'nm';
+        nm.textContent = '万能框选';
+        const em = document.createElement('em');
+        em.textContent = '框完让你挑：识别 / 翻译 / 识图 / 二维码 / 复制图片';
+        nm.appendChild(em);
+
+        const ops = document.createElement('span');
+        ops.className = 'ops';
+        const b = document.createElement('button');
+        b.className = 'mini';
+        b.textContent = '＋ 加进横条';
+        b.title = '把「万能框选」放到横条上 —— 框完先不做事，弹动作条让你挑';
+        b.addEventListener('click', () => invoke('toggle_bar_engine', { engine: window.QS_ANY, on: true }));
+        ops.appendChild(b);
+
+        row.appendChild(grip);
+        row.appendChild(ic);
+        row.appendChild(nm);
+        row.appendChild(ops);
+        box.appendChild(row);
+    }
 }
 
 function clearDropMarks() {
@@ -3100,8 +3137,8 @@ const SWITCHES = [
     // 2026-10-23：划选没取到文字就不弹（误触乱弹的主要来源，默认开）
     // 2026-10-24：只管划选 —— Ctrl+C 一定弹，见 main.rs 的 ctrl_copy_bar
     ['s-barNeedText', 'barNeedText'],
-    // v2.16.0：框选后停留（可微调 + 换用途），默认开
-    ['s-regionHold', 'regionHold'],
+    // v2.23.3：框选后可调整 / 换用途 —— **默认关**（框完立刻执行打开的那个功能）
+    ['s-regionAdjust', 'regionAdjust'],
     ['s-anchorAtMouse', 'anchorAtMouse'],
     ['s-autoStart', 'autoStart'],
     ['s-autoElevate', 'autoElevate'],
@@ -5036,6 +5073,10 @@ function gridItemDesc(name) {
         }
         case '@trans':
             return '翻译当前这段文字（当前模型：' + mn('trans', CONF && CONF.transEngine) + '）';
+        /* v2.23.3：万能框选 —— 框完弹动作条让你挑。说明要和"具体那几颗"
+         * 划清界限，否则用户会以为它也和 @ocr 一样直奔识别。 */
+        case '@any':
+            return '万能框选：框完不急着做，先让你挑 —— 识别 / 翻译 / 识图 / 二维码 / 复制图片';
         case '@wrap':
             return '点开一组符号（“” 《》 【】 等），把选中的文字套上 / 拆掉 / 换一对';
         /* v2.12.3：二维码两格以前没有说明（switch 里没有分支，直接空字符串），
@@ -12634,6 +12675,7 @@ function pickGroups() {
         ['@ocr', '文字识别'],
         ['@trans', '翻译'],
         ['@img', '识图搜索'],
+        ['@any', '万能框选'],
         ['@wrap', '包裹符号'],
     ].map(([n, l]) => ({
         name: n,
