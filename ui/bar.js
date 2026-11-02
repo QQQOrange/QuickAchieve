@@ -305,6 +305,11 @@ function armIdle() {
     if (!barVisible) return;
     if (!panelEl.hidden) return;
     if (!menuEl.hidden) return;
+    /* v2.23.22：包裹符号菜单也是**横条自己的浮层**（它是 #bar 的兄弟节点，
+     * 所以鼠标停在它上面时 barHovered=false）。以前它不在白名单里：
+     * 用户点开包裹符号、在菜单上挑 5 秒不动，idle 到点直接把横条**连菜单
+     * 一起收走**。`closeWrapMenu` 里会调 armIdle，说明本意就是认这块浮层的。 */
+    if (typeof wrapMenuEl !== 'undefined' && wrapMenuEl && !wrapMenuEl.hidden) return;
     const ms = idleMs();
     if (!ms) return;
     idleTimer = setTimeout(onIdleFire, ms);
@@ -314,6 +319,8 @@ function onIdleFire() {
     idleTimer = 0;
     if (!barVisible) return;
     if (!panelEl.hidden || !menuEl.hidden) return;
+    // v2.23.22：同 armIdle —— 包裹符号菜单开着就别收（见那里的注释）
+    if (typeof wrapMenuEl !== 'undefined' && wrapMenuEl && !wrapMenuEl.hidden) return;
     if (barHovered || barEl.matches(':hover')) {
         // 指针就在横条上（只是没动）—— 再等一轮，别把人正要点的东西收走
         armIdle();
@@ -657,7 +664,12 @@ function renderFavPanel() {
             const msg = await invoke('fav_send', { id: it.id }).catch(() => '操作失败');
             tipEl.textContent = msg;
             tipEl.hidden = false;
+            /* v2.23.22：这半秒里用户很可能已经**叫出了新的一条横条**（Ctrl+C / 快捷键），
+             * 那时这个定时器到点会把**新一轮**的横条和面板一起收掉 ——
+             * 表现就是"刚弹出来就没了"。用会话序号判断还是不是同一轮。 */
+            const mySession = barSession;
             setTimeout(() => {
+                if (barSession !== mySession) return;   // 已经换了新一轮，什么都别做
                 // ⚠ 这里以前调的是一个压根不存在的 dismiss()：整段回调在这里抛出
                 //   ReferenceError，下一行 renderBar 永远跑不到 —— 结果是提示
                 //   永久挂在横条上、横条还被撑宽。收起横条要调后端命令 hide_bar。
@@ -3979,6 +3991,15 @@ function pickSectionCount(sec) {
 function closeGridPicker() {
     const p = barEl.querySelector('.qs-gpick');
     if (p) p.remove();
+    /* v2.23.22：**缩放手柄也必须摘**。
+     *
+     * 那三个抓手是 `opacity:0` 但 `pointer-events:auto` 的透明层（下边缘 / 右侧）——
+     * 编辑态没退出就被 Esc / 点别处收起之后，它们会留在**文字横条**上：
+     * 鼠标划过横条边缘出现 ns-resize/ew-resize 光标，在那儿按一下拖，
+     * 会走 `startGridResize` 把字号级的尺寸写进配置 —— 用户根本没进网格页，
+     * 网格格子尺寸却被改了。 */
+    const rz = barEl.querySelector('.qs-grz-wrap');
+    if (rz) rz.remove();
     gridPickAt = -1;
     gridPickFilter = 'all';
     // v2.13.0：多选视图的状态也要一起清，否则下次点空格子进来还停在勾选页
@@ -4741,6 +4762,15 @@ function exitGridMode() {
     if (h) h.remove();
     const p = barEl.querySelector('.qs-gpick');
     if (p) p.remove();
+    /* v2.23.22：**缩放手柄也必须摘**。
+     *
+     * 那三个抓手是 `opacity:0` 但 `pointer-events:auto` 的透明层（下边缘 / 右侧）——
+     * 编辑态没退出就被 Esc / 点别处收起之后，它们会留在**文字横条**上：
+     * 鼠标划过横条边缘出现 ns-resize/ew-resize 光标，在那儿按一下拖，
+     * 会走 `startGridResize` 把字号级的尺寸写进配置 —— 用户根本没进网格页，
+     * 网格格子尺寸却被改了。 */
+    const rz = barEl.querySelector('.qs-grz-wrap');
+    if (rz) rz.remove();
     /* 编辑态也跟着退出：不然下一次唤起还是"带 × 的编辑版"，
      * 用户会以为程序坏了（编辑是临时动作，不该跨次生效）。 */
     gridEdit = false;
@@ -5014,6 +5044,12 @@ async function gridEdgeFlush(st, dir) {
         switchGridPage(dir);
     } catch (e) {
         showBarTip('跨页移动失败：' + String(e || '').slice(0, 40));
+        /* v2.23.22：**已经退出网格态就别再画**。
+         * 这两次 set_grid_items 往返期间用户可能按 Esc / 点别处把横条收了
+         * （exitGridMode 已跑过），此时再 `renderGrid` 会把 `gridOn` 重新置 true、
+         * `.qs-grid` 挂回去，窗口在屏外看不见；之后配置广播会被
+         * `renderBar` 的 `if (gridOn) return` 一直挡着，文字横条不刷新。 */
+        if (!gridOn) return;
         renderGrid(gridPayloadNow());
     }
 }
@@ -5235,6 +5271,8 @@ function ensureGridResizeHandles() {
  *  拖动过程中只改 CSS 变量 + pushLayout（即时跟手），松手才写配置 ——
  *  每移动一像素就落一次盘会把配置写爆。 */
 function startGridResize(e, dir) {
+    // v2.23.22：不在网格态就绝不进尺寸调整（残留抓手不该能改配置）
+    if (!gridOn || !gridEdit) return;
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -5843,6 +5881,13 @@ function orderFromDom() {
 function dragCleanup() {
     if (!barDrag) return;
     clearTimeout(barDrag.timer);
+    /* v2.23.22：**把"拖出去要移出"的红框摘掉**。
+     *
+     * `qs-removing` 是拖出横条时加上的（CSS 里是一圈红色 inset 阴影）。
+     * 原来只在 pointerup 的成功分支里摘 —— "拖出去松手 = 移出"这条走的是
+     * `droppedOut` 分支，先 `dragCleanup()` 就 return 了，于是这圈红框**永久**挂着：
+     * 本次运行内每次弹出横条都带红边，用户以为软件坏了。 */
+    if (barEl) barEl.classList.remove('qs-removing');
     if (barDrag.holdOn) {
         barDrag.holdOn = false;
         invoke('bar_drag_hold', { on: false }).catch(() => { });
@@ -5936,7 +5981,18 @@ document.addEventListener('pointerup', (e) => {
     if (!barDrag.active) { dragCleanup(); return; }
     const el = barDrag.el;
     const key = el.classList.contains('sep') ? window.QS_SEP : (el.dataset.rkey || el.dataset.engine || '');
-    const before = (CONF && Array.isArray(CONF.barList)) ? CONF.barList.slice() : [];
+    /* v2.23.22：**before 必须和"横条上现在显示的那一份"同源**。
+     *
+     * 原来取 `CONF.barList`（默认横条），而渲染用的是 `barList()`
+     * —— 后者会按应用专项整份取代、按 ocr/trans/img 总开关过滤、末尾还过一遍
+     * `qsNormalizeBarList`。三种情况下两者长度/内容不一致：
+     *   · 命中「按应用专项横条」→ 长度多半不等 → 下面直接判"已回滚"，
+     *     拖动每次都弹回去，专项横条**永远排不了序**；
+     *   · 横条上有 @ocr/@trans/@img 而对应总开关被关掉 → 同样长度不等；
+     *   · 配置里有连续/多余分隔线 → 归一化后长度不等。
+     * 现在改用 `barList()`；专项横条仍然交给后端那套逻辑（它只认默认列表），
+     * 这里只保证"拖动结果"是从屏幕上真实那一份算出来的。 */
+    const before = (typeof barList === 'function' ? barList() : []).slice();
     const after = orderFromDom();
     const droppedOut = !!barDrag.outside;
     dragCleanup();
@@ -6248,7 +6304,13 @@ function replayBarIn() {
     barEl.classList.add('qs-bar-in');
 }
 
+/* v2.23.22：**每次唤起算一轮**。用来让"收藏条目点击后 520ms 自动收起"
+ * 这类延时动作只在同一轮里生效（否则会把刚弹出的新一轮横条收掉）。
+ * 放在这里而不是监听器内部：文件后面对它的引用在闭包里，必须先声明。 */
+let barSession = 0;
+
 listen('qs://show', (ev) => {
+    barSession++;
     const p = ev.payload || {};
     /* ── 网格页（Ctrl+C / 自定义快捷键） ────────────────────────────
      * 后端每次唤起都会带 `grid`：非 null 表示"这次画网格"，null 表示普通文字横条。
@@ -6399,14 +6461,24 @@ listen('qs://show', (ev) => {
  * 只看 bar_list / 图标覆盖），但网址按钮要看 currentIsUrl，得重算一次。 */
 listen('qs://text', (ev) => {
     const p = ev.payload || {};
-    // 横条已经收起来了就别改：这份文字属于上一条横条，补上来只会串味。
-    if (barEl.hidden) return;
+    /* v2.23.22：判据换成 `barVisible`。
+     * `barEl.hidden` 全文件从没被置 true（横条是靠 Rust 挪窗口隐藏的），
+     * 所以这句守卫**恒为假** —— 迟到的补字照样会改 currentText/viaCopy。 */
+    if (!barVisible) return;
     currentText = p.text || '';
     currentIsUrl = !!p.isUrl;
     currentUrls = Array.isArray(p.urls) ? p.urls : [];
     viaCopy = !!p.viaCopy;
     syncLinkBtn();
     syncWrapBtn();
+    /* v2.23.22：**📁 / 📄 两颗也要跟着刷新**（和 `qs://show` 那条对齐）。
+     *
+     * 以前这里只同步"链接 / 包裹"两组。于是 Ctrl+C 唤起、文字靠迟到补通道
+     * 换掉之后：新文字是路径时 📁/📄 不出现（在资源管理器里复制文件 →
+     * 横条上看不到"打开所在文件夹"，等于功能失效）；反过来上一轮是路径、
+     * 这一轮不是时，两颗按钮带着旧标题留着，点下去必然"打开失败"。 */
+    if (typeof syncPathBtn === 'function') syncPathBtn();
+    if (typeof syncImgBtn === 'function') syncImgBtn();
     renderBar(false);
     // 文字换掉后（可能从空变长）横条宽度会变，重新报一次尺寸让后端重新摆位。
     pushLayout();
