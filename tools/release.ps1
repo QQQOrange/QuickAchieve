@@ -17,14 +17,15 @@ param(
     [switch]$DryRun
 )
 
-$ErrorActionPreference = 'Stop'
+# ⚠ 默认 Continue 而不是 Stop：cargo/rustc 会把进度写到 stderr，PowerShell 5.1
+#   在 Stop 下会把那条 stderr 当成终止错误，构建脚本直接崩在这里。
+#   关键步骤一律用 $LASTEXITCODE / try-catch 显式判（见下面各步）。
+$ErrorActionPreference = 'Continue'
 $Repo = Split-Path -Parent $PSScriptRoot
 $Tag = "v$Version"
 $Exe = Join-Path $Repo 'target\release\QuickAchieve.exe'
 $NotesRel = "docs/RELEASE-$Tag.md"
 $Notes = Join-Path $Repo ($NotesRel -replace '/', '\')
-$Identity = @('-c', 'user.name=QQQOrange',
-              '-c', 'user.email=62794181+QQQOrange@users.noreply.github.com')
 
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Ok($m) { Write-Host "[OK] $m" -ForegroundColor Green }
@@ -127,17 +128,29 @@ try {
         ConvertTo-Json -Depth 5
     $bodyFile = Join-Path $env:TEMP "qa-release-$Tag.json"
     [System.IO.File]::WriteAllText($bodyFile, $payload, (New-Object System.Text.UTF8Encoding $false))
-    $rel = Invoke-RestMethod -Method Post -Uri 'https://api.github.com/repos/QQQOrange/QuickAchieve/releases' `
-        -Headers $h -InFile $bodyFile -ContentType 'application/json; charset=utf-8'
+    try {
+        $rel = Invoke-RestMethod -Method Post -Uri 'https://api.github.com/repos/QQQOrange/QuickAchieve/releases' `
+            -Headers $h -InFile $bodyFile -ContentType 'application/json; charset=utf-8'
+    } catch {
+        Fail "建 Release 失败（tag 已经推上去了，修好后可以只补 Release）：$($_.Exception.Message)"
+    }
     Ok ("Release id={0}" -f $rel.id)
-    $asset = Invoke-RestMethod -Method Post `
-        -Uri ("https://uploads.github.com/repos/QQQOrange/QuickAchieve/releases/{0}/assets?name=QuickAchieve.exe" -f $rel.id) `
-        -Headers $h -InFile $Exe -ContentType 'application/octet-stream' -TimeoutSec 300
+    try {
+        $asset = Invoke-RestMethod -Method Post `
+            -Uri ("https://uploads.github.com/repos/QQQOrange/QuickAchieve/releases/{0}/assets?name=QuickAchieve.exe" -f $rel.id) `
+            -Headers $h -InFile $Exe -ContentType 'application/octet-stream' -TimeoutSec 300
+    } catch {
+        Fail "上传资产失败：$($_.Exception.Message)"
+    }
     Ok ("资产 {0}  {1:N0} B  {2}" -f $asset.name, $asset.size, $asset.state)
 
     Step '7/7 回读校验'
-    $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/QQQOrange/QuickAchieve/releases/latest' `
-        -Headers $h -TimeoutSec 20
+    try {
+        $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/QQQOrange/QuickAchieve/releases/latest' `
+            -Headers $h -TimeoutSec 20
+    } catch {
+        Fail "回读 releases/latest 失败：$($_.Exception.Message)"
+    }
     if ($latest.tag_name -ne $Tag) { Fail "releases/latest 是 $($latest.tag_name)，不是 $Tag" }
     if ($latest.assets[0].size -ne $size) { Fail "资产大小 $($latest.assets[0].size) != 本地 $size" }
     if ($latest.assets[0].digest -ne ('sha256:' + $sha.ToLower())) {
