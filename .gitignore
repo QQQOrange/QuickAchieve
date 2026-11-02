@@ -60,6 +60,9 @@ tools/_*.png
 tools/_*.json
 tools/_*.jsonl
 
+# v2.23.1：i18n 覆盖度脚本的输出（重跑就有，不该入库）。
+tools/i18n-coverage.json
+
 # ---- AI 推理运行时（r80）----
 # `onnxruntime.dll` 11.8MB：二进制不该进版本库（每次改动都产生新 blob，
 # 历史迅速膨胀，而且它极少变）。构建机上放一份到 vendor/ort/lib/ 即可，

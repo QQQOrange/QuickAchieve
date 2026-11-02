@@ -630,9 +630,18 @@ async function testSettings() {
     {
         const paneOf = (name) => w.document.querySelector('.pane[data-pane="' + name + '"]');
         const tabs = [...w.document.querySelectorAll('#tabs button')].map((b) => b.dataset.tab);
-        ok('侧栏有「外观 / 范围 / 抠图」三栏',
-            ['look', 'scope', 'matte'].every((t) => tabs.includes(t)), tabs.join('/'));
-        ok('  三个新分栏的容器都在、且默认收起',
+        const chips = (group) => [...w.document.querySelectorAll(
+            '.subnav[data-group="' + group + '"] .chip')].map((c) => c.dataset.sub);
+        /* 2026-11-02：抠图**不再是顶栏分栏** —— 后续版本把它并进「附加功能」
+         * 当一个子页（`data-sub="matte"`），顶栏只剩外观 / 范围两个新分栏。
+         * 这里按现结构钉住三件事：两个顶栏分栏在、抠图挂在附加功能组里、
+         * 三张 pane 都真实存在且默认收起。 */
+        ok('侧栏有「外观 / 范围」两个新分栏',
+            ['look', 'scope'].every((t) => tabs.includes(t)), tabs.join('/'));
+        ok('  「抠图」已并进附加功能组（不再是顶栏分栏）',
+            !tabs.includes('matte') && chips('extras').includes('matte'),
+            '顶栏=' + tabs.join('/') + ' · 附加功能=' + chips('extras').join('/'));
+        ok('  三个分栏的容器都在、且默认收起',
             ['look', 'scope', 'matte'].every((t) => paneOf(t) && paneOf(t).hidden));
         ok('  通用里不再有「横条外观」卡片',
             !paneOf('general').textContent.includes('横条外观'));
@@ -659,8 +668,15 @@ async function testSettings() {
         }
         ok('  范围栏里有黑白名单（应用范围）',
             paneOf('scope').textContent.includes('应用范围'));
-        ok('  抠图栏里有 AI 抠图',
-            paneOf('matte').textContent.includes('AI 抠图'));
+        /* 抠图是附加功能下的子页：点那颗 chip 才会亮出来 */
+        {
+            const chip = w.document.querySelector(
+                '.subnav[data-group="extras"] .chip[data-sub="matte"]');
+            chip.dispatchEvent(new w.Event('click', { bubbles: true }));
+            await flush();
+            ok('  抠图页里有 AI 抠图，且点 chip 能切过去',
+                paneOf('matte').textContent.includes('AI 抠图') && !paneOf('matte').hidden);
+        }
         // 点 tab 能切过去（bindTabs 只认 data-pane，不写死分栏名）
         w.document.querySelector('#tabs button[data-tab="look"]')
             .dispatchEvent(new w.Event('click', { bubbles: true }));
@@ -790,15 +806,16 @@ async function testSettings() {
     ok('点删除调用了 remove_separator', !!rmv, JSON.stringify(env.calls.map((c) => c.cmd)));
     eq('删除传的是**下标** 2（不是名字）', rmv && rmv.args.index, 2);
 
-    // 分隔线在开头时，上移按钮应当被禁用（usize 存不下 -1）
+    /* v2.9.0 起顺序**只靠拖拽**（pointerdown → endDrag → move_bar_item），
+     * 每行那对 ↑↓ 已按用户口径删除（"箭头既占地方又和抓手重复"）。
+     * 这里钉住"别再长回来"——两套入口并存时下标语义很容易又分叉。 */
     env.pushConfig(baseConf({ barList: ['|', '百度', 'Google'] }));
     await flush();
-    const firstRow = barItems()[0];
-    const upBtn = [...firstRow.querySelectorAll('.mini')].find((b) => b.textContent === '↑');
-    ok('第一行的「↑」被禁用（避免传负数下标）', upBtn && upBtn.disabled === true);
-    const lastRow = barItems().pop();
-    const dnBtn = [...lastRow.querySelectorAll('.mini')].find((b) => b.textContent === '↓');
-    ok('最后一行的「↓」被禁用', dnBtn && dnBtn.disabled === true);
+    {
+        const arrows = [...$('barList').querySelectorAll('.item .mini')]
+            .filter((b) => b.textContent === '↑' || b.textContent === '↓');
+        eq('  行内不再有 ↑↓ 按钮（顺序只走拖拽）', arrows.length, 0);
+    }
 
     // ---- 拖拽换位：下标换算（pointer 事件版）----
     // 行位置：r0=[100,140] r1=[140,180] r2=[180,220] r3=[220,260]，中点插位
@@ -1175,6 +1192,29 @@ async function testSettings() {
         if (gotoCb) gotoCb({ payload: name });
         const pane = w.document.querySelector('.pane[data-pane="' + name + '"]');
         ok('  goto-tab=' + name + ' 切到了对应分页', !!pane && pane.hidden === false);
+    }
+    /* 顺序敏感项：先停在「关于 → 帮助」，再请求「关于」。
+     * 关于是个分组页，`showPane` 会优先用 lastSub 记住的子页 —— 显式跳转
+     * 必须绕开这个记忆，否则请求「关于」却还停在「帮助」。 */
+    {
+        if (gotoCb) gotoCb({ payload: 'help' });
+        if (gotoCb) gotoCb({ payload: 'about' });
+        const about = w.document.querySelector('.pane[data-pane="about"]');
+        const help = w.document.querySelector('.pane[data-pane="help"]');
+        ok('  先看帮助、再请求「关于」→ 落在关于（不被"记住的子页"顶掉）',
+            !about.hidden && help.hidden);
+    }
+    /* qs://focus-tab 走的是**子页名**（后端「还没配凭据，已帮你打开设置页」发
+     * `"ocr"`）。以前它在顶栏按钮里找 data-tab，而顶栏没有 data-tab="ocr"，
+     * 循环空转 —— 窗口开了却停在上一次那页。 */
+    {
+        const focusCb = env.listeners.get('qs://focus-tab');
+        ok('设置页登记了 qs://focus-tab 的接收', !!focusCb);
+        if (gotoCb) gotoCb({ payload: 'general' });
+        if (focusCb) focusCb({ payload: 'ocr' });
+        const ocrPane = w.document.querySelector('.pane[data-pane="ocr"]');
+        ok('  focus-tab=ocr（子页名）也能落到文字识别页',
+            !!ocrPane && ocrPane.hidden === false);
     }
 
     /* ---- 帮助页 ---- */
@@ -1879,8 +1919,11 @@ async function testBar() {
         const glassRs = fs.readFileSync(path.join(ROOT, 'src/glass.rs'), 'utf8');
         ok('【液态玻璃】Rust 抓屏层 glass.rs 在位（BitBlt + GetDIBits top-down）',
             /BitBlt/.test(glassRs) && /GetDIBits/.test(glassRs) && /biHeight/.test(glassRs));
+        /* 原生宿主层换掉 Tauri 之后，原始字节走的是自研的 `crate::t::ipc::Response`
+         * （见 src/glass.rs 的注释：不走 JSON / base64，省掉三分之一体积）。
+         * 这里只认"有原始字节通道 + BGR→RGBA 通道互换"这两件事，不绑死具体命名空间。 */
         ok('【液态玻璃】快照走 16 字节小头 + RGBA 像素（ipc::Response 直传）',
-            /tauri::ipc::Response/.test(glassRs) && /0, 2/.test(glassRs));
+            /ipc::Response/.test(glassRs) && /0, 2/.test(glassRs));
         // ---- 前端接线 ----
         const htmlIdx = fs.readFileSync(path.join(ROOT, 'ui/index.html'), 'utf8');
         ok('【液态玻璃】index.html 挂了 glass.js 与 #qsGlass 画布（bar.js 之后）',
@@ -2310,9 +2353,25 @@ async function testRegression() {
 /*  所以这里不只测"正常框选对不对"，还要测"出错时会不会自己退场"。       */
 /* ================================================================== */
 
+/* 框选页（region.html）全套交互走的是 **pointer 事件**（v2.16 起：鼠标/触屏/笔
+ * 一套代码），而 jsdom 没有 PointerEvent 构造器 —— 用 MouseEvent 造一个同名事件
+ * 派发即可，监听方只关心 clientX/clientY/button，事件对象是什么类并不影响。
+ * `mouse(env,'mousedown')` 这种老写法保留兼容：自动映射到同名的 pointer 事件。 */
 function mouse(env, type, x, y, button = 0) {
-    const ev = new env.w.MouseEvent(type, {
+    const mapped = type.startsWith('mouse')
+        ? 'pointer' + type.slice(5)
+        : type;
+    const ev = new env.w.MouseEvent(mapped, {
         bubbles: true, cancelable: true, clientX: x, clientY: y, button,
+    });
+    env.w.document.dispatchEvent(ev);
+    return ev;
+}
+
+/** 双击：执行动作条上高亮的那个动作。 */
+function dblclick(env, x, y) {
+    const ev = new env.w.MouseEvent('dblclick', {
+        bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
     });
     env.w.document.dispatchEvent(ev);
     return ev;
@@ -3777,11 +3836,14 @@ async function testSettingsPreviewDark() {
 async function testRegion() {
     console.log('');
     console.log('=== OCR 框选层（ui/region.html）===');
+
+    /* v2.16.0 起流程变了：松手**先停在「可调整」阶段**，动作条亮出来，
+     * 由用户双击（或点动作条 / 回车）才真正执行；后端只认一条
+     * `region_action(action, x, y, w, h, dpr)`，不再有独立的 ocr_region 调用。
+     * 所以这里断言的是"停 → 选 → 发一条 region_action"。 */
     const env = makeEnv('ui/region.html', {});
     const calls = env.calls;
     const { w } = env;
-
-    // 页面自己的脚本已经在 makeEnv 里随 HTML 跑起来了（runScripts: dangerously）
     await flush();
 
     // ---- 正常从左上往右下拖 ----
@@ -3790,15 +3852,28 @@ async function testRegion() {
     mouse(env, 'mouseup', 300, 320);
     await flush();
 
-    const r = env.lastCmd('ocr_region');
-    ok('【bug2】框完调用了 ocr_region', !!r, JSON.stringify(calls.map((c) => c.cmd)));
+    ok('【框选】松手后先停在「可调整」阶段，**不立刻**执行',
+        !env.lastCmd('region_action'), JSON.stringify(calls.map((c) => c.cmd)));
+    ok('【框选】动作条亮出来（识别 / 翻译 / 识图 / 二维码 / 复制图片）',
+        w.document.getElementById('actbar').style.display === 'flex'
+        && w.document.querySelectorAll('#actbar button[data-act]').length === 5);
+    ok('【框选】提示里写明"双击执行"',
+        /双击/.test(w.document.getElementById('tip').textContent),
+        w.document.getElementById('tip').textContent);
+
+    // ---- 双击执行默认动作 ----
+    dblclick(env, 200, 250);
+    await flush();
+    const r = env.lastCmd('region_action');
+    ok('【框选】双击执行发的是 region_action', !!r, JSON.stringify(calls.map((c) => c.cmd)));
     if (r) {
         const a = r.args;
-        ok('【bug2】四个坐标全是有限数字（NaN 会让命令根本不执行）',
+        eq('【框选】没点过动作条时，默认动作 = 这次框选的用途（ocr）', a.action, 'ocr');
+        ok('【框选】四个坐标全是有限数字（NaN 会让命令根本不执行）',
             ['x', 'y', 'w', 'h'].every((k) => Number.isFinite(a[k])),
             JSON.stringify(a));
-        eq('【bug2】x/y 取左上角', [a.x, a.y], [100, 200]);
-        eq('【bug2】w/h 是正的', [a.w, a.h], [200, 120]);
+        eq('【框选】x/y 取左上角', [a.x, a.y], [100, 200]);
+        eq('【框选】w/h 是正的', [a.w, a.h], [200, 120]);
     }
     // ---- 反向拖（右下 → 左上）也要归一化 ----
     {
@@ -3808,12 +3883,31 @@ async function testRegion() {
         mouse(env2, 'mousemove', 400, 300);
         mouse(env2, 'mouseup', 400, 300);
         await flush();
-        const r2 = env2.lastCmd('ocr_region');
-        ok('【bug2】反向拖也调用了 ocr_region', !!r2);
+        dblclick(env2, 600, 450);
+        await flush();
+        const r2 = env2.lastCmd('region_action');
+        ok('【框选】反向拖也发 region_action', !!r2,
+            JSON.stringify(env2.calls.map((c) => c.cmd)));
         if (r2) {
-            eq('【bug2】反向拖的 x/y 仍然是左上角', [r2.args.x, r2.args.y], [400, 300]);
-            eq('【bug2】反向拖的 w/h 仍然是正数', [r2.args.w, r2.args.h], [400, 300]);
+            eq('【框选】反向拖的 x/y 仍然是左上角', [r2.args.x, r2.args.y], [400, 300]);
+            eq('【框选】反向拖的 w/h 仍然是正数', [r2.args.w, r2.args.h], [400, 300]);
         }
+    }
+    // ---- 动作条上点「识图」= 这一次临时换用途（不改设置）----
+    {
+        const env2 = makeEnv('ui/region.html', {});
+        await flush();
+        mouse(env2, 'mousedown', 100, 100);
+        mouse(env2, 'mousemove', 300, 260);
+        mouse(env2, 'mouseup', 300, 260);
+        await flush();
+        const btn = env2.w.document.querySelector('#actbar button[data-act="img"]');
+        ok('【框选】动作条上有「识图」按钮', !!btn);
+        if (btn) btn.dispatchEvent(new env2.w.MouseEvent('click', { bubbles: true }));
+        await flush();
+        const ri = env2.lastCmd('region_action');
+        ok('【框选】点「识图」→ region_action(action=img)',
+            !!ri && ri.args.action === 'img', JSON.stringify(ri && ri.args));
     }
 
     // ---- 误点（几乎没拖动）不该触发识别 ----
@@ -3823,7 +3917,8 @@ async function testRegion() {
         mouse(env3, 'mousedown', 500, 500);
         mouse(env3, 'mouseup', 503, 502);
         await flush();
-        ok('【bug2】误点一下不会去识别', !env3.lastCmd('ocr_region'),
+        dblclick(env3, 501, 501);
+        ok('【框选】误点一下不会去识别', !env3.lastCmd('region_action'),
             JSON.stringify(env3.calls.map((c) => c.cmd)));
     }
 
@@ -3834,21 +3929,23 @@ async function testRegion() {
         const ev = new env4.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true });
         env4.w.document.dispatchEvent(ev);
         await flush();
-        ok('【bug2】按 Esc 会调用 ocr_cancel 关掉遮罩', !!env4.lastCmd('ocr_cancel'),
+        ok('【框选】按 Esc 会调用 ocr_cancel 关掉遮罩', !!env4.lastCmd('ocr_cancel'),
             JSON.stringify(env4.calls.map((c) => c.cmd)));
     }
 
-    // ---- 识别失败也要退场，不能把用户困住 ----
+    // ---- 执行失败也要退场，不能把用户困住 ----
     {
         const env5 = makeEnv('ui/region.html', {});
         await flush();
         // 让后端这条命令直接失败，看前端会不会自己退场
-        env5.rejectCmds.add('ocr_region');
+        env5.rejectCmds.add('region_action');
         mouse(env5, 'mousedown', 100, 100);
         mouse(env5, 'mousemove', 400, 400);
         mouse(env5, 'mouseup', 400, 400);
         await flush();
-        ok('【bug2】识别失败时兜底调用 ocr_cancel（不把用户困在遮罩里）',
+        dblclick(env5, 250, 250);
+        await flush();
+        ok('【框选】执行失败时兜底调用 ocr_cancel（不把用户困在遮罩里）',
             !!env5.lastCmd('ocr_cancel'), JSON.stringify(env5.calls.map((c) => c.cmd)));
     }
 }
@@ -4091,13 +4188,23 @@ async function testBackupSecurity() {
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
-    // 切到备份页会触发 refreshBackupInfo → refreshBackupSec
-    const tabBtn = w.document.querySelector('#tabs button[data-tab="backup"]');
-    ok('备份 tab 存在（下面靠它触发刷新）', !!tabBtn);
+    /* 备份是「数据」分组下的子页（顶栏没有 data-tab="backup" 那颗按钮了）。
+     * 切过去必须**真的重新问一次后端** —— 以前这条刷新挂在已不存在的顶栏
+     * 按钮上，选择器返回 null、`?.` 静默跳过，切页等于没刷新。 */
+    const chip = w.document.querySelector('.subnav[data-group="data"] .chip[data-sub="backup"]');
+    ok('备份子页在「数据」分组里', !!chip);
+    let firstOpen = true;
     const openBackup = async () => {
-        tabBtn.dispatchEvent(new w.Event('click', { bubbles: true }));
+        env.calls.length = 0;
+        chip.dispatchEvent(new w.Event('click', { bubbles: true }));
         await flush();
         await flush();
+        if (firstOpen) {
+            firstOpen = false;
+            ok('  切到备份页会 refreshBackupInfo（重问磁盘状态）',
+                env.cmd('backup_info').length >= 1,
+                JSON.stringify(env.calls.map((c) => c.cmd)));
+        }
     };
 
     // ---- ① 没设备份密码 = DPAPI：必须说清"换机恢复不了" ----
@@ -4804,17 +4911,15 @@ function testBuiltinIcons() {
     ok('翻译图标能还原成合法 PNG', !!tPng, tPng ? tPng.length + ' 字节' : '解码失败');
     ok('识图图标能还原成合法 PNG', !!iPng, iPng ? iPng.length + ' 字节' : '解码失败');
 
-    /* 再和素材原图逐字节比对 —— 内嵌的必须是用户给的那两张，一模一样。 */
-    const srcT = fs.existsSync(path.join(ROOT, 'ui/data/icons/trans.png'))
-        ? fs.readFileSync(path.join(ROOT, 'ui/data/icons/trans.png')) : null;
-    const srcI = fs.existsSync(path.join(ROOT, 'ui/data/icons/imgsearch.png'))
-        ? fs.readFileSync(path.join(ROOT, 'ui/data/icons/imgsearch.png')) : null;
-    ok('翻译图标与素材原图逐字节一致',
-        !!tPng && !!srcT && tPng.equals(srcT),
-        tPng && srcT ? ('内嵌 ' + tPng.length + 'B / 素材 ' + srcT.length + 'B') : '素材缺失');
-    ok('识图图标与素材原图逐字节一致',
-        !!iPng && !!srcI && iPng.equals(srcI),
-        iPng && srcI ? ('内嵌 ' + iPng.length + 'B / 素材 ' + srcI.length + 'B') : '素材缺失');
+    /* 素材原图 `ui/data/icons/trans.png` / `imgsearch.png` **已删**：这两张图
+     * 现在只以 base64 内嵌在 shared.js 里，仓库不再保留副本（留副本等于同一张图
+     * 存两份，改一处就分叉）。所以这里不再比"与素材逐字节一致"，改成钉住
+     * 那件真正要紧的事：**内嵌图不能被外部文件路径取代** —— 一旦改回外链，
+     * 打包漏文件就又变回"图标悄悄变成文字徽标"。 */
+    ok('翻译图标的来源只剩内嵌（shared.js 不再引用外部图标文件）',
+        !/['"]data\/icons\/trans\.png['"]/.test(shared));
+    ok('识图图标的来源只剩内嵌（shared.js 不再引用外部图标文件）',
+        !/['"]data\/icons\/imgsearch\.png['"]/.test(shared));
 
     /* 四个渲染入口都得走新图，不能一处换了另一处还是老样子。 */
     ok('shared.js 里有共用的 qsImgIconNode（识图）',
@@ -4826,17 +4931,25 @@ function testBuiltinIcons() {
     ok('横条固定位那颗也换成内置图（不再是内联 SVG 骨架）',
         /btnImg\.dataset\.builtin/.test(bar));
     ok('设置页识图图标走共用实现',
-        /if \(window\.qsImgIconNode\) return window\.qsImgIconNode\(\);/.test(setjs));
+        /window\.qsImgIconNode\(\)/.test(setjs));
 
-    /* 设置页左侧两个 tab 的图标也换成内嵌 PNG。 */
-    const tabRe = /data-tab="([a-z]+)"><span class="tb-i[^"]*"[^>]*><img alt="" src="(data:image\/png;base64,[A-Za-z0-9+/=]+)"[^>]*><\/span>/g;
-    const tabs = {};
-    let m;
-    while ((m = tabRe.exec(sethtml))) tabs[m[1]] = m[2];
-    ok('设置页「翻译」tab 用的是内嵌图', tabs.trans === tUri, (tabs.trans || '(没找到)').slice(0, 44));
-    ok('设置页「识图搜索」tab 用的是内嵌图', tabs.imgsearch === iUri, (tabs.imgsearch || '(没找到)').slice(0, 44));
-    ok('两个 tab 不再用 emoji 占位',
-        !/tb-i[^"]*">🌐/.test(sethtml) && !/tb-i[^"]*">\u{1F5BC}/u.test(sethtml));
+    /* 设置页左侧子导航里的「翻译 / 识图搜索」两颗：HTML 里只留一个空的
+     * `<span class="ci">`，运行时由 renderSubnavIcons() 塞进同一张内嵌图 ——
+     * 这样和横条/面板永远同一份，不会出现"设置页是旧图、横条是新图"。
+     * 以前这里是断言 HTML 里内联了 base64，那种写法等于把同一张图存三份。 */
+    const ciOf = (sub) => {
+        const re = new RegExp(
+            'data-sub="' + sub + '"><span class="ci" aria-hidden="true"></span>');
+        return re.test(sethtml);
+    };
+    ok('设置页「翻译」子页留了图标挂载点（.ci，运行时填充）', ciOf('trans'));
+    ok('设置页「识图搜索」子页留了图标挂载点（.ci，运行时填充）', ciOf('imgsearch'));
+    ok('renderSubnavIcons 把 trans / imgsearch 接到共用图标实现',
+        /'trans'.*qsTransIconNode/.test(setjs) && /'imgsearch'.*qsImgIconNode/.test(setjs),
+        'trans 与 imgsearch 的图标来源不再是共用实现');
+    ok('两个子页不再用 emoji 占位',
+        !/data-sub="trans"[^>]*>🌐/.test(sethtml)
+        && !/data-sub="imgsearch"[^>]*>\u{1F5BC}/u.test(sethtml));
 
     /* 真跑一遍 DOM：共用函数必须吐出 <img>，src 就是那张内嵌图，
      * 而不是又变回「译」字徽标 / 内联 SVG。 */

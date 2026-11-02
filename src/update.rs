@@ -1289,14 +1289,26 @@ pub fn apply_update() -> Result<PathBuf, String> {
         )
         .is_err()
         {
-            // 新程序没搬进来 → 把旧的改回去，保证"至少还有一个能用的程序"
+            // 新程序没搬进来 → 把旧的改回去，保证"至少还有一个能用的程序"。
+            // ⚠ 回滚**必须检查结果**：回滚也可能失败（目标名被占用/权限不足），
+            //   那时磁盘上是"没有 exe、只剩 .old"的状态，再对用户说"已回滚"
+            //   就是把他往沟里带 —— 得告诉他手工改名的自救办法。
             let code = windows::Win32::Foundation::GetLastError().0;
-            let _ = MoveFileExW(
+            let rolled_back = MoveFileExW(
                 PCWSTR(old_w.as_ptr()),
                 PCWSTR(exe_w.as_ptr()),
                 MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-            );
-            return Err(format!("替换失败（已回滚到旧版本）：错误码 {code}"));
+            )
+            .is_ok();
+            return Err(if rolled_back {
+                format!("替换失败（已回滚到旧版本）：错误码 {code}")
+            } else {
+                format!(
+                    "替换失败，而且旧版本也改不回来 —— 请把同目录的 `{}` \
+                     手工改名为 `QuickAchieve.exe` 再打开（错误码 {code}）",
+                    old_path.file_name().and_then(|s| s.to_str()).unwrap_or("QuickAchieve.exe.old")
+                )
+            });
         }
     }
 

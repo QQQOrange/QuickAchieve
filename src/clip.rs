@@ -439,12 +439,20 @@ fn read_text_quick() -> Option<String> {
             let hg = HGLOBAL(h.0);
             let p = GlobalLock(hg) as *const u16;
             if !p.is_null() {
-                // 自己数长度：GlobalSize 含对齐填充，不能用它当字符数
+                /* 用 GlobalSize 当**读的上界**，不能只靠"遇到 0 就停"。
+                 *
+                 * CF_UNICODETEXT 规范上要求 NUL 结尾，但这个句柄来自任意第三方
+                 * 进程 —— 非规范写入（没有终止符）时会一路读到分配块之外，
+                 * 而这段跑在**低级键盘钩子回调**里，一旦非法访问就是整个进程
+                 * 直接闪退、日志都来不及落盘。GlobalSize 含对齐填充，所以它
+                 * 不能当"字符数"用，但完全可以当"最多能读多少"用。 */
+                let cap = ((GlobalSize(hg) / 2) as usize).min(4_000_000);
                 let mut n = 0usize;
-                while n < 4_000_000 && *p.add(n) != 0 {
+                while n < cap && *p.add(n) != 0 {
                     n += 1;
                 }
-                if n < 4_000_000 {
+                // 没找到终止符就**放弃这次抓取**（不能把填充字节当内容抄出来）
+                if n < cap {
                     out = Some(String::from_utf16_lossy(std::slice::from_raw_parts(p, n)));
                 }
                 let _ = GlobalUnlock(hg);

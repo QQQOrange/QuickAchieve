@@ -379,11 +379,12 @@ pub fn open(path: &str) -> String {
 /// 所以「打开文件」按钮**只在选中物是文件时出现**，目录下不需要它
 /// （在文件管理器里打开目录已经是默认程序的行为了）。
 ///
-/// # 为什么用 `open::that`
+/// # 为什么用 `open` 这一族
 ///
 /// 它就是 ShellExecuteW("open") 的封装 —— 走的是 Windows 的**文件关联**，
 /// 和用户在资源管理器里双击这个文件完全一致（.txt → 记事本、.mp4 → 播放器、
 /// 没有关联 → 弹出"你要用什么打开"的系统对话框，这也是双击的行为）。
+/// 实现上取 `that_detached`：`that` 会等启动器进程退出，在同步命令里等于卡主线程。
 ///
 /// ⚠ 判据仍然是「磁盘上真实存在」：不存在就明说，不去弹一个系统报错框。
 pub fn open_file(path: &str) -> String {
@@ -396,9 +397,34 @@ pub fn open_file(path: &str) -> String {
         // 调用方不会给目录传进来，这里只是防御。
         return open(path);
     }
-    match open::that(path) {
+    /* ⚠ 必须用 `that_detached`，不能用 `that`。
+     *
+     * `open_file` 是**同步命令**（跑在主线程上），而 `open::that()` 会
+     * `Command::status()` —— 一直等到启动器进程退出；Windows 上第一个启动器
+     * 是 `powershell.exe -NoProfile -Command Invoke-Item …`，于是每点一次 📄
+     * 主线程就卡上一个 PowerShell 冷启动（0.3~1s+），横条/托盘/设置页一起僵住。
+     * 同目录的 open_data_dir / open_backup_dir 早就这么改了，这里漏了。
+     *
+     * 错误信息也截断：`open` 的 Debug 串里是整段内部命令行，直接摆给用户看
+     * 等于没说。 */
+    match open::that_detached(path) {
         Ok(()) => format!("已用默认程序打开：{}", file_name_of(path)),
-        Err(e) => format!("打开失败：{e}"),
+        Err(e) => {
+            let msg: String = e.to_string();
+            // 最常见的失败就是"这个扩展名没有关联程序"
+            if msg.to_ascii_lowercase().contains("no association")
+                || msg.contains("1155")
+                || msg.contains("没有关联")
+            {
+                format!(
+                    "这个文件没有关联程序：{} —— 右键它选「打开方式」设一个",
+                    file_name_of(path)
+                )
+            } else {
+                let brief: String = msg.chars().take(120).collect();
+                format!("打开失败：{brief}")
+            }
+        }
     }
 }
 

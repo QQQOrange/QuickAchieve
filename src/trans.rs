@@ -222,6 +222,7 @@ pub fn translate(
     target: &str,
 ) -> Result<String, String> {
     let text = checked(vendor, api_key, text)?;
+    require_base(vendor, base)?;
     let url = endpoint(base);
     let label = lang_label(&normalize_lang(target));
     let body = build_body(model, text, label);
@@ -284,6 +285,7 @@ pub fn translate_stream(
     on_delta: &mut dyn FnMut(&str),
 ) -> Result<String, String> {
     let text = checked(vendor, api_key, text)?;
+    require_base(vendor, base)?;
     let url = endpoint(base);
     let label = lang_label(&normalize_lang(target));
     let body = build_body_with(model, text, label, true);
@@ -425,7 +427,10 @@ fn checked<'a>(vendor: &str, api_key: &str, text: &'a str) -> Result<&'a str, St
     Ok(text)
 }
 
-/// `base` → `/chat/completions` 的完整端点（留空就用默认那家）。
+/// `base` → `/chat/completions` 的完整端点。
+///
+/// ⚠ 调用方必须先过 [`require_base`]：这里的 `DEFAULT_BASE` 兜底只用于
+/// 历史兼容，**不能**用它来处理"用户没填地址"（见那个函数的注释）。
 fn endpoint(base: &str) -> String {
     let base = if base.trim().is_empty() {
         DEFAULT_BASE
@@ -433,6 +438,24 @@ fn endpoint(base: &str) -> String {
         base.trim()
     };
     format!("{}/chat/completions", base.trim_end_matches('/'))
+}
+
+/// 接口地址没填就**直接报错**，绝不静默回落到硅基流动。
+///
+/// 为什么必须拦：注册表里「自定义（OpenAI 兼容）」的 base 是空串，要用户自己填；
+/// 而 `endpoint("")` 会悄悄用 `DEFAULT_BASE`。于是"选了自定义、地址留空"这条
+/// 可达路径会做出两件坏事：
+///   ① 用户填给自家网关的 API Key 被 `Authorization: Bearer` 发往
+///      **api.siliconflow.cn** —— 一个他根本没选的第三方；
+///   ② 回来的错误是「API Key 不对或已失效（401）」，完全指不到"地址没填"。
+fn require_base(vendor: &str, base: &str) -> Result<(), String> {
+    if base.trim().is_empty() {
+        return Err(format!(
+            "{vendor} 还没填接口地址（base_url）—— 在设置 → 翻译里补上，\
+             否则请求会发到别家去"
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

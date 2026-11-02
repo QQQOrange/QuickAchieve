@@ -2524,16 +2524,39 @@ fn text_op_punct(src: &str, to_full: bool) -> String {
     const PAIRS: &[(char, char)] = &[
         (',', '，'), (';', '；'), (':', '：'), ('!', '！'), ('?', '？'),
         ('(', '（'), (')', '）'), ('[', '【'), (']', '】'),
-        ('"', '“'), ('\'', '’'),
     ];
+    /* 引号**不能**走上面那张一对一表：
+     *
+     *   · 全角化时两个半角 `"` 都会落到同一个 U+201C → `他说"你好"` 变成
+     *     `他说“你好“`（收尾引号成了开引号）；
+     *   · 反向更糟：表里只有 U+201C/U+2019，没有 U+201D/U+2018，
+     *     于是 `他说“你好”` 转半角只改左边那一个（`"你好”`）。
+     *
+     * 所以双引号按**出现次序**交替成对；单引号保持"一律 ’"（英文撇号
+     * don't / it's 走的是同一条路，交替反而会把它变成开引号）。
+     * 反向把弯引号一律收回半角 —— 这才是能往返的映射。 */
+    let mut dq_open = true;
     let chars: Vec<char> = src.chars().collect();
     let mut out = String::with_capacity(src.len());
     for (i, &c) in chars.iter().enumerate() {
+        if to_full {
+            if c == '"' {
+                out.push(if dq_open { '“' } else { '”' });
+                dq_open = !dq_open;
+                continue;
+            }
+            if c == '\'' {
+                out.push('’');
+                continue;
+            }
+        } else if matches!(c, '“' | '”' | '‘' | '’') {
+            out.push(if matches!(c, '“' | '”') { '"' } else { '\'' });
+            continue;
+        }
         let rep = if to_full {
             PAIRS.iter().find(|(h, _)| *h == c).map(|(_, f)| *f)
         } else {
-            let direct = PAIRS.iter().find(|(_, f)| *f == c).map(|(h, _)| *h);
-            direct
+            PAIRS.iter().find(|(_, f)| *f == c).map(|(h, _)| *h)
         };
         if let Some(r) = rep {
             out.push(r);
@@ -3636,10 +3659,13 @@ fn grid_trigger_from_ui() {
         win::log("grid: 页内快捷键被忽略（网格页已停用）");
         return;
     }
-    if !cfg_with(|c| c.trigger_copy) {
-        win::log("grid: 页内快捷键被忽略（快捷键触发已关闭）");
-        return;
-    }
+    /* ⚠ 这里**不再**要求 `trigger_copy`。
+     *
+     * 全局钩子那条主路径在 v2.11.4 就把两者解耦了（见 KeyDown 里那段注释：
+     * 「网格快捷键只受 grid_enable 管，原来还要求『复制取词』开着」），
+     * 而这条"设置页里自己按快捷键"的旁路忘了同步 —— 同一个开关在两条入口上
+     * 语义相反：关掉「复制取词」后，在浏览器里按 Ctrl+Shift+G 照弹，
+     * 在设置页里按却毫无反应。判定口径必须一处。 */
     win::log("grid: 页内快捷键命中（自有窗口，钩子看不到）");
     grid_trigger();
 }
@@ -5655,7 +5681,7 @@ fn spawn_detector() {
                             continue;
                         }
                     }
-                    Ev::KeyDown(vk, _seq0, ctrl, alt, shift, win, ours) => {
+                    Ev::KeyDown(vk, seq0, ctrl, alt, shift, win, ours) => {
                         // v1.5.22：取词期间按 Esc = 用户主动取消这次划选
                         if vk == VK_ESCAPE.0 as u32 {
                             INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
@@ -5832,6 +5858,30 @@ fn spawn_detector() {
                                 grid_trigger();
                                 continue;
                             }
+                        }
+                        /* ── Ctrl+C 取词（v1.5.6 起：没复制到东西也要弹）──
+                         *
+                         * ⚠ v2.6.7「原生宿主源码同步」那次提交把这一支整段丢了，
+                         *   而配置项 `trigger_copy`、设置页开关、「Ctrl+C 也弹」的
+                         *   帮助文案全都还在 —— 于是用键盘选词（Ctrl+A / Shift+方向键）
+                         *   之后按 Ctrl+C **永远不弹条**，也没有任何提示；
+                         *   用户只能改用鼠标拖选，可帮助里明明写了第二条路。
+                         *
+                         * 判据按现代码的约定重新对齐（钩子回调里 ctrl/alt 是按下那一刻
+                         * 的快照，所以直接信它；不再要 `last_ctrl_seen` 那种宽松兜底，
+                         * 那是 v2.12.6 已经删掉的东西，会误伤 Ctrl+C 的正常复制）。 */
+                        if !ours
+                            && ctrl
+                            && !alt
+                            && vk == VK_C.0 as u32
+                            && cfg_with(|c| c.trigger_copy)
+                        {
+                            if !trigger_allowed(None) {
+                                continue;
+                            }
+                            win::log("copy path: 收到 Ctrl+C（无论有没复制到东西都要弹）");
+                            copy_trigger(seq0);
+                            continue;
                         }
                     }
                 }
@@ -6242,14 +6292,81 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
         }
     }
     if let Some(x) = b("gridAllowAdd") { cfg.grid_allow_add = x; }
-    if let Some(arr) = v.get("gridItems").and_then(|x| x.as_array()) {
-        cfg.grid_list = arr
+    /* ── 多页网格 ──────────────────────────────────────────────────────
+     * config_view 把网格拆成 `gridPages` / `gridDefaultPage` / `gridAppPages`
+     * 三份发出去，备份（backup_payload = config_view）里也确实带着它们；
+     * 但这里以前**一个都没读**，只认扁平的 gridItems。
+     *
+     * 而 gridItems 也不是另一条能用的路：随后执行 `config::sanitize` 时，
+     * `normalize_grid_pages` 会用**本机旧的** grid_pages 把 grid_list 再写回去，
+     * 刚灌进去的内容立刻被覆盖。结果是「恢复成功，但我的网格页一个都没回来」。
+     *
+     * 顺序要紧：先灌页结构，再决定要不要动 grid_list。 */
+    let had_pages = v.get("gridPages").and_then(|x| x.as_array()).is_some();
+    if let Some(arr) = v.get("gridPages").and_then(|x| x.as_array()) {
+        if let Ok(list) =
+            serde_json::from_value::<Vec<config::GridPage>>(Value::Array(arr.clone()))
+        {
+            if !list.is_empty() {
+                cfg.grid_pages = list;
+            }
+        }
+    }
+    if let Some(x) = s("gridDefaultPage") {
+        cfg.grid_default_page = x;
+    }
+    if let Some(arr) = v.get("gridAppPages").and_then(|x| x.as_array()) {
+        if let Ok(list) =
+            serde_json::from_value::<Vec<config::GridAppPage>>(Value::Array(arr.clone()))
+        {
+            cfg.grid_app_pages = list;
+        }
+    }
+    if let Some(x) = b("gridShowLabel") { cfg.grid_show_label = x; }
+    if let Some(obj) = v.get("gridItemStyle").and_then(|x| x.as_object()) {
+        let mut m = std::collections::BTreeMap::new();
+        for (k, val) in obj {
+            let style = val.as_str().unwrap_or("").trim().to_ascii_lowercase();
+            if style == "icon" || style == "text" || style == "both" {
+                m.insert(k.clone(), style);
+            }
+        }
+        cfg.grid_item_style = m;
+    }
+    /* 老备份（没有 gridPages）才按扁平列表灌；有页结构时 grid_list 由
+     * sanitize 的 normalize_grid_pages 从默认页派生，别再覆盖它。 */
+    if !had_pages {
+        if let Some(arr) = v.get("gridItems").and_then(|x| x.as_array()) {
+            cfg.grid_list = arr
+                .iter()
+                .filter_map(|x| x.as_str())
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .take(60)
+                .collect();
+        }
+    }
+    /* 按应用的横条专项（同一页里编辑的那份） */
+    if let Some(arr) = v.get("barAppItems").and_then(|x| x.as_array()) {
+        if let Ok(list) =
+            serde_json::from_value::<Vec<config::BarAppItems>>(Value::Array(arr.clone()))
+        {
+            cfg.bar_app_items = list;
+        }
+    }
+    if let Some(x) = s("barPos") { cfg.bar_pos = x; }
+    if let Some(x) = b("notifyFeature") { cfg.notify_feature = x; }
+    if let Some(x) = n("notifySeconds") { cfg.notify_seconds = x.clamp(0, 60) as u32; }
+    if let Some(x) = s("regionLastAction") { cfg.region_last_action = x; }
+    if let Some(arr) = v.get("pickSize").and_then(|x| x.as_array()) {
+        let list: Vec<u32> = arr
             .iter()
-            .filter_map(|x| x.as_str())
-            .map(|x| x.trim().to_string())
-            .filter(|x| !x.is_empty())
-            .take(60)
+            .filter_map(|x| x.as_u64())
+            .map(|x| x.clamp(16, 256) as u32)
             .collect();
+        if !list.is_empty() {
+            cfg.pick_size = list;
+        }
     }
     if let Some(x) = b("autoStart") { cfg.auto_start = x; }
     if let Some(x) = b("autoElevate") { cfg.auto_elevate = x; }
@@ -8110,6 +8227,20 @@ fn restore_from_text(text: &str) -> Result<String, String> {
          * View 路径下 `apply_view` 已经把两种情况（键缺失 / 值为空）统一成"不动"。 */
         token_now = cfg.github_token.trim().to_string();
         config::save(&cfg);
+        /* 恢复只把 `autoStart` / `autoElevate` 写进了配置，但它们描述的是
+         * **这台机器的真实状态**：前者是 HKCU 的 Run 注册表项，后者是
+         * `elevate.pref` 文件。别的路径都同步过（set_setting 的对应分支、
+         * WebDAV 启动同步结束时的 restore_local_only_settings），只有手动恢复
+         * 这一条漏了。
+         *
+         * 漏了会怎样：
+         *   · 恢复一份 autoStart=false 的旧备份 → 设置里显示"关"，但机器上
+         *     的 Run 项还在，每次开机照样自启，而且再也不会有代码去清它；
+         *   · 恢复 autoStart=true 的备份 → 显示"开"却不自启（要等下次手动
+         *     启动、由启动补写那一步才生效）。
+         * autoElevate 同理（启动时优先读 elevate.pref，配置里的值会被盖掉）。 */
+        win::set_autostart(cfg.auto_start);
+        write_local_elevate_pref(cfg.auto_elevate);
     }
     broadcast();
     Ok(restore_note(&token_before, &token_now, kept_token))
@@ -8486,10 +8617,20 @@ fn webdav_sync_on_start_inner() {
     if !o.ready() {
         return;
     }
-    // 「云端那份」= 目录里**最新**的一份（不是固定文件名 —— 现在一次备份一个
-    // 带时间戳的名字，见 backup_once）。
-    let remote = match webdav::latest(&o) {
-        Ok(v) => v.map(|b| (b.name, b.mtime)),
+    /* 「云端那份」= 目录里**最新的一份真备份**（现在一次备份一个带时间戳的名字，
+     * 见 backup_once）。
+     *
+     * ⚠ 必须**按名字过滤**再挑最新：`webdav::latest()` 只是"目录里 mtime 最大的
+     * 那个文件"，而用户填的目录完全可能不是专用目录（Nextcloud 的
+     * `.../remote.php/dav/files/<用户>/` 就是整个网盘根）—— 那里的文档、图片、
+     * 别的软件的备份都会排在前面。不过滤的后果：每次启动都去下载那个无关文件、
+     * 解密失败、还先白白 stash 一份本机快照把真正的恢复点挤掉；而且因为一直判定
+     * "云端较新"，"本机较新 → 上传"那一支永远走不到，启动自动备份静默失效。 */
+    let remote = match webdav::list_newest_first(&o) {
+        Ok(all) => all
+            .into_iter()
+            .find(|b| config::is_manual_backup(&b.name) || b.name == webdav::LEGACY_FILE)
+            .map(|b| (b.name, b.mtime)),
         // 列目录失败：有些网盘既不支持 PROPFIND、也不给 HTML 目录页。
         // 这种服务器上退回「固定文件名」那条老路 —— 至少启动同步还能用。
         Err(e) => match webdav::remote_mtime(&o) {
@@ -12162,7 +12303,14 @@ fn img_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
          * 不再在这里 matches! 写死一遍 —— 两份名单迟早会漏改。
          * r76：判据收进 `img_should_paste` —— 多了「勾多家就默认关掉按键」
          *   这一条（用户原话见那个函数的注释），延迟也改成可配。 */
-        let want_paste = img_should_paste(&plan, pasted, &cfg);
+        /* ⚠ 只有「AI 段真的先开页」时才允许自动按键。
+         *
+         * 关掉「AI 优先」时 ai_first 为 false，所有引擎（含 AI 家）都进了
+         * `rest_part`，而按键线程是在**开页之前**就起动的（见下面 12087 那段）。
+         * 于是 Ctrl+V 会打到用户当时的前台窗口（Word / 聊天框），
+         * 900ms 后还补一个 Enter；随后 AI 页才打开、里面反而没有图。
+         * 老行为（全开、不自动按键）才是关闭 AI 优先时的正确语义。 */
+        let want_paste = ai_first && img_should_paste(&plan, pasted, &cfg);
         /* ══════════════════════════════════════════════════════════════════
          * r93：**AI 按键转独立线程，且上传与按键并行**（用户报"百度识图好慢"）
          *
@@ -12616,6 +12764,17 @@ fn ocr_cancel() {
     win::log("ocr: cancelled");
     REGION_HWND.store(0, Ordering::SeqCst);
     close_window("region");
+    /* 这一轮如果是「二维码 → 重新框选」，遮罩起来之前我们把结果窗藏了。
+     * 用户取消（Esc / 右键）时把人家放回去 —— 否则结果窗永久消失，
+     * 只能重新框一次才看得到（旧结果也已经被新图顶掉了）。 */
+    if QR_HIDDEN_FOR_PICK.swap(false, Ordering::SeqCst) {
+        if let Some(w) = app().get_webview_window("qr") {
+            if !w.is_visible().unwrap_or(false) {
+                let _ = w.show();
+                win::log("qr: 框选已取消，把上一轮的结果窗还回来");
+            }
+        }
+    }
 }
 
 /* ================================================================== */
@@ -12641,12 +12800,24 @@ static QR_LAST_PNG: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 /// 和十几份临时大字符串。这里在裁图那一刻编一次，之后原样返回。 */
 static QR_LAST_URL: Mutex<String> = Mutex::new(String::new());
 
+/// 「结果窗是我们自己为了躲开框选而藏起来的」。
+///
+/// 为什么要记：`qr_start_flow` 在拉起遮罩前会 `hide()` 结果窗，原注释的前提是
+/// "这一轮跑完 open_qr_window 会重新 show"。但**取消**这条路上不会跑完 ——
+/// Esc / 右键都走 `ocr_cancel`，那里只关遮罩。不记这个标记的话，用户点了
+/// 「重新框选」再按 Esc，原本好好的结果窗就凭空消失、再也叫不回来。
+///
+/// 只有二维码这条流程会置位；OCR / 识图轮次始终是 false，不会误弹二维码窗。
+static QR_HIDDEN_FOR_PICK: AtomicBool = AtomicBool::new(false);
+
 /// 打开二维码结果窗（先隐藏，等页面 `qr_ready` 再显示）。
 ///
 /// 规矩和 OCR 结果窗完全一致，连"2.5 秒兜底显示"都一样 —— 页面脚本万一报错，
 /// 也不能让用户点完框选之后什么窗口都等不到。
 fn open_qr_window() {
     let a = app();
+    // 结果窗已经（重新）露出来了，"藏着没还"的记账就该清了
+    QR_HIDDEN_FOR_PICK.store(false, Ordering::SeqCst);
     if let Some(w) = a.get_webview_window("qr") {
         let _ = w.show();
         let _ = w.unminimize();
@@ -12722,6 +12893,8 @@ fn qr_start_flow() {
     if let Some(w) = app().get_webview_window("qr") {
         if w.is_visible().unwrap_or(false) {
             let _ = w.hide();
+            // 记住"是我藏的"——取消框选时要把人家还回来（见 QR_HIDDEN_FOR_PICK）
+            QR_HIDDEN_FOR_PICK.store(true, Ordering::SeqCst);
             win::log("qr: 先隐藏上一轮的结果窗，避免挡住这次框选");
         }
     }
@@ -14023,6 +14196,17 @@ where
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         match rx.recv_timeout(left) {
             Ok((eng, Ok((cleaned, raw, label)))) => {
+                /* 新一轮已经开始了 → 这一轮（旧 gen）的结果一律丢弃。
+                 *
+                 * 这条链路是"异步跑、窗口随时可能被下一次框选换掉"：
+                 * 旧结果如果照收，`store_engine_result` 里的
+                 * `retain(|e| e.0 == gen && ...)` 会把**新一轮已经入账的条目
+                 * 全删掉**（它们的 gen 对不上），随后还会用旧图 + 旧文字 + 新
+                 * 分段推一帧给用户看。 */
+                if gen != OCR_PNG_GEN.load(Ordering::SeqCst) {
+                    win::log(&format!("ocr: 丢弃上一轮的迟到结果（{eng}）"));
+                    continue;
+                }
                 ok += 1;
                 win::log(&format!("ocr: 并行 {eng} 认出 {} 字", cleaned.chars().count()));
                 store_engine_result(gen, &eng, &cleaned, &raw, &label);
@@ -14041,6 +14225,10 @@ where
                 }
             }
             Ok((eng, Err(e))) => {
+                // 同上：旧轮次的失败说明不该混进新一轮的状态条
+                if gen != OCR_PNG_GEN.load(Ordering::SeqCst) {
+                    continue;
+                }
                 win::log(&format!("ocr: 并行 {eng} 失败：{e}"));
                 notes.push(format!("{}：{}", engine_display(&eng), e));
                 // 失败也要推一次：第一次 = 让用户先看到另一个引擎的成果；
@@ -14876,7 +15064,17 @@ fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
     }
     match parse_region_action(&action) {
         RegionAction::Trans => region_translate(x, y, w, h, dpr),
-        RegionAction::Img => img_region(x, y, w, h, dpr),
+        /* ⚠ 先清掉「上一颗绑定格子」留下的名单。
+         *
+         * `IMG_FORCE_ENGINES` 是**进程级**的，只由 `img_start` 写；而动作条的
+         * 「识图」直接调 `img_region`，既不过 img_start 也不清空 —— 于是用户
+         * 上一次从 `@img:百度` 这类绑定格子进来之后，之后每一次在动作条上点
+         * 「识图」都会继续用那份残留名单，完全忽略设置里勾的引擎。
+         * 这里的语义就是"普通入口"，与 img_start(None) 对齐。 */
+        RegionAction::Img => {
+            set_img_force_engines(None);
+            img_region(x, y, w, h, dpr)
+        }
         RegionAction::Qr => qr_region(x, y, w, h, dpr),
         RegionAction::Copy => region_copy_image(x, y, w, h, dpr),
         RegionAction::Ocr => {
@@ -14938,6 +15136,18 @@ fn parse_region_action(s: &str) -> RegionAction {
 /// 否则"翻译里的识别"和"识别里的识别"会跑出两种结果，用户没法解释。
 #[crate::t::command]
 fn region_translate(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
+    /* 翻译功能关着就**先说话再退出**。
+     *
+     * 框选动作条（ui/region.html 的 buildBar）会把 5 个动作无条件全画出来，
+     * 它只读 regionHold / regionLastAction，不看 transEnable —— 所以"按钮不渲染"
+     * 这个前提在这里不成立。以前会先白跑一次 OCR（几秒、可能计费），
+     * 到 trans_start 里才 `return`，用户看到的是"识别完了然后什么都没有"。 */
+    if !cfg_snapshot().trans_enable {
+        win::log("region_trans: 翻译功能已关闭，直接退出框选");
+        close_window("region");
+        ui_say("翻译功能已在设置里关闭（设置 → 附加功能 → 翻译）", 3000);
+        return;
+    }
     if !(x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite()) {
         win::log(&format!(
             "region_trans: 非法坐标 x={x} y={y} w={w} h={h}，已退出框选"
@@ -15255,7 +15465,11 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                 }
             }
             // 收尾：状态条定稿 + 值得提醒时弹一条总结
-            ocr_run_finish(engines.len());
+            // ⚠ 只有"我还是当前这一轮"才收尾：晚到的旧轮次把状态条标成
+            //   完成、还会弹一句「文字识别完成」，而新一轮其实还在跑。
+            if gen == OCR_PNG_GEN.load(Ordering::SeqCst) {
+                ocr_run_finish(engines.len());
+            }
             return;
         }
 
@@ -21154,6 +21368,37 @@ mod tests {
 
 
     use super::*;
+
+    /// 标点全角/半角互转：**引号必须成对**，不能一对一查表。
+    ///
+    /// 以前 PAIRS 里只有 `" → “` 和 `' → ’` 两条单向映射：
+    ///   · 全角化时正文里两个半角 `"` 都被换成同一个 U+201C →
+    ///     `他说"你好"` 变成 `他说“你好“`（收尾引号成了开引号）；
+    ///   · 半角化时表里找不到 U+201D/U+2018 → `他说“你好”` 只改左边，
+    ///     结果是 `"你好”`。
+    /// 也就是说：用户在横条上点一下「标点转全角」，这段坏文本会被**直接粘贴
+    /// 回他正在编辑的文档**（apply=true），或者在识别结果页里被复制走。
+    #[test]
+    fn 标点互转时引号要成对且能往返() {
+        // 全角化：双引号按出现次序交替
+        assert_eq!(text_op_punct("他说\"你好\"", true), "他说“你好”");
+        // 半角化：两个弯引号都收得回去（含 U+201D / U+2018）
+        assert_eq!(text_op_punct("他说“你好”", false), "他说\"你好\"");
+        assert_eq!(text_op_punct("他说‘你好’", false), "他说'你好'");
+        // 往返一致（这是"查表不对称"最直接的证据）
+        let src = "a\"b\"c";
+        assert_eq!(text_op_punct(&text_op_punct(src, true), false), src);
+        // 英文撇号保持右单引号（don't 不该变成开引号）
+        assert_eq!(text_op_punct("don't", true), "don’t");
+        // 其它标点照旧，一个都不许漏
+        assert_eq!(text_op_punct("a,b;c:d!e?f(g)h[i]", true), "a，b；c：d！e？f（g）h【i】");
+        assert_eq!(text_op_punct("a，b；c：d！e？f（g）h【i】", false), "a,b;c:d!e?f(g)h[i]");
+        // 小数点不能被当成句号收掉（3.14 的本意就不是"第 3 句"）
+        assert_eq!(text_op_punct("圆周率 3.14", false), "圆周率 3.14");
+        // 全角句号后跟数字时保持全角，避免把"3。5"变成"3.5"的歧义
+        assert_eq!(text_op_punct("第 3。5 节", false), "第 3。5 节");
+        assert_eq!(text_op_punct("结束了。", false), "结束了.");
+    }
 
     /// 智能直达：备份/导入恢复的**容错**口径（用户要求「妥善处理数据冲突、
     /// 格式不兼容、导入失败」）。

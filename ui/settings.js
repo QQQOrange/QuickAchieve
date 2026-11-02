@@ -430,6 +430,13 @@ function afterShow(pane) {
     /* v1.2.0：切到「关于」时初始化更新那块 —— 问的是"**此刻**有没有待装的新版"，
      * 启动时那次检查可能还没回来，等用户真打开这一页再问，拿到的才准。幂等。 */
     if (pane === 'about') updInit();
+    /* 备份页：目录、份数、清单都是**磁盘上的实时状态**，每次进来重问一次。
+     * 以前这句挂在 `#tabs button[data-tab="backup"]` 的 click 上，可备份早就
+     * 变成「数据」下的子页了，那颗按钮根本不存在 —— 选择器返回 null、
+     * `?.` 静默跳过，于是**切到备份页时从不重新读盘**：WebDAV 启动同步
+     * 刚拉下来的、另一个窗口刚备份的、用户手动往目录里放的，都得先做一次
+     * 会触发刷新的动作才看得见。 */
+    if (pane === 'backup') refreshBackupInfo();
     // 直达页：切进来就重画一次（设置页刚打开时那次渲染可能早于配置到达）
     if (pane === 'go') renderGoList();
     // 二维码：两颗「加到哪」的按钮要按当前 barList / gridItems 画状态；
@@ -463,6 +470,32 @@ function afterShow(pane) {
         invoke('log_msg', { msg: 'TAB ' + pane }).catch(() => { });
         if (window.__qsReportRects) setTimeout(window.__qsReportRects, 80);
     }
+}
+
+/** 按「页名」跳到某个分页，返回是否跳成功。
+ *
+ *  `qs://goto-tab` 与 `qs://focus-tab` 两条通道共用这一套：两处以前各写一半，
+ *  于是出现了两种「点了没反应」——
+ *    ① `focus-tab` 只在**顶栏**按钮里按 `data-tab` 找，可后端发来的是
+ *       `"ocr"` 这种**子页名**（见 main.rs「还没配凭据，已帮你打开设置页」
+ *       那段），顶栏没有 `data-tab="ocr"`，循环空转一次就结束 —— 设置窗打开了，
+ *       却停在上一次看的那一页，用户得自己翻。
+ *    ② `goto-tab` 只认顶栏按钮和子页名，对**分组页自身**（`about` / `data`）
+ *       走的是 `b.click()`，而 `showPane` 会优先用 `lastSub` 里记住的子页 ——
+ *       上次在「关于 → 帮助」，这次请求「关于」还是会落在帮助上。
+ *
+ *  所以这里统一：子页名直接定位；顶栏页若是分组则**定位到它的默认子页**
+ *  （显式跳转要的是"这一页"，不是"我上次看到哪"）。 */
+function gotoPane(name) {
+    const n = String(name == null ? '' : name).trim();
+    if (!n) return false;
+    const group = SUB_TO_GROUP[n];
+    if (group) return !!showPane(group, n);
+    const b = document.querySelector('#tabs button[data-tab="' + n + '"]');
+    if (!b) return false;
+    const g = TAB_GROUPS[n];
+    // 分组页：强制回默认子页，绕开 lastSub 记忆
+    return !!showPane(n, g ? g.def : undefined);
 }
 
 /* ------------------------------------------------------------------ */
@@ -2329,8 +2362,11 @@ function adoptAppIcon(path) {
 /** 真正去后端取图标（名字已经确定时调）。 */
 function applyAppIcon(name, path) {
     if (!name || !path) return;
-    // 已有手动图标 → 不覆盖（理由见上面 adoptAppIcon 的注释）
-    const ov = (CONF && CONF.overrides) || {};
+    /* 已有手动图标 → 不覆盖（理由见上面 adoptAppIcon 的注释）。
+     * ⚠ 键名是 `overrideIcons`（config_view 下发的就是这个）；以前写成
+     *   `CONF.overrides`，那个键在前端根本不存在 → ov 恒为 {} →
+     *   这道闸永远拦不住，用户手选的图标会被 exe 图标静默覆盖。 */
+    const ov = (CONF && CONF.overrideIcons) || {};
     if (ov[name]) return;
     invoke('app_icon_from_exe', { engine: name, exe: path }).catch(() => {});
 }
@@ -2585,8 +2621,12 @@ function fillCeForm(idx) {
     $('w-ceAppAdmin').checked = !!ce.app_admin;
     /* r76：启动延迟回填。同样读 snake_case（`app_launch_delay`）。
      * 老配置没有这个字段 → 900（后端 serde default 也是 900），与升级前的
-     * 写死行为一致。 */
-    $('w-ceAppDelay').value = Number(ce.app_launch_delay) > 0 ? ce.app_launch_delay : 900;
+     * 写死行为一致。⚠ 0 是合法值（"不等，立刻发键"），必须原样回填 ——
+     * 以前写 `> 0 ? v : 900`，用户存的 0 打开编辑框就变成了 900。 */
+    $('w-ceAppDelay').value =
+        ce.app_launch_delay === undefined || ce.app_launch_delay === null
+            ? 900
+            : Number(ce.app_launch_delay);
     // r90：老配置没有这个字段 → undefined → false（默认不抢前台）
     $('w-ceBringFront').checked = ce.app_bring_front === true;
     // 类型读回那条引擎自己的 kind（老配置没这个字段 → 搜索类）
@@ -2684,10 +2724,14 @@ async function submitCeForm() {
     const appAdmin = isHot && $('w-ceAppAdmin').checked;
     /* r90：要不要把目标应用的主窗口调到前台（每个快捷键引擎独立） */
     const appBringFront = isHot && $('w-ceBringFront').checked;
-    // 延迟：不传 0 兜底，而是传**默认 900** —— 那是 r60 起"新拉起的应用多等一拍"
-    // 的既有行为，用户没动过这个框时不该悄悄变成 0（会退回到"键打空"的老 bug）。
+    /* 延迟：空/NaN 才兜底成 **900**（r60 起"新拉起的应用多等一拍"的既有行为，
+     * 用户没动过这个框时不该悄悄变成 0，会退回"键打空"的老 bug）。
+     * ⚠ 但 0 是**合法值**（input 的 min 就是 0，后端也是 0..=60000 直接 sleep）：
+     * 以前写成 `Number(v) || 900`，填 0 会被 `||` 吞成 900，用户抱怨"填 0 没用"。 */
+    const delayRaw = String(($('w-ceAppDelay') && $('w-ceAppDelay').value) || '').trim();
+    const delayNum = delayRaw === '' ? 900 : Number(delayRaw);
     const appLaunchDelay = (isHot && bindApp)
-        ? Math.max(0, Math.min(60000, Math.round(Number($('w-ceAppDelay').value) || 900)))
+        ? Math.max(0, Math.min(60000, Math.round(Number.isFinite(delayNum) ? delayNum : 900)))
         : 0;
     const editing = ceEditIndex >= 0;
     /* r88：如果用户是"先选应用、后起名字"，那份取图标的请求记在
@@ -3287,8 +3331,14 @@ function bindBarStyle() {
         b.addEventListener('click', () => {
             const v = b.dataset.v;
             const glass = v === 'glass';
-            let blur = 0;
-            if (v === 'frost') blur = Number(CONF.barBlur) > 0 ? Number(CONF.barBlur) : 12;
+            /* ⚠ 「玻璃」**不能把 barBlur 清零**（注释里承诺的就是"原样保留"）。
+             *   面板 / 右键菜单的磨砂吃的正是这个值，清零等于让它们失去磨砂，
+             *   而且滑块在玻璃模式下被隐藏，用户当场看不到、也改不回来。 */
+            const cur = Number(CONF.barBlur) > 0 ? Number(CONF.barBlur) : 0;
+            let blur;
+            if (v === 'default') blur = 0;
+            else if (v === 'frost') blur = cur > 0 ? cur : 12;
+            else blur = cur;              // glass：沿用
             Object.assign(CONF, { barGlass: glass, barBlur: blur });
             syncStyleUI();
             renderPreview();
@@ -3738,6 +3788,16 @@ function renderPreview() {
 /** 只绑一次事件：qs://config 每次广播都会重新调本函数，重复绑会导致一次改动发多次命令 */
 let bound = false;
 
+/** 「引擎表拿到过没有」—— 与 `bound` 分开记。
+ *
+ *  `bound` 是"事件绑过了 + 首屏灌过了"的合体标记，而配置广播可能**先于**
+ *  boot 里那句 `await get_config` 到达。那种情况下第一次 applyConf 就把 bound
+ *  置了 true，等真正的首屏配置回来时 `if (!bound)` 已经为假 —— OCR / 翻译的
+ *  引擎表整场会话都是空的（页面看着"没有可选引擎"，怎么刷新都不恢复）。
+ *  所以补这两个标记：只要还没拿到过，下一次 applyConf 就补拉一次。 */
+let ocrEngLoaded = false;
+let transEngLoaded = false;
+
 /** 用户此刻是不是正在某个容器里编辑（焦点在它的输入框里）？
  *  用来在配置广播到达时跳过「会重建 DOM」的重渲染，避免打断输入。 */
 function qsEditingIn(id) {
@@ -3900,12 +3960,19 @@ function bindSwitches() {
     //   重建一次整张 OCR 引擎表和凭据表单。
     syncOcrEngineUI();
     // 引擎列表要单独拉一次（renderOcrEngines 只负责渲染，数据来自后端注册表）
-    if (!bound) loadOcrEngines();
+    /* ⚠ 条件是「首屏还没跑完」**或**「列表还没拿到过」。
+     *
+     * `bound` 同时承担了两件事（事件只绑一次 / 首屏只灌一次），而配置广播
+     * （qs://config）可能**先于** boot 里那句 `await get_config` 到达：
+     * 那样第一次 applyConf 就把 bound 置了 true，等真正的首屏配置到达时
+     * 这个 `if (!bound)` 已经为假 —— OCR 引擎表整场会话都是空的
+     * （用户看到的是"文字识别页没有可选的引擎"，且怎么刷新都不恢复）。 */
+    if (!bound || !ocrEngLoaded) loadOcrEngines();
 
     // v1.5.16 第二轮：翻译栏 —— 和 OCR 同一套（名单来自后端注册表）。
     // 语言表只拉一次（transLangsFilled 守着），但「选中哪项」「加进横条按钮显不显」
     // 「默认引擎是谁」每次广播都要刷。
-    if (!bound) loadTransEngs();
+    if (!bound || !transEngLoaded) loadTransEngs();
     renderTransEngines();
     renderTransCred();
     renderTransMulti();
@@ -4232,9 +4299,7 @@ $('btnBkClean').addEventListener('click', async () => {
     }
     refreshBackupInfo();
 });
-// 切到备份页时刷一次（文件时间会变）；启动也刷
-document.querySelector('#tabs button[data-tab="backup"]')
-    ?.addEventListener('click', () => refreshBackupInfo());
+// 启动先刷一次；之后每次切到备份页由 afterShow('backup') 接手
 refreshBackupInfo();
 
 /* 「仅保留最近 10 份」：本地 + 云端一起清。
@@ -4407,12 +4472,10 @@ $('btnPickFile').addEventListener('click', () => {
 
 listen('qs://picked-app', (ev) => addAppToFilter(ev.payload));
 
-listen('qs://focus-tab', (ev) => {
-    const want = String(ev.payload || '');
-    for (const b of $('tabs').querySelectorAll('button')) {
-        if (b.dataset.tab === want) b.click();
-    }
-});
+/* 后端「还没配凭据，已帮你打开设置页」走这条（payload 是**子页名** `ocr`）。
+ * 以前这里只在顶栏按钮里按 `data-tab` 找，而 `ocr` 是附加功能下的子页 ——
+ * 循环空转，窗口开了却停在上一次那页。统一交给 gotoPane 解析。 */
+listen('qs://focus-tab', (ev) => gotoPane(ev.payload || ''));
 
 // ---- 横条编排：分隔线 + 自定义引擎 ----
 $('btnAddSep').addEventListener('click', () => invoke('add_separator'));
@@ -6083,6 +6146,7 @@ async function loadTransEngs() {
     } catch (e) {
         TRANS_ENGS = [];
     }
+    if (Array.isArray(TRANS_ENGS)) transEngLoaded = true;
     renderTransEngines();
     renderTransCred();
     renderTransMulti();
@@ -6644,13 +6708,14 @@ function syncOcrEngineUI() {
  * 的官方页面**（不是我们自己写的说明页 —— 用户要的就是官方教程）。
  */
 let ENGINES = [];
-
 async function loadOcrEngines() {
     try {
         ENGINES = await invoke('ocr_engines_list');
     } catch (e) {
         ENGINES = [];
     }
+    // 拿到过就记一笔：配置广播再来时不必重复拉，但**首屏没拿到**时要补拉
+    if (Array.isArray(ENGINES)) ocrEngLoaded = true;
     renderOcrEngines();
     renderOcrCred();
     renderOcrMulti();
@@ -10439,15 +10504,8 @@ listen('qs://goto-tab', (ev) => {
     // 无脑补 1.44s 的话，尾巴上迟到的 emit 会把用户后来切的分页冲掉
     // （打开设置 1.4 秒内点别的页会被弹回去，踩过）。
     try { invoke('qs_page_ack'); } catch (e) { }
-    const name = String((ev && ev.payload) || '').trim();
-    if (!name) return;
-    const b = document.querySelector('#tabs button[data-tab="' + name + '"]');
-    if (b) {
-        b.click();
-    } else if (SUB_TO_GROUP[name]) {
-        // 子页（ai / go / ocr / backup / help …）：打开它所属的分组并定位到这一项
-        showPane(SUB_TO_GROUP[name], name);
-    }
+    // 页名解析统一走 gotoPane：顶栏页 / 分组子页 / 分组默认子页都能落对
+    gotoPane((ev && ev.payload) || '');
 });
 
 listen('qs://focus-engine', (ev) => {

@@ -4136,8 +4136,23 @@ fn load_backup_of(path: &std::path::Path) -> Option<Config> {
         crate::win::log("config: 所有候选备份都读不出来，只能落回默认配置");
         return None;
     }
-    // 按文件名（含时间戳）从新到旧
-    readable.sort_by(|a, b| b.0.cmp(&a.0));
+    /* 从新到旧。⚠ **必须把 `config.json.bak` 永远压在最后**：
+     *
+     * 候选来自三个没有统一命名前缀的族 ——
+     *   ① 滚动备份 `config.auto(<时间>).QuickAchieve`（上面的注释要求它排第一）；
+     *   ② 老版遗留的 `config.json.bak`（注释要求它"最后兜底"）；
+     *   ③ 备份目录里的同类两份。
+     * 而"字典序 = 时间序"**只在同一前缀族内部成立**：`config.json.bak` 第 7 个
+     * 字符是 'j'，`config.auto(` 是 'a'，降序时 .bak 恒赢；对 `config(...)` 族
+     * 同理（第 6 个字符 '.' > '('）。
+     *
+     * 于是"最新"永远是那份**没有时间戳的老 bak**，把真正最新的滚动备份挤掉 ——
+     * 正是 4011 行注释里记录过的那次事故（"截断恢复恢复出的是一份陈配置"）。
+     * 按"是不是老 bak"先分组、组内再按名字降序，两条约束同时成立。 */
+    readable.sort_by(|a, b| {
+        let legacy = |n: &str| n.starts_with("config.json.bak");
+        legacy(&a.0).cmp(&legacy(&b.0)).then_with(|| b.0.cmp(&a.0))
+    });
     let newest = readable.remove(0);
 
     /* ② 异常检测：最新那份像不像"被清空了"？ */
@@ -4416,9 +4431,26 @@ pub fn save(cfg: &Config) {
 /// `save` 的可注入版本（测试专用，理由同 `load_from`）。
 pub fn save_to(path: &std::path::Path, cfg: &Config) {
     ensure_dirs();
+    /* 备份密码先另存一份 —— 它**不碰 config.json**，却是"主文件解不开"时
+     * 用户唯一能自救的那把钥匙。
+     *
+     * ⚠ 必须放在 `is_locked()` 之前：
+     *   那道闸门保护的是 config.json（防止带着默认配置把它覆盖掉），
+     *   不该连 `backup.key` 一起拦。否则启动提示里那句
+     *   「在设置里重新填写备份密码后重启」永远无效 —— set_setting 存密码 →
+     *   save() → 在这里直接 return，磁盘上什么都没变，重启后照样解不开，
+     *   用户只会以为自己密码记错了。
+     * ⚠ 锁写期间**只在非空时**写：那时手里是默认配置（backup_password 为空串），
+     *   而 stash_backup_password("") 会**删掉**这把本来能用的钥匙。
+     *   非锁写的正常路径保持老语义（清空密码 = 删掉存档）。 */
+    let backup_pw = cfg.backup_password.trim().to_string();
+    let locked = is_locked();
+    if !locked || !backup_pw.is_empty() {
+        stash_backup_password(&backup_pw);
+    }
     /* ⚠⚠ v1.4.0：主文件解不开时**一律不写盘**（详见 `LOCKED` 的注释）。
      * 否则"带着默认配置跑一次"就会把那份完好但解不开的加密配置覆盖掉。 */
-    if is_locked() {
+    if locked {
         crate::win::log("config: 主文件解不开（已锁写），本次不保存 —— 数据原样保留");
         return;
     }
@@ -4441,11 +4473,9 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
      * 存一份（`stash_backup_password`），所以本机上无感解锁；换机时才需要
      * 用户重新填（见 `load_backup_password`）。
      * ══════════════════════════════════════════════════════════════════ */
-    // 备份密码先取出来：写备份要用它加密，轮转时读旧备份也要用它解密
-    let backup_pw = cfg.backup_password.trim().to_string();
-    /* r92：把密码另存一份到 `backup.key` —— 这样 config.json 坏了
-     * 之后仍然解得开加密备份（详见 `stash_backup_password` 的说明）。 */
-    stash_backup_password(&backup_pw);
+    /* 备份密码在上面已经取出来并存档了（`backup_pw`）：写备份要用它加密、
+     * 轮转时读旧备份也要用它解密。这里只做闭环确认，不重复 stash ——
+     * 重复写一次没有意义，还会把"锁写期间不写 backup.key"那条规则绕过去。 */
     let seal = |plain: &str| -> Option<String> {
         match crate::crypto::seal(plain, &backup_pw) {
             Ok(t) => Some(t),

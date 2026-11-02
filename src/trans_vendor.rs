@@ -7,8 +7,9 @@
 //!   · **谷歌翻译**（Cloud Translation v2）：表单 POST，凭据是一个 API Key
 //!     （放在查询串的 `key=` 上），返回在 `data.translations[].translatedText`；
 //!   · **有道智云**（文本翻译）：表单 POST，凭据是「应用 ID + 应用密钥」，
-//!     请求要带 `sign = sha256(appKey + input + salt + curtime + secret)`,
-//!     返回在 `translation[].dst`。
+//!     请求要带 `sign = sha256(appKey + input + salt + curtime + secret)`，
+//!     其中 `input` 是 q 的「前 10 + 长度 + 后 10」截断（≤20 字时就是 q 本身），
+//!     返回在 `translation[]`（**字符串数组**，不是对象数组）。
 //!
 //! 所以它们**共用不上** `crate::trans` 那份 OpenAI 兼容实现，各写一份。
 //! 但**公共部分**（长度上限 / 语言码归一 / 错误分类 / 端点可注入）在这里
@@ -130,11 +131,21 @@ fn baidu(info: &EngineInfo, creds: &Creds, text: &str, target: &str) -> Result<S
         let msg = v.get("error_msg").and_then(|x| x.as_str()).unwrap_or("");
         return Err(format!("百度翻译报错 {code}：{msg}"));
     }
+    /* ⚠ `trans_result` 是**按段落分行**的数组：请求 q 里的每个 `\n` 对应一个
+     * `{"src","dst"}` 元素。以前只取 `[0]`，多行原文除第一行外全部静默丢弃
+     * （不报错、界面也不提示），用户会以为百度只翻了一行。这里按 `\n` 拼回去。 */
     let out = v
-        .pointer("/trans_result/0/dst")
-        .and_then(|x| x.as_str())
-        .map(str::to_string)
-        .filter(|s| !s.trim().is_empty())
+        .get("trans_result")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.get("dst").and_then(|d| d.as_str()))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| "百度翻译返回里没有译文（trans_result 是空的）".to_string())?;
     Ok(out)
 }
@@ -232,7 +243,10 @@ fn google_lang(code: &str) -> &'static str {
 /// 官方文档：https://ai.youdao.com/DOCSIRMA/html/trans/api/wbfy/index.html
 ///
 /// 签名（v3）：`sign = sha256(appKey + input + salt + curtime + secret)`，
-/// 其中 `input` 在**长度超过 20** 时取 q 的 sha256（官方文档里的 q 规则）。
+/// 其中 `input` 是 q 的「截断形式」：长度 ≤ 20 时就是 q 本身，
+/// 否则是 **前 10 个字符 + 长度 + 后 10 个字符**（官方 JS demo 的 `truncate()`）。
+/// ⚠ 不是 `sha256(q)` —— 写成那样服务端重算必然对不上，任何超过 20 字的句子
+///   都会稳定报 202（签名检验失败）。
 fn youdao(info: &EngineInfo, creds: &Creds, text: &str, target: &str) -> Result<String, String> {
     let app_key = creds.key.trim();
     let secret = creds.secret.trim();
@@ -244,11 +258,7 @@ fn youdao(info: &EngineInfo, creds: &Creds, text: &str, target: &str) -> Result<
     let url = creds.base_for(info);
     let lang = youdao_lang(&crate::trans::normalize_lang(target));
 
-    let input = if text.chars().count() > 20 {
-        crate::ocr_engines::sha256_hex(text.as_bytes())
-    } else {
-        text.to_string()
-    };
+    let input = youdao_sign_input(text);
     let sign = crate::ocr_engines::sha256_hex(
         format!("{app_key}{input}{salt}{curtime}{secret}").as_bytes(),
     );
@@ -270,13 +280,38 @@ fn youdao(info: &EngineInfo, creds: &Creds, text: &str, target: &str) -> Result<
             return Err(format!("有道翻译报错 {code}：{msg}"));
         }
     }
+    /* 有道的 `translation` 是**字符串数组**（`{"translation":["你好"]}`），
+     * 元素上没有 dst 字段。按 `/translation/0/dst` 取值恒为 None ——
+     * 即使服务端 200 + errorCode=0（而且已经计费），也会被判成"没有译文"。
+     * 多行时逐段拼回（和百度那一族同一个口径）。 */
     let out = v
-        .pointer("/translation/0/dst")
-        .and_then(|x| x.as_str())
-        .map(str::to_string)
-        .filter(|s| !s.trim().is_empty())
+        .get("translation")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| "有道翻译返回里没有译文（translation 是空的）".to_string())?;
     Ok(out)
+}
+
+/// 有道 v3 签名里的 `input`：≤20 字原样返回，否则「前 10 + 长度 + 后 10」。
+///
+/// 长度与截取都按**字符**算（一个汉字是 3 字节，但官方算的是字符数）。
+fn youdao_sign_input(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    if n <= 20 {
+        return text.to_string();
+    }
+    let head: String = chars[..10].iter().collect();
+    let tail: String = chars[n - 10..].iter().collect();
+    format!("{head}{n}{tail}")
 }
 
 /// 我们的语言码 → 有道的语言码。
@@ -473,6 +508,20 @@ mod tests {
         assert_eq!(out, "你好");
     }
 
+    /// 百度把多行原文按段落拆成 `trans_result[]`，必须全部拼回 ——
+    /// 以前只取 `[0]`，第二行起静默消失（不报错，用户以为只翻了一行）。
+    #[test]
+    fn 百度多行译文按行拼回() {
+        let url = serve_once(
+            r#"{"trans_result":[{"src":"a","dst":"甲"},{"src":"b","dst":"乙"},{"src":"c","dst":"丙"}]}"#,
+            |_| {},
+        );
+        let mut c = creds("APP123", "SECRET");
+        c.base = url;
+        let out = translate(eng("baidu"), &c, "a\nb\nc", "zh").unwrap();
+        assert_eq!(out, "甲\n乙\n丙");
+    }
+
     #[test]
     fn 百度错误码要变成人话() {
         let url = serve_once(
@@ -524,7 +573,9 @@ mod tests {
     #[test]
     fn 有道用sha256签名并解析译文() {
         let url = serve_once(
-            r#"{"translation":[{"src":"hello","dst":"你好"}],"errorCode":"0"}"#,
+            // ⚠ 真实契约：`translation` 是**字符串数组**，元素没有 dst 字段。
+            //   以前这里用的是 `[{"src","dst"}]` 的伪形状，把错误解析钉死了。
+            r#"{"translation":["你好"],"errorCode":"0"}"#,
             |req| {
                 assert!(req.contains("appKey=AK"), "{req}");
                 assert!(req.contains("signType=v3"), "{req}");
@@ -536,6 +587,42 @@ mod tests {
         c.base = url;
         let out = translate(eng("youdao"), &c, "hello", "zh").unwrap();
         assert_eq!(out, "你好");
+    }
+
+    /// 有道 v3 的 `input` 规则（≤20 原样；否则 前10 + 长度 + 后10）。
+    ///
+    /// 这条钉的是"签名串到底怎么拼" —— 写成 `sha256(q)` 时任何长句都会 202。
+    #[test]
+    fn 有道签名input按前10加长度加后10截断() {
+        assert_eq!(youdao_sign_input("hello"), "hello");
+        // 正好 20 字：不截断
+        let s20 = "一二三四五六七八九十一二三四五六七八九十";
+        assert_eq!(s20.chars().count(), 20);
+        assert_eq!(youdao_sign_input(s20), s20);
+        // 21 字：前 10 + 21 + 后 10（后 10 是 [11..21]，即第 12 个字起）
+        let s21 = "一二三四五六七八九十一二三四五六七八九十甲";
+        assert_eq!(s21.chars().count(), 21);
+        assert_eq!(
+            youdao_sign_input(s21),
+            "一二三四五六七八九十21二三四五六七八九十甲"
+        );
+        // 按**字符**而不是字节：中文一句 12 个字（36 字节）不该被当成"超过 20"
+        let cn = "这是一句十二个汉字的话";
+        assert_eq!(cn.chars().count(), 11);
+        assert_eq!(youdao_sign_input(cn), cn);
+    }
+
+    /// 多行原文：服务端按段落返回数组，必须逐行拼回去，不能只留第一行。
+    #[test]
+    fn 有道多行译文按行拼回() {
+        let url = serve_once(
+            r#"{"translation":["第一行","第二行","第三行"],"errorCode":"0"}"#,
+            |_| {},
+        );
+        let mut c = creds("AK", "SK");
+        c.base = url;
+        let out = translate(eng("youdao"), &c, "a\nb\nc", "zh").unwrap();
+        assert_eq!(out, "第一行\n第二行\n第三行");
     }
 
     #[test]

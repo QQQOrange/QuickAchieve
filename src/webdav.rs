@@ -632,6 +632,13 @@ pub fn list_newest_first(o: &Opts) -> Result<Vec<Backup>, String> {
 /// 于是「云端备份列表」永远只有一条，用户做了很多次备份也只看到一个
 /// （明确反馈过）。改成一备份一个带时间戳的文件之后，「最新一份」就必须靠
 /// 列目录来解析，不能再靠固定名字。
+///
+/// ⚠ **不要用它来决定"云端那份配置是哪一份"**：它只按 mtime 取最新的**文件**，
+///   不看文件名。用户填的目录常常不是专用目录（Nextcloud 的
+///   `.../remote.php/dav/files/<用户>/` 就是整个网盘根），里面任何文档都可能
+///   排在前面。启动同步那边已改成先按 `config::is_manual_backup` 过滤再取最新；
+///   这里保留是因为它是个诚实的通用工具（单测也在用），别在外面直接拿去恢复。
+#[allow(dead_code)]
 pub fn latest(o: &Opts) -> Result<Option<Backup>, String> {
     Ok(list_newest_first(o)?.into_iter().next())
 }
@@ -743,11 +750,10 @@ pub fn probe(o: &Opts) -> Result<String, String> {
         return Err("还没填 WebDAV 地址".into());
     }
     let a = agent(o);
-    let mut made = 0usize;
     // 报「最新」之前必须先排序（见 list_newest_first 的注释）：不排的话
     // 这句话就是"随便挑三个文件名说它是最新的"，用户拿去对照自己刚传的那份
     // 会发现对不上。
-    match list_newest_first(o) {
+    let made = match list_newest_first(o) {
         Ok(v) if !v.is_empty() => {
             let head: Vec<&str> = v.iter().take(3).map(|b| b.name.as_str()).collect();
             return Ok(format!(
@@ -756,11 +762,15 @@ pub fn probe(o: &Opts) -> Result<String, String> {
                 head.join("、")
             ));
         }
-        Ok(_) => {}
-        Err(_) => {
-            made = mkcol_dirs(&a, o, &o.target());
-        }
-    }
+        /* ⚠ 空列表也要试着建目录，不能只在 Err 分支建。
+         *
+         * 目录**不存在**时这条路走不到 Err：PROPFIND 404 → list() 退回
+         * `list_by_get()` → 而它把 404 直接当成"空目录"返回 Ok([])。
+         * 于是这里落在"什么都不做"、"新建文件夹"那段成了不可达的死代码：
+         * 用户把地址填错（比如 .../davv/），测试连接照样回"连接成功，目录已就绪"。
+         * mkcol_dirs 对"已存在"（405/409/301）是静默忽略的，重复调用安全。 */
+        Ok(_) | Err(_) => mkcol_dirs(&a, o, &o.target()),
+    };
     match list_newest_first(o) {
         Ok(v) if !v.is_empty() => Ok(format!("连接成功，云端已有 {} 份备份", v.len())),
         Ok(_) => Ok(format!(

@@ -1,0 +1,32 @@
+{
+  "智能去空格": "Smart space cleanup",
+  "智能换行": "Smart line joining",
+  "标点转全角": "Punctuation → full-width",
+  "标点转半角": "Punctuation → half-width",
+  "英文转小写": "Lowercase English",
+  "英文转大写": "Uppercase English",
+  "首字母大写（每词）": "Capitalize Each Word",
+  "句首字母大写": "Capitalize sentence starts",
+
+  "去空格": "Spaces",
+  "合并换行": "Join lines",
+  "全角标点": "Full-width",
+  "半角标点": "Half-width",
+  "转小写": "lower",
+  "转大写": "UPPER",
+  "首字母": "Title",
+  "句首": "Sentence",
+
+  "折叠多余空格，去掉中文之间、行首行尾的空白（换行保留）": "Collapse extra spaces and trim whitespace between CJK characters and at the start and end of lines (line breaks are kept)",
+  "把排版断开的行接回一段；句末标点、列表、编号、表格的换行不动": "Rejoin lines broken by layout; line breaks after sentence punctuation, in lists, numbered items and tables are kept",
+  ", ; : ! ? ( ) 等收成中文全角标点（不动小数点、网址）": "Turn , ; : ! ? ( ) into full-width CJK punctuation (decimals and URLs are left alone)",
+  "，；：！？（） 等收成英文半角标点": "Turn ，；：！？（） into half-width punctuation",
+  "整段英文转成小写（中文与符号不动）": "Lowercase all English text (CJK and symbols are untouched)",
+  "整段英文转成大写": "Uppercase all English text",
+  "每个单词的首字母大写，其余保持原样": "Capitalize the first letter of every word and leave the rest as-is",
+  "每句话的第一个字母大写（按 . ! ? 和换行断句）": "Capitalize the first letter of each sentence (split on . ! ? and line breaks)",
+
+  "对识别结果做文本处理（先划一段就只处理那一段）": "Run text tools on the result (select a range to process only that part)",
+  "识别结果会出现在这里…": "Recognition results will appear here…",
+  "还没解析出内容": "Nothing decoded yet"
+}

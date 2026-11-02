@@ -1481,8 +1481,8 @@ pub mod tray {
             let png = self.icon.as_ref().map(|i| i.bytes.clone()).unwrap_or_default();
 
             // 菜单回调：(app, MenuEvent)
-            let on_menu: Box<dyn Fn(&str) + Send + Sync> = match self.on_menu {
-                Some(f) => Box::new(move |mid: &str| {
+            let on_menu: std::sync::Arc<dyn Fn(&str) + Send + Sync> = match self.on_menu {
+                Some(f) => std::sync::Arc::new(move |mid: &str| {
                     if let Some(a) = super::APP.get() {
                         f(
                             a,
@@ -1492,13 +1492,13 @@ pub mod tray {
                         );
                     }
                 }),
-                None => Box::new(|_: &str| {}),
+                None => std::sync::Arc::new(|_: &str| {}),
             };
 
             // 图标事件回调：托盘只给鼠标消息，这里翻译成 TrayIconEvent
             let tray_id = id.clone();
-            let on_event: Box<dyn Fn(u32) + Send + Sync> = match self.on_event {
-                Some(f) => Box::new(move |msg: u32| {
+            let on_event: std::sync::Arc<dyn Fn(u32) + Send + Sync> = match self.on_event {
+                Some(f) => std::sync::Arc::new(move |msg: u32| {
                     const WM_LBUTTONDBLCLK: u32 = 0x0203;
                     let ev = if msg == WM_LBUTTONDBLCLK {
                         TrayIconEvent::DoubleClick {
@@ -1528,7 +1528,7 @@ pub mod tray {
                     };
                     f(&dummy, ev);
                 }),
-                None => Box::new(|_: u32| {}),
+                None => std::sync::Arc::new(|_: u32| {}),
             };
 
             crate::trayhost::install(
@@ -1542,7 +1542,7 @@ pub mod tray {
                 on_event,
             );
 
-            Ok(TrayIcon {
+            let tray = TrayIcon {
                 id,
                 icon: None,
                 menu: None,
@@ -1551,7 +1551,15 @@ pub mod tray {
                 _p: PhantomData,
                 on_menu: None,
                 on_event: None,
-            })
+            };
+            /* ⚠ 建完必须**登记进表**：`tray_by_id` / `tray_exists` 只查这张表。
+             *
+             * 以前漏了这一步，于是 `tray_by_id("qs-tray")` 永远返回 None，
+             * main.rs 的 refresh_tray 每次都走「找不到托盘，跳过」——
+             * 用户点「暂停使用」后，托盘图标、悬停提示、菜单文案一个都不更新，
+             * 菜单还写着「暂停使用」但点下去是「恢复」，正好点反。 */
+            tray_register(&tray);
+            Ok(tray)
         }
     }
 

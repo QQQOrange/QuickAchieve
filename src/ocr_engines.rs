@@ -543,17 +543,27 @@ const JSON_CT: &str = "application/json";
 ///
 /// 只重试**明显是瞬态**的：连接层错误、429、5xx。鉴权/参数错（4xx 里除 429）
 /// 重试没有意义，只会让用户多等一轮。
+///
+/// ⚠ **超时不重试**。`ureq::Error::Transport` 把"等满 timeout 才失败"也包在
+/// 里面，无脑重试等于把一次超时放大成三次：main.rs 给 OCR 的是 25s 超时，
+/// 最坏就变成 3×25s ≈ 76 秒的空转（用户看到的是"点了完全没反应"），
+/// 而这些是**带图 POST**、按次计费的接口，服务端多半已经处理并计费了。
+/// 回退到"一次超时就收工"，把时间还给用户。
 fn should_retry(err: &ureq::Error) -> bool {
     match err {
         ureq::Error::Status(code, _) => *code == 429 || *code >= 500,
-        ureq::Error::Transport(_) => true,
+        ureq::Error::Transport(t) => {
+            let s = t.to_string().to_ascii_lowercase();
+            !(s.contains("timed out") || s.contains("timeout"))
+        }
     }
 }
 
 /// 带重试的 `send_string`（JSON 那几个引擎共用）。
 ///
-/// 退避 250ms / 700ms，最多 3 次尝试 —— 总代价可控（最坏多等约 1 秒），
-/// 但能把"偶发一次就失败"的体验抹平。
+/// 退避 250ms / 700ms，最多 3 次尝试 —— 每次尝试本身还有 timeout 上限，
+/// 所以最坏是"3 次各自的超时 + 约 1 秒退避"；超时那次不重试（见 `should_retry`），
+/// 实际最坏只比单次多两条快速失败。
 fn send_with_retry(
     make: impl Fn() -> ureq::Request,
     body: &str,
@@ -820,13 +830,21 @@ fn youdao(
     })
 }
 
-/// 有道 v3 签名：`sha256(appKey + input + salt + curtime + secret)`；
-/// 其中 input 在图片 base64 长度超过 20 时取**它的 sha256**（官方文档里的 q 规则）。
+/// 有道 v3 签名：`sha256(appKey + input + salt + curtime + secret)`。
+///
+/// `input` 是**被签名串的截断形式**：长度 ≤ 20 时原样，否则
+/// 「前 10 个字符 + 长度 + 后 10 个字符」（官方 `truncate()`，OCR 的待签串
+/// 就是图片 base64）。⚠ 不是 `sha256(base64)` —— 图片 base64 几乎不可能
+/// 落到 ≤20 那支，写成 sha256 等于**每个请求都签错**，服务端固定回 202。
 pub fn youdao_sign(app_key: &str, img_b64: &str, salt: &str, curtime: &str, secret: &str) -> String {
-    let input = if img_b64.chars().count() <= 20 {
+    let chars: Vec<char> = img_b64.chars().collect();
+    let n = chars.len();
+    let input = if n <= 20 {
         img_b64.to_string()
     } else {
-        sha256_hex(img_b64.as_bytes())
+        let head: String = chars[..10].iter().collect();
+        let tail: String = chars[n - 10..].iter().collect();
+        format!("{head}{n}{tail}")
     };
     sha256_hex(format!("{app_key}{input}{salt}{curtime}{secret}").as_bytes())
 }
@@ -1483,12 +1501,27 @@ mod tests {
         // 短输入（≤20 字符）直接用原文
         let short = youdao_sign("app", "abc", "salt", "123", "sec");
         assert_eq!(short, sha256_hex(b"appabcsalt123sec"));
-        // 长输入（真实图片 base64 一定超过 20）先取它的 sha256
+        /* 长输入（真实图片 base64 一定超过 20）：待签串要换成
+         * 「前 10 个字符 + 长度 + 后 10 个字符」，**不是** sha256(原文)。
+         * ⚠ 这条期望值以前写的就是 sha256，把错误算法当成"documented rule"
+         *   钉死了 —— 于是真机上每个请求都签错、固定报 202。 */
         let img = "x".repeat(40);
         let long = youdao_sign("app", &img, "salt", "123", "sec");
-        let expect = sha256_hex(format!("app{}salt123sec", sha256_hex(img.as_bytes())).as_bytes());
+        let input = format!("{}{}{}", "x".repeat(10), 40, "x".repeat(10)); // 10 + len + 10
+        let expect = sha256_hex(format!("app{input}salt123sec").as_bytes());
         assert_eq!(long, expect);
+        assert_eq!(input, "xxxxxxxxxx40xxxxxxxxxx");
+        // 必须与"整段原样拼"和"sha256 整个 base64"都不同
         assert_ne!(long, sha256_hex(format!("app{img}salt123sec").as_bytes()));
+        assert_ne!(
+            long,
+            sha256_hex(format!("app{}salt123sec", sha256_hex(img.as_bytes())).as_bytes())
+        );
+        // 长度按字符算：21 个汉字也只截 10+21+10，不该按字节算成 63
+        let cn = "图".repeat(21);
+        let s = youdao_sign("app", &cn, "salt", "123", "sec");
+        let e = sha256_hex(format!("app{}21{}salt123sec", "图".repeat(10), "图".repeat(10)).as_bytes());
+        assert_eq!(s, e);
     }
 
     #[test]
@@ -1526,7 +1559,6 @@ mod tests {
         assert!(parse_ocrspace(&none).unwrap_err().contains("没认出文字"));
     }
 
-    #[test]
     /// 模型下线/写错时，错误信息要能指导用户下一步（v2.11.3）。
     ///
     /// 场景来源：硅基流动 2026-04-29 下线 `Qwen/Qwen2.5-VL-32B-Instruct`，
@@ -1549,6 +1581,9 @@ mod tests {
         assert!(!e2.contains("模型可能已下线"), "把鉴权错说成模型错：{e2}");
     }
 
+    /// 有道 OCR：`Result.regions[].lines[].text` 逐行拼接；`errorCode` 是**字符串**
+    /// `"0"` 才算成功（数字 0 不收）、非 0 要把错误码带回给用户。
+    #[test]
     fn parse_youdao_reads_lines_and_error_codes() {
         let okv: Value = serde_json::from_str(
             r#"{"errorCode":"0","Result":{"regions":[

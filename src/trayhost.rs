@@ -9,7 +9,7 @@
 //!
 //! 回调闭包存在全局表里：它们是 `Send + Sync` 的，WndProc 里取出来直接调。
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -36,8 +36,15 @@ pub struct TrayDef {
     pub items: Vec<(String, String, bool)>,
 }
 
-type MenuFn = Box<dyn Fn(&str) + Send + Sync>;
-type EventFn = Box<dyn Fn(u32) + Send + Sync>;
+/* 回调用 `Arc` 而不是 `Box`：wndproc 里必须**先复制一份、放掉 SLOT 锁，再调用**。
+ *
+ * 为什么（曾经踩过的形状）：托盘菜单的回调最终会走 main.rs 的 refresh_tray →
+ * `tray.set_menu()/set_tooltip()/set_icon()` → 又回来 `SLOT.lock()`。
+ * `std::sync::Mutex` 不可重入（Windows 上是 SRWLOCK），同一个线程二次加锁
+ * 必然死锁 —— 而这里正是**主线程**（tao 事件循环 + 这个托盘窗口的属主），
+ * 一锁死就是整个程序不再响应、托盘菜单也弹不出来。 */
+type MenuFn = Arc<dyn Fn(&str) + Send + Sync>;
+type EventFn = Arc<dyn Fn(u32) + Send + Sync>;
 
 struct Slot {
     def: TrayDef,
@@ -115,10 +122,13 @@ unsafe extern "system" fn wndproc(
     if msg == WM_TRAY {
         match lparam.0 as u32 {
             WM_LBUTTONUP | WM_LBUTTONDBLCLK => {
-                if let Ok(g) = SLOT.lock() {
-                    if let Some(s) = g.as_ref() {
-                        (s.on_event)(lparam.0 as u32);
-                    }
+                // 复制出回调、**放掉锁**再调用（回调里可能反过来改托盘）
+                let cb = match SLOT.lock() {
+                    Ok(g) => g.as_ref().map(|s| s.on_event.clone()),
+                    Err(e) => e.into_inner().as_ref().map(|s| s.on_event.clone()),
+                };
+                if let Some(cb) = cb {
+                    cb(lparam.0 as u32);
                 }
             }
             WM_RBUTTONUP => show_menu(hwnd),
@@ -139,12 +149,13 @@ unsafe extern "system" fn wndproc(
         };
         if let Some((id, text)) = picked {
             if text != "-" && !id.is_empty() {
-                let g = match SLOT.lock() {
-                    Ok(g) => g,
-                    Err(e) => e.into_inner(),
+                // 同上：锁只用来复制 Arc，绝不在持锁期间跑回调
+                let cb = match SLOT.lock() {
+                    Ok(g) => g.as_ref().map(|s| s.on_menu.clone()),
+                    Err(e) => e.into_inner().as_ref().map(|s| s.on_menu.clone()),
                 };
-                if let Some(s) = g.as_ref() {
-                    (s.on_menu)(&id);
+                if let Some(cb) = cb {
+                    cb(&id);
                 }
             }
         }
