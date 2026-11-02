@@ -9860,6 +9860,13 @@ fn quit_with_sync(code: i32) {
          * 现在：同步线程跑完（或超时）由**它自己**调 `exit`，主线程立刻返回。
          * 代价是"退出"变成异步的：真有未同步的数据，进程会晚几秒才消失 ——
          * 但界面是活的，行为也更符合"点了就有反应"。 */
+        /* 兜底：万一同步线程自己卡住（网络栈卡死不是没可能），
+         * 8 秒后强制退出 —— 绝不让"点了退出却永远退不掉"这种事发生。 */
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(8));
+            win::log("quit: 同步超时，强制退出");
+            app().exit(0);
+        });
         std::thread::spawn(move || {
             exit_sync_if_needed();
             app().exit(code);

@@ -297,15 +297,34 @@ pub fn install(def: TrayDef, icon_png: &[u8], on_menu: MenuFn, on_event: EventFn
         def.tip.chars().take(12).collect::<String>()
     ));
 
-    if let Ok(mut g) = SLOT.lock() {
+    /* v2.23.12：万一之前已经装过一次（`install` 被重复调用），
+     * 把旧图标的句柄销毁掉 —— 否则每装一次漏一个 HICON（GDI 句柄）。
+     * `set_icon` 一直有这个处理，这里以前漏了。 */
+    let old_icon = {
+        let mut g = match SLOT.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        let old = g.as_ref().map(|s| s.hicon).unwrap_or(0);
         *g = Some(Slot {
             def,
             hicon,
             on_menu,
             on_event,
         });
+        old
+    };
+    if old_icon != 0 && old_icon != hicon {
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyIcon(HICON(
+                old_icon as *mut core::ffi::c_void,
+            ));
+        }
     }
-    true
+    /* 装不上（`Shell_NotifyIconW` 返回 false，常见于资源管理器正在重启）
+     * 现在会传回 false，让调用方记一条日志 —— 以前恒 `true`，
+     * 于是"托盘没装上"在日志里完全看不出来。 */
+    add_ok
 }
 
 /// 右下角通知（托盘气球）。
