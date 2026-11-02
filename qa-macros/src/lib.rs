@@ -120,8 +120,14 @@ pub fn command(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[allow(non_snake_case)]
-        pub fn #reg() -> (&'static str, crate::t::Invoker) {
-            (#name_str, #inv as crate::t::Invoker)
+        pub fn #reg() -> (&'static str, crate::t::Invoker, bool) {
+            /* ⚠ v2.23.13：第三个字段 = **这个命令是不是 async**。
+             *
+             * 运行时据此决定"要不要丢到工作线程去跑"。以前这个信息在注册时
+             * 就丢了，于是 async 命令照样在主线程上 `block_on` —— 翻译、
+             * 重新识别（网络，25~90 秒）期间整个界面冻结，连"正在识别…"
+             * 都刷不出来。 */
+            (#name_str, #inv as crate::t::Invoker, #is_async)
         }
     };
     out.into()

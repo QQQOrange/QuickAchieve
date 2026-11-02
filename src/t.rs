@@ -232,7 +232,7 @@ pub struct WinState {
 pub type WinHandler = Arc<dyn Fn(&WindowEvent) + Send + Sync>;
 
 pub struct Inner {
-    pub cmds: OnceLock<HashMap<&'static str, Invoker>>,
+    pub cmds: OnceLock<HashMap<&'static str, (Invoker, bool)>>,
     pub labels: Mutex<HashSet<String>>,
     pub states: Mutex<HashMap<String, WinState>>,
     pub handlers: Mutex<HashMap<String, Vec<WinHandler>>>,
@@ -1910,10 +1910,39 @@ fn run_ipc(label: &str, body: &str) {
         }
     };
 
-    let Some(f) = table.get(cmd.as_str()) else {
+    let Some(&(f, is_async)) = table.get(cmd.as_str()) else {
         reply(label, &id, false, &format!("\"未知命令 {cmd}\""));
         return;
     };
+    /* ⚠ v2.23.13：**async 命令必须离开主线程**。
+     *
+     * 这条 `run_ipc` 是在主线程的 `drain_ipc` 里跑的；async 命令的实现是
+     * `block_on(未来)`，等于在主线程上把整个异步任务跑完 —— 于是
+     * 「测试连接 / 重新识别 / 翻译一整段」（网络，25~90 秒）期间界面完全冻结，
+     * 连"正在识别…"都刷不出来；翻译的流式增量也全堵在队列里，翻完才一起涌出。
+     *
+     * 现在：async 命令直接丢到工作线程，主线程立刻返回。
+     * 结果通过 `reply()` 送回 —— 它走的是 `eval_in`（投递到主线程的 Eval 事件），
+     * 从任何线程调用都安全。 */
+    if is_async {
+        let label2 = label.to_string();
+        let id2 = id.clone();
+        let args2 = args.clone();
+        std::thread::spawn(move || {
+            let Some(app) = APP.get() else { return };
+            let ctx = Ctx::new(app.clone(), label2.clone());
+            match f(&ctx, &args2) {
+                Ok(v) => reply(&label2, &id2, true, &v.to_string()),
+                Err(e) => reply(
+                    &label2,
+                    &id2,
+                    false,
+                    &serde_json::to_string(&e).unwrap_or("\"\"".into()),
+                ),
+            }
+        });
+        return;
+    }
     match f(&ctx, &args) {
         Ok(v) => reply(label, &id, true, &v.to_string()),
         Err(e) => reply(label, &id, false, &serde_json::to_string(&e).unwrap_or("\"\"".into())),
@@ -1925,9 +1954,9 @@ fn reply(label: &str, id: &Value, ok: bool, payload: &str) {
     eval_in(label, &js);
 }
 
-static CMDS: OnceLock<HashMap<&'static str, Invoker>> = OnceLock::new();
+static CMDS: OnceLock<HashMap<&'static str, (Invoker, bool)>> = OnceLock::new();
 
-pub fn global_cmds() -> Option<&'static HashMap<&'static str, Invoker>> {
+pub fn global_cmds() -> Option<&'static HashMap<&'static str, (Invoker, bool)>> {
     CMDS.get()
 }
 
@@ -1999,7 +2028,7 @@ type WinEventFn = Box<dyn Fn(&WebviewWindow, &WindowEvent) + Send + Sync>;
 
 #[derive(Default)]
 pub struct Builder {
-    cmds: Vec<(&'static str, Invoker)>,
+    cmds: Vec<(&'static str, Invoker, bool)>,
     setup: Option<SetupFn>,
     on_window: Option<Arc<WinEventFn>>,
 }
@@ -2008,7 +2037,7 @@ impl Builder {
     pub fn default_builder() -> Self {
         Builder::default()
     }
-    pub fn invoke_handler(mut self, v: Vec<(&'static str, Invoker)>) -> Self {
+    pub fn invoke_handler(mut self, v: Vec<(&'static str, Invoker, bool)>) -> Self {
         self.cmds = v;
         self
     }
@@ -2052,9 +2081,9 @@ impl Builder {
             crate::win::log_sync(&msg);
         }));
         trace("run: enter");
-        let mut map: HashMap<&'static str, Invoker> = HashMap::new();
-        for (k, v) in self.cmds {
-            map.insert(k, v);
+        let mut map: HashMap<&'static str, (Invoker, bool)> = HashMap::new();
+        for (k, v, is_async) in self.cmds {
+            map.insert(k, (v, is_async));
         }
         let _ = CMDS.set(map);
 
