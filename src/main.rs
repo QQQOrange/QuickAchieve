@@ -19,6 +19,12 @@ mod toast;
 ///   这两条都不能发生，所以测试版直接把"提权"和"自启"关掉。
 pub const QS_LITE_PORTABLE: bool = true;
 
+/// 跑的是诊断探针（`--restore-probe` 这类 run-and-exit 模式）。
+///
+/// 置位之后，所有"顺手写用户数据"的动作都要跳过：恢复前快照、滚动备份、
+/// 备份轮转 —— 探针只负责**读**和**报告**，不该改变用户磁盘上的任何东西。
+pub static PROBE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn ui_root() -> std::path::PathBuf {
     /* 前端已经**编进 exe**（见 build.rs 与 t.rs 的 EMBEDDED_UI），运行时不依赖
      * 任何外部目录。这一路只是「开发期覆盖」：把改过的文件丢进 exe 同目录的
@@ -8563,6 +8569,11 @@ fn restore_note(before: &str, after: &str, kept: bool) -> String {
 /// 这和「恢复云端之前先留本机副本」（`stash_local_config`）是同一个道理，
 /// 只是那条只管 WebDAV。
 fn stash_before_restore(why: &str) {
+    // v2.23.25：探针模式不留快照（它会写进**真实备份目录**，见 PROBE 的注释）
+    if crate::PROBE.load(Ordering::SeqCst) {
+        win::log("restore: 探针模式，不留恢复前快照");
+        return;
+    }
     let src = config::config_path();
     if !src.exists() {
         return;
@@ -20944,8 +20955,29 @@ fn main() {
     // 只能造样本。配合 `QS_DATA_DIR` 指向一份数据副本，就能在不碰用户真实配置
     // 的前提下验完整条路。
     if let Some(i) = args.iter().position(|a| a == "--restore-probe") {
+        /* v2.23.25：**探针不许有副作用**。
+         *
+         * 说明里一直写的是"配合 QS_DATA_DIR 指向数据副本，就能在不碰用户真实配置的
+         * 前提下验完整条路"。但实测发现它会：给**真实备份目录**加一份
+         * `config.before-restore(...)` 快照，并触发轮转、**删掉最旧的一份真备份**。
+         * 原因很简单：`backup_dir` 来自配置（不是数据目录），恢复→保存就会落地。
+         * 一个诊断工具不该动用户的数据 —— 这里打个标记，让归档/轮转全部跳过。 */
+        crate::PROBE.store(true, Ordering::SeqCst);
         let name = args.get(i + 1).cloned().unwrap_or_default();
         init_state(); // restore_from_text 要读写全局配置状态
+        /* v2.23.25：探针必须**同步**把上下文写进日志。
+         *
+         * 以前它只 `println!` 结果，而日志走的是异步队列 —— 紧接着的
+         * `process::exit(0)` 让队列根本没机会落盘，于是探针失败时日志目录里
+         * 一个字都没有，完全没法判断"是文件名不对、还是备份目录没解析对、
+         * 还是配置没读出来"。下面这三行就是为了让这类失败自解释。 */
+        let dir = cfg_with(config::backup_dir_of);
+        win::log_sync(&format!(
+            "restore-probe: name={name:?} data_dir={} backup_dir={} exists={}",
+            config::data_dir().display(),
+            dir.display(),
+            dir.join(&name).is_file()
+        ));
         match restore_backup_file(name.clone()) {
             Ok(n) => println!("OK={n}"),
             Err(e) => println!("ERR={e}"),

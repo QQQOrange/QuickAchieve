@@ -4728,6 +4728,13 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) -> bool {
     if backup_text.is_empty() {
         return true; // 主文件已经写成功了，只是没留滚动备份
     }
+    /* v2.23.25：探针模式**不写滚动备份、也不轮转**。
+     * 备份目录来自配置（不是数据目录），探针跑一次就会在用户**真实**的备份目录里
+     * 多一份快照、并按保留策略删掉最旧的一份 —— 诊断工具不该动用户数据。 */
+    if crate::PROBE.load(std::sync::atomic::Ordering::SeqCst) {
+        crate::win::log("config: 探针模式，跳过滚动备份与轮转");
+        return true;
+    }
     let bak_tmp = bak.with_extension("tmp");
     let bak_ok = std::fs::write(&bak_tmp, backup_text.as_bytes()).is_ok()
         && std::fs::rename(&bak_tmp, &bak).is_ok();
