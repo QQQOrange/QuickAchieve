@@ -1931,13 +1931,24 @@ fn run_ipc(label: &str, body: &str) {
         std::thread::spawn(move || {
             let Some(app) = APP.get() else { return };
             let ctx = Ctx::new(app.clone(), label2.clone());
-            match f(&ctx, &args2) {
-                Ok(v) => reply(&label2, &id2, true, &v.to_string()),
-                Err(e) => reply(
+            /* 兜底：工作线程里 panic 的话，前端那个 Promise 会**永远挂着**
+             * （按钮一直是"进行中"，用户只能重启）。这里接住 panic 并回一个
+             * 错误，让界面能自己收场。`AssertUnwindSafe` 在这儿是可接受的：
+             * 命令失败之后我们除了回一条错误什么都不做。 */
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&ctx, &args2)));
+            match out {
+                Ok(Ok(v)) => reply(&label2, &id2, true, &v.to_string()),
+                Ok(Err(e)) => reply(
                     &label2,
                     &id2,
                     false,
                     &serde_json::to_string(&e).unwrap_or("\"\"".into()),
+                ),
+                Err(_) => reply(
+                    &label2,
+                    &id2,
+                    false,
+                    "\"命令内部出错（已捕获，详见日志）\"",
                 ),
             }
         });
