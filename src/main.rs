@@ -6194,7 +6194,9 @@ fn config_view() -> Value {
         "gridClick": cfg.grid_click,
         "gridAllowAdd": cfg.grid_allow_add,
         "autoStart": cfg.auto_start,
-        "autoElevate": cfg.auto_elevate,
+        /* v2.23.24：发**真实生效**的提权状态，别再让开关骗人。
+     * 便携测试版恒定 false（它不主动提权），用户明确拨过的按标记文件走。 */
+    "autoElevate": read_local_elevate_pref().unwrap_or(!QS_LITE_PORTABLE && cfg.auto_elevate),
         // 智能直达：整条列表原样给前端（含 id / kind / name / note / icon / target）。
         // 横条靠 `@go:<id>` 哨兵来认它，所以 id 必须一起出去。
         "shortcuts": cfg.shortcuts.iter().map(|x| json!({
@@ -21279,24 +21281,21 @@ fn main() {
      *
      * 测试实例不受影响：它们的数据目录是独立的，没有这个标记文件。
      */
+    /* v2.23.24：**便携测试版保持"不主动提权"**。
+     *
+     * v2.23.10 我为了修"开关显示开、实际不提权"，把这里改成无条件跟随
+     * `cfg.auto_elevate`（默认 true）—— 但那对便携版是错的：这个构建
+     * （`QS_LITE_PORTABLE = true`）设计上就是**不提权**的（互斥体带 `-lite`
+     * 后缀、注入事件也放行，见 win.rs / hook.rs 里的说明）。改完之后
+     * 全新便携版第一次启动就会弹 UAC，测试机上一堆弹窗。
+     *
+     * 正确做法：**行为**按构建默认（便携版 false、正式版跟随配置），
+     * **显示**给真实生效值（见 `config_view` 的 `autoElevate`）——
+     * 于是开关不再骗人，也不会自作主张弹 UAC。
+     * 用户明确拨过开关（`elevate.pref` 存在）时，永远按用户说的办。 */
     let elevate_wanted = match read_local_elevate_pref() {
         Some(v) => v,
-        None => {
-            /* ⚠ v2.23.10：用户从没表达过意愿时，**按配置里的默认值办，并且立刻钉住**。
-             *
-             * 这里原来是 `!QS_LITE_PORTABLE && config::load().auto_elevate` ——
-             * 本仓库 `QS_LITE_PORTABLE = true`，于是**永远是 false**：
-             * 设置页的「默认以管理员身份运行」显示着开、实际以普通权限跑。
-             * 而微信 / QQ 这类管理员权限的程序，UIPI 会让普通权限进程的全局钩子
-             * 收不到任何输入 —— 表现就是"在微信里划词不弹条、快捷键也不灵"，
-             * 用户怎么查都查不出原因（开关明明是开的）。
-             *
-             * 现在：首次启动按 `auto_elevate` 的实际值决定，并**写进 elevate.pref**，
-             * 让"显示的状态"和"真实行为"从此一致（之后按用户拨过的开关走）。 */
-            let v = config::load().auto_elevate;
-            write_local_elevate_pref(v);
-            v
-        }
+        None => !QS_LITE_PORTABLE && config::load().auto_elevate,
     };
     if !no_elevate && elevate_wanted && !win::is_admin() {
         win::log("not admin, trying to relaunch as admin");

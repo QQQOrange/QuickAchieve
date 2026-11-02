@@ -1,0 +1,3 @@
+{
+  "只有管理员进程才能把 Ctrl+C 送进同样是管理员的软件（任务管理器、部分编辑器）。改完下次启动生效。便携版不主动提权，所以这一项在便携版里默认是关的": "Only an elevated process can send Ctrl+C into software that is itself elevated (Task Manager, some editors). Takes effect on the next launch. The portable build never self-elevates, so this switch defaults to off there."
+}
