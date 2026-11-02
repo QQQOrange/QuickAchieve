@@ -8115,7 +8115,8 @@ fn export_config(app: AppHandle) {
                 return;
             }
         };
-        let ok = std::fs::write(&p, text).is_ok();
+        // v2.23.18：导出也走原子写（半截的 .qsconf 会被当成"能导入的文件"）
+    let ok = config::write_atomic(&p, text.as_bytes()).is_ok();
         win::log(&format!("export_config -> {} ok={ok}", p.display()));
         let msg = if ok { "配置已导出" } else { "写入失败，换个位置试试" };
         let _ = APP.get().map(|a| a.emit_to("settings", "qs://toast", msg));
@@ -8247,7 +8248,11 @@ fn stash_local_config() {
     let stamp = config::backup_stamp();
     let dir = cfg_with(config::backup_dir_of);
     let dst = dir.join(format!("config.before-webdav({stamp}).QuickAchieve"));
-    if std::fs::copy(&src, &dst).is_ok() {
+    // v2.23.18：快照也先写临时文件再改名 —— 半截快照会被当成"可恢复的一份"
+    let copy_ok = std::fs::copy(&src, dst.with_extension("tmp-part"))
+        .and_then(|_| std::fs::rename(dst.with_extension("tmp-part"), &dst))
+        .is_ok();
+    if copy_ok {
         win::log(&format!("webdav: 已留本地副本 {}", dst.display()));
     }
     // 老的清理一遍，别让留档自己堆成垃圾（新老名字都认）
@@ -8530,7 +8535,11 @@ fn stash_before_restore(why: &str) {
     let _ = std::fs::create_dir_all(&dir);
     let stamp = config::backup_stamp();
     let dst = dir.join(format!("config.before-restore({stamp}).QuickAchieve"));
-    if std::fs::copy(&src, &dst).is_ok() {
+    // v2.23.18：快照也先写临时文件再改名 —— 半截快照会被当成"可恢复的一份"
+    let copy_ok = std::fs::copy(&src, dst.with_extension("tmp-part"))
+        .and_then(|_| std::fs::rename(dst.with_extension("tmp-part"), &dst))
+        .is_ok();
+    if copy_ok {
         win::log(&format!(
             "restore: 恢复前已留本机副本（{why}）{}",
             dst.display()
@@ -8623,8 +8632,30 @@ fn restore_backup_file(name: String) -> Result<String, String> {
 ///
 /// 文件格式一行两段：`<unix秒>\t<指纹>`。老版本只写了一段的纯秒数 ——
 /// 解析时第二段取不到就返回 None，按"没有指纹"处理（保守地当成"改过了"）。
-fn last_backup_mark() -> (i64, Option<u64>) {
-    let Ok(s) = std::fs::read_to_string(config::data_dir().join("last-backup.txt")) else {
+/// v2.23.18：上一次"从云端恢复"用的是哪一份（文件名 + 服务器时间戳）。
+///
+/// 存在的唯一理由：把"同一份云端备份"只恢复一次。判据见
+/// `webdav_sync_on_start_inner` 里那段注释 —— 本机时钟慢一点就会变成
+/// 每次启动都拿同一份旧配置覆盖本机。
+fn webdav_restored_mark() -> Option<(String, i64)> {
+    let s = std::fs::read_to_string(config::data_dir().join("webdav-restored.txt")).ok()?;
+    let mut it = s.trim().split('\t');
+    let name = it.next()?.to_string();
+    let at = it.next()?.parse::<i64>().ok()?;
+    if name.is_empty() {
+        None
+    } else {
+        Some((name, at))
+    }
+}
+
+fn mark_webdav_restored(name: &str, at: i64) {
+    let p = config::data_dir().join("webdav-restored.txt");
+    if std::fs::write(&p, format!("{name}\t{at}")).is_err() {
+        win::log("webdav: 恢复标记写不进去（下次可能重复恢复同一份）");
+    }
+}
+fn last_backup_mark() -> (i64, Option<u64>) {    let Ok(s) = std::fs::read_to_string(config::data_dir().join("last-backup.txt")) else {
         return (0, None);
     };
     let mut it = s.trim().split(['\t', ' ']);
@@ -8669,6 +8700,24 @@ fn mark_backup_done() {
 fn changed_since_last_backup() -> bool {
     let (last, last_dig) = last_backup_mark();
     if last <= 0 {
+        return true;
+    }
+    /* v2.23.18：**标记里的时间在未来 = 这个标记不可信**。
+     *
+     * `last-backup.txt` 记的是"上次成功上传的时刻"。用户把系统时钟往回拨
+     * （或换时区后系统时间跳变）之后，这个标记会停在"未来"，
+     * 于是 `lt > last + 2` 永远不成立 → 判定"配置没改动" →
+     * **启动/退出的自动备份从此静默永久停止**，日志还写着"没有改动"。
+     *
+     * 现在：标记超前当前时间 1 分钟以上，就当它无效（保守地认为有改动）。 */
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    if last > now + 60 {
+        win::log(&format!(
+            "webdav: 上次备份标记（{last}）在当前时间（{now}）之后 —— 时钟被改过，按「有改动」处理"
+        ));
         return true;
     }
     let mtime_changed = match std::fs::metadata(config::config_path())
@@ -8731,7 +8780,13 @@ fn backup_once(cfg: &Config, timeout_secs: u64) -> Result<BackupOutcome, String>
     let dir = config::backup_dir_of(cfg);
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join(&name);
-    let local = match std::fs::write(&path, payload.as_bytes()) {
+    /* v2.23.18：**原子写**（临时文件 + rename）。
+     *
+     * 以前是裸 `fs::write` —— 写到一半断电 / 蓝屏 / 杀软拦截，就会留下一个
+     * "名字合法、内容是半截"的 `.QuickAchieve`。它会被当成正常备份进清单、
+     * 参与保留策略、把好的备份挤掉，等用户真去恢复时才发现读不出来。
+     * 备份恰恰是"主配置没了时的唯一退路"，最不该是这种半截文件。 */
+    let local = match config::write_atomic(&path, payload.as_bytes()) {
         Ok(_) => {
             win::log(&format!("backup: 本地已写 {}", path.display()));
             Some(path)
@@ -8910,11 +8965,22 @@ fn webdav_sync_on_start_inner() {
         }
     };
 
+    /* v2.23.18：这一份云端备份**是不是已经恢复过**了。
+     * 恢复过就别再来一次 —— 否则本机时钟慢的时候会变成"每次启动都被同一份
+     * 旧云端配置覆盖"，用户这次会话改的东西全部白改。 */
+    let already = webdav_restored_mark()
+        .map(|(n, t)| {
+            matches!(&remote, Some((rn, rt)) if rn == &n && *rt == t)
+        })
+        .unwrap_or(false);
+    if already {
+        win::log("webdav: 这份云端备份已经恢复过，跳过（本机改动照常往上推）");
+    }
     match (remote, local) {
         // 云端还没有备份 → 直接备份一次（本地 + 云端同一份）
         (None, _) => push(),
         // 云端更新 → 先留副本再恢复
-        (Some((name, rt)), Some(lt)) if rt > lt + 2 => {
+        (Some((name, rt)), Some(lt)) if rt > lt + 2 && !already => {
             /* ⚠ v2.11.7：**机器本地**的设置不能被云端整份覆盖。
              *
              * 事故（2026-10-31）：用户勾了「默认以管理员身份运行」，下一次启动
@@ -8933,6 +8999,17 @@ fn webdav_sync_on_start_inner() {
             match webdav::download_named(&o, &name).and_then(|t| restore_from_text(&t)) {
                 Ok(note) => {
                     restore_local_only_settings(keep_elevate, keep_autostart);
+                    /* v2.23.18：记下"已经从这份云端备份恢复过"。
+                     *
+                     * 判"云端较新"用的是**服务器 Last-Modified 与本机 config.json
+                     * 的 mtime 直接比**。本机时钟慢一点（或时区/夏令时配错），
+                     * 每次启动都判"云端较新"，把同一份云端配置反复灌回来 ——
+                     * 用户这次会话改的所有设置，下次启动全被同一份旧云端覆盖，
+                     * 而且永远走不到"本机较新 → 上传"那一支，等于同步死循环。
+                     *
+                     * 现在恢复成功就写个标记；下次启动看到同一份（名字 + 时间戳
+                     * 都一样）就跳过恢复。 */
+                    mark_webdav_restored(&name, rt);
                     wd_toast(format!("启动同步：云端「{name}」较新，已恢复到本机{note}"));
                 }
                 Err(e) => wd_toast(format!("启动同步失败：{e}")),
@@ -19395,19 +19472,35 @@ fn open_app(id: String, text: Option<String>) -> Result<(), String> {
 
 #[crate::t::command]
 fn reset_all() {
+    /* ⚠ v2.23.18：这是**唯一一个一键毁掉用户数据的按钮**（设置页「恢复全部默认」），
+     * 以前它做了三件不可逆的事，而且没有二次确认：
+     *
+     *   ① `*cfg = Config::default()` → 备份密码变空串 →
+     *      `save` 里 `stash_backup_password("")` 会把 `backup.key` **删掉** ——
+     *      那份钥匙是解开所有加密备份的唯一凭据，删了之后本机再也打不开任何一个
+     *      旧备份（用户手里有文件也没用）。
+     *   ② `config::drop_icon()` 把 icons 目录里用户自己的图标**真删了**，
+     *      而滚动备份只存文件名、不存字节 → 图标永久丢失。
+     *   ③ 没有留任何快照，点错了没有退路。
+     *
+     * 现在的口径：**重置设置，但不销毁凭据和素材**。
+     *   · 先按惯例留一份 `before-restore` 快照（点错了能退回来）；
+     *   · 保留备份密码（`backup_password` / `backup.key`）—— 那不是"设置"，
+     *     是解开历史备份的钥匙；
+     *   · 图标文件**不删**（只是配置里不再引用它们，留在盘上没有坏处）。 */
+    stash_before_restore("恢复全部默认");
     {
         let mut cfg = match st().cfg.lock() {
             Ok(c) => c,
             Err(_) => return,
         };
-        let files: Vec<String> = cfg.overrides.values().cloned().collect();
-        for f in files {
-            config::drop_icon(&f);
-        }
+        let keep_pw = cfg.backup_password.clone();
         *cfg = Config::default();
+        cfg.backup_password = keep_pw;
         config::save(&cfg);
     }
     broadcast();
+    win::log("reset_all: 已恢复默认设置（备份密码与图标文件保留，并留了恢复前快照）");
 }
 
 /* ================================================================== */

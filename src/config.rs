@@ -4547,6 +4547,60 @@ pub fn save(cfg: &Config) {
 }
 
 /// `save` 的可注入版本（测试专用，理由同 `load_from`）。
+/// 这次运行里"保存失败"的说明。
+///
+/// 以前保存失败**只写日志**：用户改了设置，界面上立刻生效（改的是内存），
+/// 磁盘上什么都没变 —— 重启就回滚，而他一直以为自己设好了。
+/// 磁盘满、目录只读、网盘占用、杀软拦写入都会走到这条路。
+///
+/// 现在第一次失败就弹一个托盘气泡说明原因（不弹第二次，免得每敲一个设置
+/// 就弹一次），同时照旧写日志。
+static SAVE_ERR: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+fn note_save_error(where_: &str) {
+    let mut g = match SAVE_ERR.lock() {
+        Ok(g) => g,
+        Err(e) => e.into_inner(),
+    };
+    if !g.is_empty() {
+        return; // 已经报过了，别每改一个设置就弹一次
+    }
+    *g = where_.to_string();
+    crate::win::log(&format!("config: ⚠ 保存失败：{where_}"));
+    crate::trayhost::balloon(
+        "设置没能保存到磁盘",
+        &format!("{where_} —— 这次改动重启后会回滚。检查一下磁盘是否已满、目录是否只读。"),
+    );
+}
+
+/// 本次运行是否出现过"保存失败"（设置页可以据此挂个提示条）。
+pub fn save_error() -> Option<String> {
+    let g = match SAVE_ERR.lock() {
+        Ok(g) => g,
+        Err(e) => e.into_inner(),
+    };
+    if g.is_empty() {
+        None
+    } else {
+        Some(g.clone())
+    }
+}
+/// 原子写：先写同目录的临时文件，再 rename 覆盖（失败时尽量清理临时文件）。
+///
+/// 所有"用户看得见、以后还要读回来"的文件（备份、导出、快照）都该走它 ——
+/// 裸 `fs::write` 半途失败会留下一个**名字合法、内容半截**的文件，
+/// 它会被当成正常文件进清单、参与保留策略、把好的挤掉，等真去恢复时才报错。
+pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("tmp-part");
+    std::fs::write(&tmp, bytes)?;
+    match std::fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
+}
 pub fn save_to(path: &std::path::Path, cfg: &Config) {
     ensure_dirs();
     /* 备份密码先另存一份 —— 它**不碰 config.json**，却是"主文件解不开"时
@@ -4670,8 +4724,8 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
     }
     if !write_ok {
         let _ = std::fs::remove_file(&tmp);
-        crate::win::log(&format!(
-            "config: 保存失败（{} 换个磁盘/windows 位置？），本次不写盘",
+        note_save_error(&format!(
+            "配置写不进去（{}）—— 换个磁盘 / Windows 位置？",
             path.display()
         ));
         return;
@@ -4694,6 +4748,8 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
             "config: 滚动备份写入失败（{}），保留旧的备份不删",
             bak.display()
         ));
+        /* 主文件已经写成功了，所以这里**不用气泡打扰用户** ——
+         * 只是少了一份滚动备份，属于降级而不是失败。 */
         return;
     }
     /* ══════════════════════════════════════════════════════════════════
