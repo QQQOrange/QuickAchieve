@@ -6831,11 +6831,13 @@ mod sanitize_tests {
          * （测试时要能随时把横条叫出来看，不该被"没取到文字"挡住）。
          * 这条断言原先把 true 写死，于是便携构建下必然红 —— 现在跟着同一
          * 个开关走，两边都对。 */
-        let expect_need_text = !crate::QS_LITE_PORTABLE;
+        /* v2.23.10：默认值统一成 **true**（三处对齐：Config::default / serde / 前端）。
+         * 这条断言原来跟着 `QS_LITE_PORTABLE` 走，现在不再区分构建。 */
+        let expect_need_text = true;
         assert_eq!(
             (c.bar_idle_sec, c.bar_away_px, c.bar_need_text),
             (5, 400, expect_need_text),
-            "默认值：5 秒无操作收起 / 鼠标移远 400px 收起 / 没取到文字不弹（便携版不挡）"
+            "默认值：5 秒无操作收起 / 鼠标移远 400px 收起 / 没取到文字就不弹"
         );
 
         let mut bad = Config::default();
