@@ -3139,6 +3139,8 @@ const SWITCHES = [
     ['s-barNeedText', 'barNeedText'],
     // v2.23.3：框选后可调整 / 换用途 —— **默认关**（框完立刻执行打开的那个功能）
     ['s-regionAdjust', 'regionAdjust'],
+    // v2.23.6：快捷键独占（热键撞车时只激发本软件），默认开
+    ['s-hotkeyExclusive', 'hotkeyExclusive'],
     ['s-anchorAtMouse', 'anchorAtMouse'],
     ['s-autoStart', 'autoStart'],
     ['s-autoElevate', 'autoElevate'],

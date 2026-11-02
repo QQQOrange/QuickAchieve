@@ -5445,6 +5445,9 @@ fn set_fav_pinned(on: bool) {
 
 fn spawn_detector() {
     let (tx, rx) = std::sync::mpsc::channel::<Ev>();
+    // v2.23.6：装钩子之前先把"要独占的热键"推过去 ——
+    // 否则开机的头几百毫秒里热键撞车还是两家一起响应。
+    refresh_steal_hotkeys();
     hook::spawn(tx);
 
         std::thread::Builder::new()
@@ -5998,6 +6001,8 @@ fn config_view() -> Value {
         "notifySeconds": cfg.notify_seconds,
         // 网格页（Ctrl+C）：快捷键、行列、单元格尺寸、内容项
         "gridHotkey": cfg.grid_hotkey,
+        // v2.23.6：热键撞车时只激发本软件（吞掉按键，不传给别的程序）
+        "hotkeyExclusive": cfg.hotkey_exclusive,
         "gridRows": cfg.grid_rows.clamp(1, 10),
         "gridCols": cfg.grid_cols.clamp(1, 10),
         "gridCellW": cfg.grid_cell_w.clamp(40, 260),
@@ -6278,6 +6283,7 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
             cfg.grid_hotkey = x;
         }
     }
+    if let Some(x) = b("hotkeyExclusive") { cfg.hotkey_exclusive = x; }
     if let Some(x) = n("gridRows") { cfg.grid_rows = x.clamp(1, 10) as u32; }
     if let Some(x) = n("gridCols") { cfg.grid_cols = x.clamp(1, 10) as u32; }
     if let Some(x) = n("gridCellW") { cfg.grid_cell_w = x.clamp(40, 260) as u32; }
@@ -6740,7 +6746,40 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     }
 }
 
+/// 把"要独占的热键"推给低级钩子（v2.23.6）。
+///
+/// 语义：命中的组合只激发本软件，其它程序**收不到**这次按键
+/// （包括系统里用 `RegisterHotKey` 占了同一组合的工具）。
+///
+/// 发起时机只有两个：装钩子之前（`spawn_detector`）和任何一次配置变化
+/// （`broadcast` —— 它是所有配置写出的唯一出口）。
+/// 用户关掉「快捷键独占」或没配热键时推空列表 = 不独占。
+fn refresh_steal_hotkeys() {
+    let cfg = cfg_snapshot();
+    hook::set_steal_enabled(cfg.hotkey_exclusive);
+    if !cfg.hotkey_exclusive {
+        hook::set_steal_hotkeys(Vec::new());
+        return;
+    }
+    let mut out = Vec::new();
+    // 网格页总开关关着时它本来就不响应，白占着这个组合没有意义
+    if cfg.grid_enable {
+        if let Some((c, a, s, w, vk)) = parse_hotkey(&cfg.grid_hotkey) {
+            out.push(hook::HotCombo { vk, ctrl: c, alt: a, shift: s, win: w });
+        }
+    }
+    if let Some((c, a, s, w, vk)) = parse_hotkey(&cfg.fav_hotkey) {
+        out.push(hook::HotCombo { vk, ctrl: c, alt: a, shift: s, win: w });
+    }
+    win::log(&format!("hotkey: 独占 {} 个组合", out.len()));
+    hook::set_steal_hotkeys(out);
+}
+
 fn broadcast() {
+    /* v2.23.6：配置一变就重算"要独占哪几个热键"。
+     * 放在 broadcast 里是因为它是**所有**配置变化的唯一出口（设置页、恢复备份、
+     * WebDAV 同步最后都会走到这儿），只在几个 set_setting 分支里各补一句迟早漏。 */
+    refresh_steal_hotkeys();
     let v = config_view();
     /* ⚠ 没有 AppHandle 就直接返回 —— 单测里会走这条路。
      * 以前是 `app()`（内部 `expect("app not ready")`），于是任何"恢复配置"
@@ -6795,6 +6834,8 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
          * 框完立刻执行你打开的那个功能（识别 / 识图 / 二维码），不再弹动作条。
          * 开着才有手柄 + 动作条（也才有"复制图片"那条路）。 */
         "regionAdjust" => cfg.region_adjust = value.as_bool().unwrap_or(false),
+        /* v2.23.6：快捷键独占。关掉之后热键撞车时**两家都会响应**（老行为）。 */
+        "hotkeyExclusive" => cfg.hotkey_exclusive = value.as_bool().unwrap_or(true),
         // v2.18.1：上次动作。白名单之外（手改、老页面）一律清空 = 按本次用途执行。
         "regionLastAction" => {
             cfg.region_last_action = normalize_region_action(value.as_str().unwrap_or(""))

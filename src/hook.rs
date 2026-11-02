@@ -17,6 +17,147 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::clip;
 use crate::win;
 
+/* ------------------------------------------------------------------ */
+/* 热键独占（v2.23.6）                                                  */
+/* ------------------------------------------------------------------ */
+
+/// 一个"要独占"的组合键。
+///
+/// # 为什么要独占
+///
+/// 用户原话：「在这个软件里面设置快捷键，但这个快捷键跟系统的其他快捷键冲突的
+/// 情况下，那要保证这个快捷键只会激发我们这个软件里的功能。」
+///
+/// 也就是说：热键撞车时，**本软件赢**，另一个软件收不到这次按键。
+///
+/// # 为什么必须在这里做
+///
+/// 我们的判断一直发生在**消费线程**（`main.rs` 的 `Ev::KeyDown` 分支）——
+/// 那是异步的，等它跑起来时按键早已传给目标程序了，想拦也来不及。
+/// 能拦住的地方只有低级钩子回调本身：**同步**执行、且在按键进入目标线程队列
+/// **之前**，返回 `LRESULT(1)` 就等于"这次按键到此为止"。
+///
+/// 拦住之后仍然照常 `send(Ev::KeyDown(...))` —— 所以本软件照常响应，
+/// 别的程序什么都收不到。这正是"只激发我们的功能"。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HotCombo {
+    pub vk: u32,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+    pub win: bool,
+}
+
+impl HotCombo {
+    /// 这一次按键是不是它。修饰键按**全等**比较：
+    /// 录的是 `ctrl+shift+g`，那 `ctrl+g` 与 `ctrl+shift+alt+g` 都不算 ——
+    /// 后者差一个 Alt 就是另一个组合，凭着"都按了 Ctrl"就抢会误伤。
+    pub fn matches(&self, vk: u32, ctrl: bool, alt: bool, shift: bool, win: bool) -> bool {
+        self.vk == vk && self.ctrl == ctrl && self.alt == alt && self.shift == shift && self.win == win
+    }
+}
+
+/// 要独占的组合键（由 `main` 在配置变化时整份推过来）。
+static STEAL: Mutex<Vec<HotCombo>> = Mutex::new(Vec::new());
+
+/// 已经吞下的 vk：抬起时也要一起吞，否则目标程序只收到一个"无故的 keyup"。
+static SWALLOWED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+/// 更新"要独占的组合键"。传空 = 不独占任何键（用户关掉了那个开关）。
+pub fn set_steal_hotkeys(list: Vec<HotCombo>) {
+    if let Ok(mut g) = STEAL.lock() {
+        *g = list;
+    }
+    if let Ok(mut g) = SWALLOWED.lock() {
+        g.clear();
+    }
+}
+
+/// 热键独占开关（`hotkeyExclusive`）。关掉时列表为空，这里再兜一道。
+static STEAL_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_steal_enabled(on: bool) {
+    STEAL_ON.store(on, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 按下沿：要不要吞掉这次按键。
+///
+/// 三条硬规矩：
+///   1. **我们自己注入的按键绝不吞**（`dwExtraInfo == SELF_INJECT_TAG`）——
+///      取词时模拟的 Ctrl+C、唤起外部软件的热键都靠它，吞了就自废武功；
+///   2. **Ctrl+C 绝不吞**：它是"借一下剪贴板"的复制键，吞掉等于把用户的
+///      复制功能弄坏（而且我们本来就要放它过去才能让目标程序复制）；
+///   3. 只有**完全等于**配置里那几个组合才吞。
+fn should_swallow_down(info: &windows::Win32::UI::WindowsAndMessaging::KBDLLHOOKSTRUCT) -> bool {
+    use std::sync::atomic::Ordering;
+    if !STEAL_ON.load(Ordering::Relaxed) {
+        return false;
+    }
+    if info.dwExtraInfo == win::SELF_INJECT_TAG {
+        return false;
+    }
+    // Ctrl+C 留给"复制取词"这条路，永远不抢
+    if info.vkCode == 0x43 && win::ctrl_down() && !win::alt_down() && !win::shift_down() && !win::win_down() {
+        return false;
+    }
+    let (c, a, s, w) = (win::ctrl_down(), win::alt_down(), win::shift_down(), win::win_down());
+    let hit = match STEAL.lock() {
+        Ok(g) => g.iter().any(|h| h.matches(info.vkCode, c, a, s, w)),
+        Err(_) => false,
+    };
+    if hit {
+        if let Ok(mut g) = SWALLOWED.lock() {
+            if !g.contains(&info.vkCode) {
+                g.push(info.vkCode);
+            }
+        }
+    }
+    hit
+}
+
+/// 抬起沿：按下时吞过，这里也要吞。
+fn should_swallow_up(vk: u32) -> bool {
+    use std::sync::atomic::Ordering;
+    if !STEAL_ON.load(Ordering::Relaxed) {
+        return false;
+    }
+    match SWALLOWED.lock() {
+        Ok(mut g) => match g.iter().position(|x| *x == vk) {
+            Some(i) => {
+                g.remove(i);
+                true
+            }
+            None => false,
+        },
+        Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HotCombo;
+
+    /// v2.23.6：热键独占的匹配必须**严格全等**。
+    ///
+    /// 这条守的是"抢错键"：只要改成"修饰键包含即可"，用户录了
+    /// `ctrl+shift+g`，那么 `ctrl+g`、`ctrl+shift+alt+g` 都会被他抢走 ——
+    /// 别的软件那些看起来无关的快捷键会**突然失灵**，而且完全查不出原因
+    /// （本软件没有任何界面会提示"我占用了一大片组合"）。
+    #[test]
+    fn exclusive_combo_requires_exact_modifiers() {
+        let g = HotCombo { vk: 0x47, ctrl: true, alt: false, shift: true, win: false };
+        // 一模一样才算命中
+        assert!(g.matches(0x47, true, false, true, false));
+        // 少一个修饰键：不算
+        assert!(!g.matches(0x47, true, false, false, false), "ctrl+g 不该被抢");
+        // 多一个修饰键：不算
+        assert!(!g.matches(0x47, true, true, true, false), "ctrl+alt+shift+g 不该被抢");
+        assert!(!g.matches(0x47, true, false, true, true), "带 Win 的是另一个组合");
+        // 主键不同：不算
+        assert!(!g.matches(0x48, true, false, true, false));
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum Ev {
     /// 左键按下。字段 `(x, y, 时刻, 此刻是否按着 Ctrl)`。
@@ -191,6 +332,11 @@ unsafe extern "system" fn keyboard_proc(code: i32, w: WPARAM, l: LPARAM) -> LRES
         {
             let msg = w.0 as u32;
             if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+                /* v2.23.6：**先判要不要独占**。
+                 * 命中就照常 `send`（本软件该响应的照常响应），但下面要
+                 * `return LRESULT(1)` 把这次按键截住 —— 别的程序收不到。
+                 * 顺序不能反：先 send 再判的话，这里若提前 return 就没声音了。 */
+                let swallow = should_swallow_down(&info);
                 // GetClipboardSequenceNumber 是个极轻的查询，不开剪贴板、不分配内存，
                 // 放在钩子回调里完全安全（不会撞 LowLevelHooksTimeout）。
                 // GetAsyncKeyState 同样是极轻的查询，且**此刻**读到的修饰键状态
@@ -217,8 +363,16 @@ unsafe extern "system" fn keyboard_proc(code: i32, w: WPARAM, l: LPARAM) -> LRES
                     // 暗号对上了 = 这是软件自己为取词注入的 Ctrl+C，消费线程会跳过
                     info.dwExtraInfo == win::SELF_INJECT_TAG,
                 ));
+                if swallow {
+                    return LRESULT(1);
+                }
             } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
+                // 按下时吞了，抬起也要吞 —— 不然目标程序会收到一个"无故的 keyup"。
+                let swallow = should_swallow_up(info.vkCode);
                 send(Ev::KeyUp(info.vkCode));
+                if swallow {
+                    return LRESULT(1);
+                }
             }
         }
     }

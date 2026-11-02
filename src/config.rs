@@ -1630,6 +1630,24 @@ pub struct Config {
     /// 老配置里的 `ctrl+c` 由 `migrate_legacy_grid_hotkey` 在读取时换掉。
     #[serde(default = "default_grid_hotkey")]
     pub grid_hotkey: String,
+    /// **快捷键独占**（v2.23.6，默认开）：热键撞车时只激发本软件，不再传给别的程序。
+    ///
+    /// # 为什么要有这个开关
+    ///
+    /// 用户原话：「在这个软件里面设置快捷键，但这个快捷键跟系统的其他快捷键冲突的
+    /// 情况下，那要保证这个快捷键只会激发我们这个软件里的功能。」
+    ///
+    /// 实现是从低级键盘钩子里**吞掉**这次按键（返回 `LRESULT(1)`），只放行给我们
+    /// 自己的消费线程。所以它同时也意味着：**别的软件再也收不到这个组合**，
+    /// 包括系统里那些用 `RegisterHotKey` 抢占同一个组合的工具。
+    ///
+    /// 默认开，是因为"录了个快捷键却发现另一家的也一起弹"是更常见的痛点；
+    /// 但这是个有副作用的开关（会改变其它软件的行为），所以留成可关。
+    ///
+    /// ⚠ 吞不掉的情况（系统在更上层就截获了，任何用户态钩子都拦不住）：
+    /// `Ctrl+Alt+Del`、`Win+L`、`Win+Tab` 这类；设置页会提示。
+    #[serde(default = "default_true")]
+    pub hotkey_exclusive: bool,
     /// 网格行数（1-10）
     #[serde(default = "default_grid_rows")]
     pub grid_rows: u32,
@@ -2284,6 +2302,7 @@ impl Default for Config {
             favorites: Vec::new(),
             fav_hotkey: String::new(),
             grid_hotkey: default_grid_hotkey(),
+            hotkey_exclusive: true,
             grid_rows: default_grid_rows(),
             grid_cols: default_grid_cols(),
             grid_cell_w: default_grid_cell_w(),
