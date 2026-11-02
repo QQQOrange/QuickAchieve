@@ -18,15 +18,20 @@
 
 ## 现状（已确认的事实）
 
+> **发版只用一条命令**：`powershell -NoProfile -ExecutionPolicy Bypass -File tools/release.ps1 -Version 2.23.x`
+> 它自己跑测试、构建、回填 SHA256、提交、push、打 tag、建 Release、传资产、回读校验。
+> `-DryRun` 只构建并回填 hash，不推送。
+> ⚠ 本机 PowerShell 的 `ExecutionPolicy` 是 Restricted，必须带 `-ExecutionPolicy Bypass`。
+
 | 项 | 状态 |
 |---|---|
 | 本地仓库 | ✅ 分支 `main`，工作区干净 |
 | 远端配置 | ✅ `origin` = `git@github.com:QQQOrange/QuickAchieve.git`（**SSH**，2026-10-31 切换） |
 | GitHub 凭据 | ✅ 凭据管理器里有（`git credential fill` 能拿到）；SSH 用仓库部署密钥 |
 | 网络 | ⚠️ **间歇性**：`github.com:443` 时通时不通；**`github.com:22`(SSH) 稳定可用**；`api.github.com` 一直可用 |
-| 发布 | ✅ 最新 Release **v2.23.5**（2026-11-02），资产 `QuickAchieve.exe` 7,924,736 字节 |
-| 代码 | ✅ `main` 已推（2026-11-02），tag `v2.23.5`（annotated）；SSH push，不需要 Git Data API |
-| 待发布 | 无（默认发版） |
+| 发布 | ✅ 最新 Release **v2.23.6**（2026-11-02），资产 `QuickAchieve.exe` 7,928,320 字节 |
+| 代码 | ✅ `main` 已推（2026-11-02），tag `v2.23.6`（annotated）；SSH push，不需要 Git Data API |
+| 待发布 | 无（默认发版；用 `tools/release.ps1` 一条命令发） |
 
 ### ✅ SSH 推送通道（2026-10-31 起默认）
 
