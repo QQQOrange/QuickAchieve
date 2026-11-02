@@ -21007,6 +21007,16 @@ fn main() {
     //   · 拿一个假的 GitHub（QS_UPDATE_API / QS_UPDATE_WEB 指过去）验发现新版；
     //   · 再跑 --update-install 验下载 / 校验 / 替换 / 清理，全程可断言文件状态。
     if flag("--update-probe") {
+        /* ⚠ v2.23.27：**两条更新探针都得先 `init_state()`**。
+         *
+         * `update::check` 会读配置里的 GitHub 令牌（`cfg_with`），而
+         * `cfg_with` 在状态没初始化时直接 `expect("state not ready")` ——
+         * 于是 `--update-probe` / `--update-install` **一跑就 panic**，
+         * 这条诊断路以前一直是死的（谁都没注意，因为它们只给发布流程用）。
+         *
+         * 顺手把 PROBE 标记打上：探针不该顺手改用户的备份。 */
+        crate::PROBE.store(true, Ordering::SeqCst);
+        init_state();
         match update::check(config::VERSION) {
             Ok(i) => {
                 println!("NEWER={}", i.newer);
@@ -21024,6 +21034,9 @@ fn main() {
     //
     // ⚠ 它**会真的换掉当前这份 exe**（这正是要验的东西）。所以只该在隔离目录里跑。
     if flag("--update-install") {
+        // v2.23.27：同上 —— check 要读配置里的令牌
+        crate::PROBE.store(true, Ordering::SeqCst);
+        init_state();
         let r = update::check(config::VERSION).and_then(|i| {
             if !i.newer {
                 return Err("当前已是最新，无需安装".to_string());
