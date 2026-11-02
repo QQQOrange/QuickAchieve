@@ -91,12 +91,27 @@ pub fn point_ort_at_runtime() {
 ///   所以这里用 `catch_unwind` 兜住 —— 用户不该因为缺个文件就看到程序崩溃。
 pub fn runtime_available() -> bool {
     point_ort_at_runtime();
+    /* ⚠ v2.23.28：**文件不在就直接返回 false，别去触发 ort 的 panic**。
+     *
+     * ort 找不到 dll 时是 `expect()` 崩的，我们外层虽然 `catch_unwind` 兜住了，
+     * 但 panic hook 照样会执行 —— v2.23.10 起 hook 会把每条 panic 写进日志，
+     * 于是**全新安装（还没下模型）每次启动都会刷两条 "PANIC: ... onnxruntime.dll"**，
+     * 看起来像程序崩了两次，实际只是可选组件没装。
+     *
+     * 先看文件在不在：不在就安静地回 false。下面的 catch_unwind 留给
+     * "文件在但版本不对/损坏"这种真异常。 */
+    if !aimodels::runtime_ready() {
+        return false;
+    }
     // 用一次最小代价的 ORT 调用探测：环境初始化成功即说明 dll 在且版本对得上。
-    std::panic::catch_unwind(|| {
+    crate::QUIET_PANIC.store(true, std::sync::atomic::Ordering::SeqCst);
+    let ok = std::panic::catch_unwind(|| {
         // ort 的初始化是惰性的，构造一个 SessionBuilder 就足以触发加载
         ort::session::Session::builder().is_ok()
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+    crate::QUIET_PANIC.store(false, std::sync::atomic::Ordering::SeqCst);
+    ok
 }
 
 /// 一次 AI 推理的结果。

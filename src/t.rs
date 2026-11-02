@@ -2076,6 +2076,10 @@ impl Builder {
 
     pub fn run(self, _ctx: ()) -> Result<()> {
         std::panic::set_hook(Box::new(|info| {
+            // v2.23.28：预期内的 panic（探测 ONNX 运行库）不刷日志，见 QUIET_PANIC
+            if crate::QUIET_PANIC.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
             /* ⚠ v2.23.10：panic **必须**落到 log.txt 里。
              *
              * 这里原来只写 `trace`，而 `trace` 默认不落盘（要 `QS_TRACE=1`）——

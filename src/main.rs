@@ -31,6 +31,14 @@ pub static PROBE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool:
 /// 不提示的话双击之后屏幕上什么都不会发生。
 pub static FIRST_RUN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 置位期间的 panic **不写进日志**（只留 trace）。
+///
+/// 有些 panic 是**预期内**的：比如探测 ONNX 运行时可用性时，ort 在缺少
+/// `onnxruntime.dll` 时会 `expect()` 崩 —— 我们外层用 `catch_unwind` 兜住了，
+/// 但 panic hook 仍会照常执行。不静音的话，全新安装（还没下模型）每次启动
+/// 都会刷两条 "PANIC: ... onnxruntime.dll"，看起来像崩了两次。
+pub static QUIET_PANIC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn ui_root() -> std::path::PathBuf {
     /* 前端已经**编进 exe**（见 build.rs 与 t.rs 的 EMBEDDED_UI），运行时不依赖
      * 任何外部目录。这一路只是「开发期覆盖」：把改过的文件丢进 exe 同目录的
@@ -6976,8 +6984,25 @@ fn broadcast() {
     let Some(a) = APP.get() else {
         return;
     };
-    let _ = a.emit_to("bar", "qs://config", v.clone());
-    let _ = a.emit_to("settings", "qs://config", v.clone());
+    /* ⚠ v2.23.28：**配置广播要发给所有开着的窗口**。
+     *
+     * 以前这里硬编码发三个：bar / settings / ocr。而 `i18n.js` 在每个页面里
+     * 都注册了 `qs://config` 监听（用来跟随界面语言 / 明暗主题），翻译窗、
+     * 二维码窗、图标编辑器、锁屏、更新窗因此**从来收不到** ——
+     * 用户在设置里切成英文，这些窗口还是中文，要关掉重开才变。
+     * 翻译窗更明显：它按参与名单建框，改完引擎名单在开着的情况下完全不生效。
+     *
+     * 现在按"窗口开着才发"逐个发：`get_webview_window` 是廉价的表查找，
+     * 没开的窗口直接跳过（`emit_to` 到不存在的窗口本来也只是空操作，这里
+     * 只是省掉构建 JSON 的两份 clone）。 */
+    const CFG_TARGETS: &[&str] = &[
+        "bar", "settings", "ocr", "trans", "qr", "qrgen", "iconedit", "lock", "update", "picker",
+    ];
+    for label in CFG_TARGETS {
+        if a.get_webview_window(label).is_some() {
+            let _ = a.emit_to(*label, "qs://config", v.clone());
+        }
+    }
     // ⚠ OCR 结果窗也得发一份。
     //   这个窗口是**复用**的（关掉再框一次还是它），而它的版式（单框 / 多框 +
     //   底部档位）完全由**参与名单**（ocrEngine + ocrMulti）决定 —— 不发给它，
@@ -21211,6 +21236,10 @@ fn main() {
     //   panic 之后进程往往**立刻**退出，队列里那条消息根本没机会落盘 ——
     //   表现就是"程序没了，日志里一个字都没有"，比崩溃本身更难查。
     std::panic::set_hook(Box::new(|info| {
+        // v2.23.28：预期内的 panic（探测 ONNX 运行库）不刷日志，见 QUIET_PANIC
+        if QUIET_PANIC.load(Ordering::SeqCst) {
+            return;
+        }
         let loc = info
             .location()
             .map(|l| format!("{}:{}", l.file(), l.line()))
