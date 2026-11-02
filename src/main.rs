@@ -7905,6 +7905,10 @@ static IMPORT_PENDING: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 ///   这正是"我只导出搜索引擎配置给同事"能用的前提 —— 要是整份覆盖，
 ///   同事的收藏夹、快捷键会被我这份文件清空。
 fn import_apply(items: Vec<String>, data: Value) -> Result<(), String> {
+    // v2.23.20：导入也是整份写配置，和云同步互斥（理由见 restore_backup_file）
+    let Some(_guard) = SyncGuard::acquire() else {
+        return Err("正在和云端同步，稍等一下再导入".into());
+    };
     let n_keys = data.as_object().map(|o| o.len()).unwrap_or(0);
     let named: Vec<&str> = items
         .iter()
@@ -8617,6 +8621,14 @@ fn stash_before_restore(why: &str) {
 /// 摆在那儿却没用"的由来。
 #[crate::t::command]
 fn restore_backup_file(name: String) -> Result<String, String> {
+    /* v2.23.20：**恢复要和云同步互斥**。
+     *
+     * 云上传/下载都在跑的时候如果又开始整份恢复，两边会各写一遍 config.json：
+     * 轻则恢复到一半被 `save` 冲掉，重则刚恢复的配置被正在上传的那一份覆盖。
+     * `SyncGuard` 就是干这个的（云操作已经在用），恢复这条破坏性路径更该用。 */
+    let Some(_guard) = SyncGuard::acquire() else {
+        return Err("正在和云端同步，稍等一下再恢复".into());
+    };
     /* ⚠ 只接受**文件名**，且必须落在备份目录里。
      * 前端传上来的字符串会拼进路径，`../` 之类必须挡掉 —— 否则一个被改过的
      * 设置页就能让它去读任意文件（读出来的东西还会被当成配置写进数据目录）。 */
