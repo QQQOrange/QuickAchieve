@@ -31,6 +31,14 @@ static LOCKED: AtomicBool = AtomicBool::new(false);
 /// 会一直躺在原地，下次启动再走一遍同样的救援（用户看到"每次启动都丢设置"）。
 static RECOVERED: AtomicBool = AtomicBool::new(false);
 
+/// 这一次启动是不是"从滚动备份救回来的"（读一次就复位）。
+///
+/// 给 `init_state` 判断"全新安装"用：从备份恢复出来的配置**不算**全新安装，
+/// 不该给用户弹"第一次使用"的引导。
+pub fn was_recovered_from_backup() -> bool {
+    RECOVERED.load(Ordering::SeqCst)
+}
+
 /// 本次运行是不是处于「主文件解不开、已锁写」的状态（设置页可以据此提示）。
 pub fn is_locked() -> bool {
     LOCKED.load(Ordering::SeqCst)
@@ -4767,6 +4775,26 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) -> bool {
      * ══════════════════════════════════════════════════════════════════ */
     const MAX_ROLLING: usize = 8;
     let new_quality = backup_quality(cfg);
+    /* ⚠ v2.23.26：**先数一数，超了才读内容**。
+     *
+     * 下面这段轮转要给每份旧备份算"完整度" —— 也就是**把每一份读出来解密**。
+     * 它跑在**每一次 `save`** 里（改一个设置就一次）。实测用户的备份目录里
+     * 攒了 27 份时，一次保存要解密 27 次，日志也刷 27 行"已解开" ——
+     * 拖个滑块那种连续保存的场景直接卡。
+     *
+     * 而现在只有"份数超过上限"时才真的需要淘汰谁，
+     * 所以先只做一个廉价的目录列举：没超就直接返回。 */
+    let rolling_count = std::fs::read_dir(&bdir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.is_file() && p != &bak && is_rolling_backup(p))
+                .count()
+        })
+        .unwrap_or(0);
+    if rolling_count <= MAX_ROLLING {
+        return true;
+    }
     let mut keep: Vec<(String, i32, PathBuf)> = Vec::new();   // (文件名, 分数, 路径)
     if let Ok(rd) = std::fs::read_dir(&bdir) {
         for e in rd.filter_map(|e| e.ok()) {

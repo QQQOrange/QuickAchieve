@@ -25,6 +25,12 @@ pub const QS_LITE_PORTABLE: bool = true;
 /// 备份轮转 —— 探针只负责**读**和**报告**，不该改变用户磁盘上的任何东西。
 pub static PROBE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 这一次启动是不是**全新安装**（详见 `init_state` 里的判断依据）。
+///
+/// 用途只有一个：给第一次使用的用户一点反馈 —— 这是个没有主窗口的软件，
+/// 不提示的话双击之后屏幕上什么都不会发生。
+pub static FIRST_RUN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn ui_root() -> std::path::PathBuf {
     /* 前端已经**编进 exe**（见 build.rs 与 t.rs 的 EMBEDDED_UI），运行时不依赖
      * 任何外部目录。这一路只是「开发期覆盖」：把改过的文件丢进 exe 同目录的
@@ -20682,6 +20688,15 @@ fn build_tray(a: &AppHandle) -> crate::t::Result<()> {
 /* ================================================================== */
 
 fn init_state() {
+    /* v2.23.26：记下"这次是不是全新安装"。
+     *
+     * 判断依据：**数据目录里原本没有 config.json，而且也没从任何备份里恢复出来**
+     * （`load()` 内部会把"从备份恢复"也当成正常加载，所以我们只看文件是否存在
+     * + 有没有恢复标记）。全新安装时这个软件**没有任何主窗口** ——
+     * 用户双击之后屏幕上什么都不发生，很容易以为没装上。
+     * 下面会据此弹一次引导（见 FIRST_RUN 的消费点）。 */
+    let fresh = !config::config_path().exists() && !config::was_recovered_from_backup();
+    FIRST_RUN.store(fresh, Ordering::SeqCst);
     let mut cfg = config::load();
     /* r72：老配置把识图按钮补进 bar_list（`@img` 哨兵），和普通引擎一样可排序、
      * 可拖动、可移出。只在「识图开着 + 加到横条」时才补，详见函数注释。 */
@@ -21663,6 +21678,26 @@ fn main() {
             // 托盘建好之后再设初始暂停态 —— 刷新图标/悬停提示都要用到它
             if start_paused {
                 set_paused(&handle, true);
+            }
+            /* v2.23.26：**全新安装给一次引导**。
+             *
+             * 这个软件没有主窗口：双击之后屏幕上什么都不发生，用户很容易以为"没装上"
+             * 或者"装坏了"。以前的处理是 —— 什么都不做（全仓库搜不到 first_run）。
+             *
+             * 现在第一次运行会：① 托盘弹个气泡，把三个最常用的操作说清楚；
+             * ② 顺手打开设置窗口，让用户至少看到"它确实起来了"，也能当场配引擎。
+             * 只做这一次（FIRST_RUN 用完即清），之后启动安静如常。 */
+            if FIRST_RUN.swap(false, Ordering::SeqCst) {
+                win::log("first-run: 全新安装，弹引导 + 打开设置");
+                std::thread::spawn(move || {
+                    // 等一会儿：WebView2 环境初始化 + 托盘图标挂上都要时间
+                    std::thread::sleep(Duration::from_millis(1200));
+                    crate::trayhost::balloon(
+                        "Quick Achieve 已经在托盘里运行",
+                        "选中任意软件里的文字就会弹出横条；Ctrl+Alt+O 截图识别；右键托盘图标可以打开设置。",
+                    );
+                    open_settings(None, None);
+                });
             }
             // 压测模式下不装钩子：那是要跑成百上千次 show/hide，
             // 钩子再来凑热闹会把结果搅乱。
