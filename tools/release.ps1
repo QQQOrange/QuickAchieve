@@ -68,6 +68,12 @@ try {
         if (Test-Path $fb) { $env:PATH = "$fb;$env:PATH" }
     }
     if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail '找不到 node' }
+    # v2.23.15：发布前顺手校验「前端 invoke 的命令后端都有」——
+    # 缺一个就是界面上有个按钮点了不会动，这种 bug 靠人眼很难发现。
+    $cmdMap = node tools/check-cmd-map.js 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { Fail 'check-cmd-map.js：有前端调用找不到后端命令' }
+    Write-Host '    [OK] 命令表一致'
+
     foreach ($suite in @('tools/test-ui.js', 'tools/test-pages.js')) {
         $out = node $suite 2>&1 | Select-String -Pattern '通过|存在失败'
         if ($LASTEXITCODE -ne 0) { Fail "$suite 退出码非 0" }

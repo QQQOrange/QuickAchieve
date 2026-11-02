@@ -11323,6 +11323,17 @@ fn open_ocr_window(text: String) {
             let _ = w.set_focus();
         }
     } else if OCR_WIN_BUILDING.swap(true, Ordering::SeqCst) {
+        /* v2.23.15：用 RAII 兜住这个标志。
+         * 原来只在 `b.build()` 之后手动复位 —— 一旦闭包里 panic（建窗失败、
+         * 主题查询炸了），标志永久为 true，之后**所有** OCR 结果窗都拒绝创建，
+         * 日志只有"首窗还在建，等它"，用户只能重启。 */
+        struct OcrBuildGuard;
+        impl Drop for OcrBuildGuard {
+            fn drop(&mut self) {
+                OCR_WIN_BUILDING.store(false, Ordering::SeqCst);
+            }
+        }
+        let _ocr_build_guard = OcrBuildGuard;
         /* ⚠ 首窗还在建（主线程排队 + WebView2 冷启动要几百毫秒），**绝不重复建**。
          *
          * 多引擎模式里本地引擎 20ms 就出结果，那一推又会走到这里：此刻

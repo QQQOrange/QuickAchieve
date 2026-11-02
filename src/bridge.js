@@ -28,7 +28,23 @@
           p.res(v);
         }
       } else {
-        p.rej(new Error(typeof v === 'string' ? v : JSON.stringify(v)));
+        var msg = typeof v === 'string' ? v : JSON.stringify(v);
+        /* v2.23.15：命令失败**一定**在 log.txt 里留一行。
+         *
+         * 界面上有近百处 `invoke(...)` 是"发了就不管"的（点了按钮没反应
+         * 那种），后端返回 Err 时前端只会产生一个未处理的 Promise rejection ——
+         * 控制台里都看不到，用户那边就是"点了没反应"，事后完全没法查。
+         * 这里顺手把「哪个命令、报了什么」写进日志（走同一条 IPC，不递归调用）。 */
+        try {
+          window.ipc.postMessage(
+            JSON.stringify({
+              id: ++seq,
+              cmd: 'log_msg',
+              args: { msg: '[ipc] 命令失败 ' + (p.cmd || '?') + ' → ' + msg },
+            })
+          );
+        } catch (_) {}
+        p.rej(new Error(msg));
       }
     },
   };
@@ -56,7 +72,8 @@
   function invoke(cmd, args) {
     return new Promise(function (res, rej) {
       var id = ++seq;
-      pending.set(id, { res: res, rej: rej });
+      // 记下命令名：失败时要用它写日志（见上面 __qsIpc.resolve 的说明）
+      pending.set(id, { res: res, rej: rej, cmd: cmd });
       try {
         window.ipc.postMessage(
           JSON.stringify({ id: id, cmd: cmd, args: args || {} })
