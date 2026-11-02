@@ -4542,8 +4542,8 @@ fn preserve_broken(path: &std::path::Path, text: &str) {
 ///
 /// 另外每次成功保存都顺手留一份滚动备份（`config(时间).QuickAchieve`），
 /// 供上面 `load()` 的兜底路径使用。
-pub fn save(cfg: &Config) {
-    save_to(&config_path(), cfg);
+pub fn save(cfg: &Config) -> bool {
+    save_to(&config_path(), cfg)
 }
 
 /// `save` 的可注入版本（测试专用，理由同 `load_from`）。
@@ -4573,18 +4573,7 @@ fn note_save_error(where_: &str) {
     );
 }
 
-/// 本次运行是否出现过"保存失败"（设置页可以据此挂个提示条）。
-pub fn save_error() -> Option<String> {
-    let g = match SAVE_ERR.lock() {
-        Ok(g) => g,
-        Err(e) => e.into_inner(),
-    };
-    if g.is_empty() {
-        None
-    } else {
-        Some(g.clone())
-    }
-}
+
 /// 原子写：先写同目录的临时文件，再 rename 覆盖（失败时尽量清理临时文件）。
 ///
 /// 所有"用户看得见、以后还要读回来"的文件（备份、导出、快照）都该走它 ——
@@ -4601,7 +4590,7 @@ pub fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
         }
     }
 }
-pub fn save_to(path: &std::path::Path, cfg: &Config) {
+pub fn save_to(path: &std::path::Path, cfg: &Config) -> bool {
     ensure_dirs();
     /* 备份密码先另存一份 —— 它**不碰 config.json**，却是"主文件解不开"时
      * 用户唯一能自救的那把钥匙。
@@ -4624,10 +4613,10 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
      * 否则"带着默认配置跑一次"就会把那份完好但解不开的加密配置覆盖掉。 */
     if locked {
         crate::win::log("config: 主文件解不开（已锁写），本次不保存 —— 数据原样保留");
-        return;
+        return false;
     }
     let Ok(s) = serde_json::to_string_pretty(cfg) else {
-        return;
+        return false;
     };
     /* ══════════════════════════════════════════════════════════════════
      * v1.4.0：**主文件和备份全部加密，磁盘上不留任何明文**
@@ -4658,7 +4647,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
         }
     };
     let Some(main_text) = seal(&s) else {
-        return;
+        return false;
     };
     let backup_text = match seal(&s) {
         Some(t) => t,
@@ -4728,7 +4717,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
             "配置写不进去（{}）—— 换个磁盘 / Windows 位置？",
             path.display()
         ));
-        return;
+        return false;
     }
     /* 新备份也走"临时文件 + rename"（以前是裸 fs::write，写一半被杀就只剩
      * 半截文件，而它恰恰是主文件坏掉时唯一的退路）。写成功之后再清旧的。
@@ -4737,7 +4726,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
      * 加密失败时 `backup_text` 是空串 —— 那种情况**整个跳过备份写入**，
      * 绝不退化成写明文。 */
     if backup_text.is_empty() {
-        return;
+        return true; // 主文件已经写成功了，只是没留滚动备份
     }
     let bak_tmp = bak.with_extension("tmp");
     let bak_ok = std::fs::write(&bak_tmp, backup_text.as_bytes()).is_ok()
@@ -4750,7 +4739,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
         ));
         /* 主文件已经写成功了，所以这里**不用气泡打扰用户** ——
          * 只是少了一份滚动备份，属于降级而不是失败。 */
-        return;
+        return true;
     }
     /* ══════════════════════════════════════════════════════════════════
      * r92：滚动备份**不再"只留一份"**（这是数据丢失的最后一环）
@@ -4814,6 +4803,7 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) {
         crate::win::log(&format!("config: 轮转清掉旧备份 {name}"));
         let _ = std::fs::remove_file(&p);
     }
+    true
 }
 
 /// 把用户挑的图片复制进 icons 目录，返回落地后的文件名

@@ -992,7 +992,6 @@ async function recleanWith(mode, btn, on) {
     // scanning 期间不许再起一次（见 setScanning 的注释：会并发跑两次 OCR）
     if (btn.disabled || scanning) return;
     const ta = $('text');
-    const saved = ta.value;
     btn.disabled = true;
     const origText = btn.innerHTML;
     btn.innerHTML = '<span class="spinner"></span>处理中';
@@ -1004,7 +1003,13 @@ async function recleanWith(mode, btn, on) {
         syncCleanBtns(st);
         toast(cleanToast(mode, st));
     } catch (e) {
-        ta.value = saved;
+        /* v2.23.19：**不再无条件把框里的文字回滚**。
+         *
+         * 以前这里 `ta.value = saved` —— 如果这期间推进来一条**新的识别结果**，
+         * 就会被这段旧文本盖回去（新结果丢了，用户完全不知道）。
+         * 而且原因很清楚：`ocr_reclean` 失败时后端根本没改识别结果，
+         * 框里本来就不需要回滚 —— 这次失败只是"没整理成"。
+         * 顺带：多框模式下 `saved` 取的是**隐藏的** `#text`，回滚过去更没意义。 */
         toast('文本整理失败：' + ((e && e.message) || e));
     } finally {
         // ⚠ 还原成**当前**该有的禁用态，而不是无条件 false：这一趟进行中可能
@@ -1072,9 +1077,20 @@ if ($('btnTxtOp')) {
         const hasSel = typeof a === 'number' && b > a;
         const src = hasSel ? ta.value.slice(a, b) : ta.value;
         if (!src.trim()) { toast('识别结果是空的'); return; }
+        /* v2.23.19：记下"发起时框里的原文"，await 回来再比一次。
+         *
+         * `invoke` 是异步的。这几百毫秒里完全可能推进来一条新的识别结果
+         * （换引擎重识别、后台补了一家），把框里的文字整段换掉 ——
+         * 而 `a`/`b` 是**发起时**算出来的偏移，这时再 `setRangeText`
+         * 就会把处理结果插到错的位置，把新结果改坏，而且不报错。 */
+        const snap = ta.value;
         try {
             const r = await invoke('text_op', { op, text: src, apply: false });
             const out = (r && r.text) || '';
+            if (ta.value !== snap) {
+                toast('文本已经变了（可能来了新的识别结果），这次处理没用上，请重试');
+                return;
+            }
             if (hasSel) {
                 // 保留选区：用户往往要接着再叠一个处理
                 ta.setRangeText(out, a, b, 'select');
@@ -1775,10 +1791,19 @@ listen('qs://ocr', (ev) => {
     toast(m);
     // 识别失败时，文本框还是空的 —— 光弹一条会消失的提示，用户回头一看
     // 又是空的，很容易以为窗口坏了。把原因写进文本框里，留着能看、能复制。
-    if (/失败|没|错误|不对|超时/.test(m) && !$('text').value) {
-        $('text').value = m;
-        $('text').classList.add('ghost');
-        syncLinkControls();   // 失败提示里一般没链接，顺手把按钮收掉
+    /* ⚠ v2.23.19：失败原因要写到**用户看得见的那个框**里。
+     *
+     * 「都看」多框模式下 `#text` 是隐藏的 —— 以前这里无条件往它里面写，
+     * 用户看到的是"一排空框 + 一条 1.5 秒就消失的 toast"，回头再看还是空的；
+     * 更糟的是那句错误会被当成"识别结果"复制/翻译出去。
+     * 现在：写进 `curTa()`（多框模式下它已经是"第一个有内容的框/第一个框"）。 */
+    if (/失败|没|错误|不对|超时/.test(m)) {
+        const ta = curTa();
+        if (ta && !ta.value) {
+            ta.value = m;
+            ta.classList.add('ghost');
+            if (ta === $('text')) syncLinkControls(); // 失败提示里一般没链接，顺手把按钮收掉
+        }
     }
 });
 

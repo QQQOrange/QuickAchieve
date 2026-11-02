@@ -7445,11 +7445,24 @@ fn set_setting(key: String, value: Value) {
         if apply_one_setting(&mut cfg, &key, value).is_err() {
             return; // 没生效：不落盘、不广播（与旧行为一致）
         }
-        config::save(&cfg);
+        /* v2.23.19：保存失败**不再无声无息**。
+         * `save` 现在返回成功与否；失败时 `note_save_error` 已经弹过一次托盘气泡，
+         * 这里再给设置页发一条 toast —— 用户正在这个页面里改东西，
+         * 至少当下就能看见"这次改动没存到磁盘"。 */
+        if !config::save(&cfg) {
+            toast_to_settings("设置没能保存到磁盘：这次改动重启后会回滚");
+        }
     }
     broadcast();
     if theme_key {
         reemit_theme_to_bar();
+    }
+}
+
+/// 给设置页发一条 toast（页面没开就静默丢弃）。
+fn toast_to_settings(msg: &str) {
+    if let Some(a) = APP.get() {
+        let _ = a.emit_to("settings", "qs://toast", msg.to_string());
     }
 }
 
@@ -7480,13 +7493,21 @@ fn set_settings(pairs: Vec<(String, Value)>) {
                 win::log(&format!("set_settings: 键 {key} 没生效（{e}），跳过"));
             }
         }
-        config::save(&cfg);
+        /* v2.23.19：保存失败**不再无声无息**。
+         * `save` 现在返回成功与否；失败时 `note_save_error` 已经弹过一次托盘气泡，
+         * 这里再给设置页发一条 toast —— 用户正在这个页面里改东西，
+         * 至少当下就能看见"这次改动没存到磁盘"。 */
+        if !config::save(&cfg) {
+            toast_to_settings("设置没能保存到磁盘：这次改动重启后会回滚");
+        }
     }
     broadcast();
     if theme_key {
         reemit_theme_to_bar();
     }
 }
+
+
 
 /* ══════════════════════════════════════════════════════════════════════
  * v1.5.13：启动密码（锁屏）
@@ -8360,6 +8381,8 @@ fn restore_from_text(text: &str) -> Result<String, String> {
     let token_before = cfg_with(|c| c.github_token.trim().to_string());
     let mut kept_token = false;
     let token_now: String;
+    // v2.23.19：这次恢复有没有真的写进磁盘（下面返回值要用）
+    let saved_ok: bool;
     /* 加密备份先解开。
      *
      * v1.4.1：`decrypt` → `unseal`。v1.4.0 起"没设备份密码"的本地备份/导出
@@ -8462,7 +8485,10 @@ fn restore_from_text(text: &str) -> Result<String, String> {
          * 注意看的是**恢复之后**的值与本机原值的差别，不是"文件里有没有这个键"：
          * View 路径下 `apply_view` 已经把两种情况（键缺失 / 值为空）统一成"不动"。 */
         token_now = cfg.github_token.trim().to_string();
-        config::save(&cfg);
+        /* v2.23.19：保存失败要在**返回值里**体现 —— 否则界面照样弹"已恢复"，
+         * 磁盘上还是恢复前那份，重启就退回去了（`note_save_error` 那条气泡
+         * 只在第一次失败时弹，用户很可能已经错过）。 */
+        saved_ok = config::save(&cfg);
         /* 恢复只把 `autoStart` / `autoElevate` 写进了配置，但它们描述的是
          * **这台机器的真实状态**：前者是 HKCU 的 Run 注册表项，后者是
          * `elevate.pref` 文件。别的路径都同步过（set_setting 的对应分支、
@@ -8479,7 +8505,11 @@ fn restore_from_text(text: &str) -> Result<String, String> {
         write_local_elevate_pref(cfg.auto_elevate);
     }
     broadcast();
-    Ok(restore_note(&token_before, &token_now, kept_token))
+    let mut note = restore_note(&token_before, &token_now, kept_token);
+    if !saved_ok {
+        note.push_str("（⚠ 但配置没能写到磁盘：重启后会回滚，检查磁盘空间 / 目录权限）");
+    }
+    Ok(note)
 }
 
 /// 恢复/同步时，凭据类字段「文件里是空的、本机有值」就保留本机。
