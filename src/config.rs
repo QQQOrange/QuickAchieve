@@ -552,11 +552,19 @@ pub fn prune_undefined_bar_engines(cfg: &mut Config) -> usize {
          *   `@ocr`     OCR 按钮
          *   `@img`     识图搜索按钮
          *   `@trans`   翻译按钮
+         *   `@qr`      二维码解析（v2.12.0）
+         *   `@qrmake`  二维码生成（v2.12.2）
+         *   `@any`     **万能框选**（v2.23.3：框完弹动作条让你挑）
          *   `@wrap`    包裹符号按钮
          *   `@txt:<op>` 文本处理（去空格 / 换行 / 标点 / 大小写…）
          *   `@app:<id>`  外部软件
          *   `@fav:<id>`  收藏夹
          *   `@go:<id>`   智能直达
+         *
+         * ⚠ v2.23.4：上面三行（`@qr` / `@qrmake` / `@any`）以前是漏的。
+         *   这份清单自称"全集"，后来人照着它核对时很可能把 `@any` 从
+         *   `is_bar_sentinel` 里删掉 —— 那正好会造成这条注释在防的事故
+         *   （用户横条上的万能框选读一次配置就消失）。
          */
         if is_bar_sentinel(n) {
             return true;
@@ -679,6 +687,28 @@ pub fn bar_member_defined(cfg: &Config, n: &str) -> bool {
     }
     crate::engines::engines().contains_key(n)
         || cfg.custom_engines.iter().any(|e| e.name == n)
+}
+
+/// 新建"引擎 / 外部软件"时**不能用的名字**：这些是横条上的功能哨兵。
+///
+/// 为什么必须挡（v2.23.4 从只挡 `@ocr` 扩成整张表）：
+/// 渲染时哨兵分支先命中，所以用户建一个叫 `@any` 的引擎，保存是成功的、
+/// 界面上却永远是那颗「万能框选」—— 他自己那条永远点不出来，设置里那行
+/// 也显示成「万能框选」，没人看得出原因。`@ocr` 当年就是这么被挡的，
+/// 后来新增的几个哨兵一直没跟上。
+///
+/// 返回一句"这是谁的标记"，给调用方拼错误文案。
+pub fn reserved_sentinel_name(name: &str) -> Option<&'static str> {
+    match name.trim() {
+        BAR_OCR => Some("横条上「文字识别」按钮的标记"),
+        BAR_IMG => Some("横条上「识图搜索」按钮的标记"),
+        BAR_TRANS => Some("横条上「翻译」按钮的标记"),
+        BAR_ANY => Some("横条上「万能框选」按钮的标记"),
+        BAR_QR => Some("横条上「二维码解析」按钮的标记"),
+        BAR_QRMAKE => Some("横条上「二维码生成」按钮的标记"),
+        BAR_WRAP => Some("横条上「包裹符号」按钮的标记"),
+        _ => None,
+    }
 }
 
 /// 横条/网格页里的「哨兵」：不是引擎名，但确实是合法的一格。
@@ -1320,8 +1350,8 @@ pub fn clean_app(
     if name.contains(SEP) {
         return Err("名字里不能有竖线「|」，它被用作分隔线的标记".into());
     }
-    if name == BAR_OCR {
-        return Err("名字不能是「@ocr」，它是横条上 OCR 按钮的标记".into());
+    if let Some(who) = reserved_sentinel_name(name) {
+        return Err(format!("名字不能是「{name}」，它是{who}"));
     }
     if name.chars().any(|c| c.is_control()) {
         return Err("名字里不能有换行之类的控制字符".into());
@@ -1757,11 +1787,12 @@ pub struct Config {
     /// v2.23.2 试过"停 0.6 秒后自动执行"，仍然要弹那条动作条 —— 用户仍然认为
     /// 没修好。所以改成默认直接执行；调整/换用途留成显式选项。
     ///
-    /// ⚠ 字段名从 `region_hold` 改成了 `region_adjust`：不是嫌名字不好，
-    ///   而是**语义反了**（原来 true=停、现在 true=停，但默认值从 true 变成 false）。
-    ///   改名 + 新默认，老配置里那个 `regionHold: true` 会被 serde 当未知键忽略，
-    ///   于是所有老用户（包括被这个行为烦到的）升级后立刻就是"框完即执行"，
-    ///   不需要写任何迁移代码。
+    /// ⚠ 字段名从 `region_hold` 改成了 `region_adjust`：**极性没变**
+    ///   （true 一直就是"停"），变的是**默认值**（true → false）。
+    ///   正因为默认值反了，光改 `#[serde(default)]` 没用 —— 老配置里那个
+    ///   显式的 `regionHold: true` 会继续压着新默认，用户升级后看到的还是
+    ///   "框完先停一下"。换个键名，老键被 serde 当未知键忽略，老用户就
+    ///   自动落到新默认上，不需要写任何迁移代码。
     #[serde(default)]
     pub region_adjust: bool,
     /// 上次在动作条上点的那一个动作（`""` = 还没点过）。
@@ -6096,6 +6127,36 @@ mod sanitize_tests {
         assert_eq!(prune_undefined_bar_engines(&mut c), 0, "绑定格子被误剪了");
         assert_eq!(c.bar_list.len(), 4);
         assert!(bar_member_defined(&c, "@ocr:windows+baidu"));
+    }
+
+    /// v2.23.3：`@any`（**万能框选**）必须是横条 / 网格页的一等成员。
+    ///
+    /// 守的是同一个坑（新增哨兵忘了加白名单，历史上绊过三次）：
+    ///   · `is_bar_sentinel` 漏了它 → 硬写进配置的条目读一次就被当孤儿**剪掉**
+    ///     （用户看到的是"加了、重启没了"）；
+    ///   · `toggle_bar_engine_impl` 的准入链漏了它 → 设置页「＋ 加进横条」
+    ///     被后端静默拒掉（点了没反应、列表也不变）。
+    ///
+    /// 这两处是**两个**独立的判据，只补一处仍然会坏，所以分别断言。
+    #[test]
+    fn universal_capture_sentinel_is_bar_member() {
+        let _serial = big_lock();
+        // ① 配置层判据
+        assert!(is_bar_sentinel(BAR_ANY), "is_bar_sentinel 不认 @any");
+        assert!(!is_model_sentinel(BAR_ANY), "@any 不绑定具体模型，不该进这张表");
+
+        // ② 归一化不会把它当孤儿剪掉
+        let mut c = Config::default();
+        c.bar_list = vec!["百度".to_string(), BAR_ANY.to_string()];
+        assert_eq!(prune_undefined_bar_engines(&mut c), 0, "@any 被误剪了");
+        assert_eq!(c.bar_list.len(), 2);
+        assert!(bar_member_defined(&c, BAR_ANY));
+
+        // ③ 用户**不能**建一个同名引擎来顶掉它（渲染时哨兵分支先命中）
+        assert!(reserved_sentinel_name(BAR_ANY).is_some(), "@any 没被保留名挡住");
+        assert!(reserved_sentinel_name(BAR_OCR).is_some(), "旧行为不能退化");
+        assert!(reserved_sentinel_name(BAR_QRMAKE).is_some(), "@qrmake 也要挡");
+        assert!(reserved_sentinel_name("百度").is_none(), "普通名字不该被挡");
     }
 
     /// 「空壳自定义引擎」的补救：**只认回种类，绝不删、绝不摘横条**。

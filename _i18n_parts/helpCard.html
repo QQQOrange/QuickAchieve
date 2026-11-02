@@ -167,19 +167,24 @@
         <summary>⑤ Text recognition (OCR): lift text off the screen as copyable text</summary>
         <div class="help-body">
             <p>Press <b>Ctrl+Alt+O</b> (or the OCR tile on the bar) → the screen dims, drag a box around an
-               area → on release it <b>pauses</b>: handles appear at the corners and an action bar pops up beside
-               the region, so you can drag a corner to resize it or drag inside to move it, and switch the action
-               (recognize / translate / image search / QR code / copy image); <b>double-click</b> or press Enter to
-               actually run it (double-click runs the action you used <b>last time</b> — the one highlighted on the
-               bar — and falls back to this selection's own action the first time). The result window shows the image on top and the text below; when the text contains a link
-               an “Open link” appears. To switch engines, click one in the engine list on the “Text recognition”
-               page (that one becomes the default engine).</p>
-            <p>Think the extra step is a waste? Turn off “<b>Pause after selecting a region</b>” under
-               <b>General → Trigger</b> and it goes back to running the moment you release the mouse.</p>
+               area → <b>it recognizes the moment you release the mouse</b>. It won't ask again whether you meant
+               recognize, translate or image search. The result window shows the image on top and the text below;
+               when the text contains a link an “Open link” appears. To switch engines, click one in the engine
+               list on the “Text recognition” page (that one becomes the default engine).</p>
+            <p>Want to <b>frame first and decide afterwards</b>? Use <b>Universal capture</b>: add it to the bar in
+               <b>Engine → Engines on the bar → “+ Add to bar”</b> (you can put it on the grid page too, <b>Ctrl+Shift+G</b>).
+               Click it, drag a box, and an action bar appears — <b>recognize / translate / image search / QR code /
+               copy image</b> — pick one and it runs. <b>Copy image</b> (put the region on the clipboard as an image)
+               only exists on that path.</p>
+            <p>Turn on “<b>Adjust or switch purpose after selecting</b>” under <b>General → Trigger</b> and the OCR /
+               image search / QR tiles also pause after the drag so you can fine-tune the box by its corners;
+               leave it off (the default) and each tile just runs what you opened.</p>
             <p>Dragging a box around an <b>image</b> rather than around text you want to read? That's a
                different feature — see <b>⑤b Image search</b>.</p>
             <ul>
-                <li><b>The region action bar</b> is what lets one selection do several jobs: <b>recognize</b>
+                <li><b>The region action bar</b> (only on the <b>Universal capture</b> tile, or after you turn on
+                    “Adjust or switch purpose after selecting”) is what lets one selection do several jobs:
+                    <b>recognize</b>
                     (the current default engine / the multi-engine list), <b>translate</b> (recognizes first and
                     drops the text straight into the translation window, skipping copy → open translator → paste),
                     <b>image search</b>, <b>QR code</b> (decode a code inside that region) and <b>copy image</b>

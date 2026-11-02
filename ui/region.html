@@ -18,15 +18,23 @@ html, body {
     user-select: none;
     -webkit-user-select: none;
     font: 13px/1.5 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    /* v2.23.4：光标统一从 body 继承（#dim 不再自己声明，否则会把它盖掉）。
+       JS 改 `document.body.style.cursor` 就能换成 resize / move。 */
+    cursor: crosshair;
 }
 
 /* 整屏压暗。选中区域靠 .sel 自己的超大 box-shadow「掏」出一个洞 ——
-   比摆四个遮罩 div 简单，也不会在边界露缝。 */
+   比摆四个遮罩 div 简单，也不会在边界露缝。
+
+   ⚠ v2.23.4：`#dim` **不再声明 cursor**。它铺满 `inset:0`，指针底下的元素
+   永远是它；在这儿写 `cursor: crosshair` 会把 JS 写在 body 上的
+   `nwse-resize` / `move` 全部盖掉 —— 调整阶段的"手柄光标"因此一帧都没出现过
+   （而 `hitTest` 那段的注释说那是"唯一的可操作性提示"）。
+   光标统一由 body 那条规则给出，JS 改 body 就能生效。 */
 #dim {
     position: fixed;
     inset: 0;
     background: rgba(10, 12, 18, .34);
-    cursor: crosshair;
 }
 
 #sel {
@@ -153,7 +161,11 @@ html, body {
    没有日志就等于瞎查。任何 JS 错误都回传给 Rust 落进 log.txt。 */
 function jlog(msg) {
     try {
-        window.__TAURI__.core.invoke('log_msg', { msg: '[region] ' + msg });
+        /* ⚠ v2.23.4：必须 `.catch`。`log_msg` 一旦 reject 就会触发下面的
+         * `unhandledrejection` 处理器 → 它又调 jlog → 又 reject …
+         * 自激成一串 IPC，日志里刷满同一行还查不出源头。 */
+        const p = window.__TAURI__.core.invoke('log_msg', { msg: '[region] ' + msg });
+        if (p && typeof p.catch === 'function') p.catch(() => { });
     } catch (_) { }
 }
 window.addEventListener('error', (e) =>
@@ -226,7 +238,7 @@ tip.innerHTML = MODE === 'img'
     : MODE === 'app'
         ? '点一下要绑定的那个程序窗口（鼠标移到目标上点左键） · <b>Esc</b> 取消'
         : MODE === 'any'
-            ? '拖拽框选一块区域，松开后选择要做什么（识别 / 翻译 / 识图 / 二维码） · <b>Esc</b> 取消'
+            ? '拖拽框选一块区域，松开后选择要做什么（识别 / 翻译 / 识图 / 二维码 / 复制图片） · <b>Esc</b> 取消'
             : '拖拽框选要识别的区域 · <b>Esc</b> 取消';
 
 /* 取消阶段的提示统一走这里，免得几处各写一句、下次改文案漏掉一处 */
@@ -256,6 +268,14 @@ let gesture = {
     start: null,       // 按下时的 rect 快照
 };
 
+/* 各功能是否开着（`ocrEnable` / `imgEnable` / `transEnable`）。
+ *
+ * 为什么要在这里过滤：动作条以前**无条件画 5 颗**，可后端那三条路各自会查开关 ——
+ * 翻译关着时点「翻译」，`region_translate` 直接把遮罩关掉再弹一句提示，
+ * 用户白框一次。v2.23.4 起：关掉的功能**不画**，少的那颗不给点。
+ * 配置还没回来时按"全开"处理（宁可多画一颗，也不要莫名其妙少一颗）。 */
+let featOn = { ocr: true, img: true, trans: true };
+
 /* 框选后是否**停下来给调整/换用途**（配置项 `regionAdjust`，默认关）。
  *
  * ⚠ v2.23.3：默认值从"开"改成"关"。用户两次反馈，第二次是"完全没修好"：
@@ -266,7 +286,12 @@ let gesture = {
  * 不出现手柄、不出现动作条、也不问你第二遍。
  * 只有显式打开「框选后可调整」的人才走"停下来选"的老流程
  * （那条路也是「复制图片」唯一的入口）。 */
-let holdMode = (MODE === 'any');
+/* `null` = **还不知道**（`get_config` 还没回来）。
+ * 三态而不是布尔：配置比拖框慢到时，不能拿"默认 false"去替用户做决定，
+ * 否则"开了框选后可调整却仍被立刻执行"就是必然。见 `finishDrag`。 */
+let holdMode = (MODE === 'any') ? true : null;
+/** 松手了、但还在等配置 —— 配置一落地就按 `applyRelease()` 走。 */
+let pendingRelease = false;
 
 /* 上次在动作条上点过的动作（后端记的）。双击/回车执行的就是它 ——
    固定用来"翻译截图"的人，第二次起就不必再点按钮了。
@@ -297,11 +322,21 @@ function commit(action) {
     sel.style.display = 'none';
     sizeEl.style.display = 'none';
 
+    /* v2.23.4：坐标先夹到视口内再发。
+     *
+     * 「拖内部平移」允许把框挪到屏幕外（只软限制留 40px 可见，那是为了能拖回来），
+     * 可截图/识别只能拿屏幕里的内容 —— 以前原样把负坐标或 `x+w > innerWidth`
+     * 发过去，后端 BitBlt 在屏幕外拿到的是黑的，于是 OCR / 识图结果里多出一条黑边。 */
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const x0 = Math.min(Math.max(0, rect.x), Math.max(0, vw - 1));
+    const y0 = Math.min(Math.max(0, rect.y), Math.max(0, vh - 1));
+    const x1 = Math.min(Math.max(0, rect.x + rect.w), vw);
+    const y1 = Math.min(Math.max(0, rect.y + rect.h), vh);
     const r = {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        w: Math.round(rect.w),
-        h: Math.round(rect.h),
+        x: Math.round(x0),
+        y: Math.round(y0),
+        w: Math.round(x1 - x0),
+        h: Math.round(y1 - y0),
     };
     /* 数字必须都是有限值才敢发 —— 带着 NaN/Infinity 过去，Rust 那边
      * 反序列化会失败，命令等于没执行，遮罩就会一直留着。 */
@@ -352,6 +387,7 @@ function bail(msg) {
     frame.style.display = 'none';
     sizeEl.style.display = 'none';
     actbar.style.display = 'none';
+    dim.style.background = '';
     if (msg) {
         tip.textContent = msg;
         tip.style.display = '';
@@ -374,7 +410,19 @@ function snap(v, max) {
 
 function paint() {
     const r = rect;
-    sel.style.display = 'block';
+    /* v2.23.4：**两层压暗只能留一层**。
+     *
+     * 以前 `#dim` 铺 34%，`#sel` 又用 `0 0 0 9999px` 铺一层 34% ——
+     * 结果是"选区外 56%、选区内仍有 34%"：选中的那块看着跟没选一样暗，
+     * 而且按下鼠标那一瞬间（rect 0×0、阴影已覆盖全屏）整屏会突然再暗一档。
+     *
+     * 现在的口径：
+     *   · 还没有选区 → `#dim` 负责压暗（边框和阴影都不出现，避免闪一下变暗）；
+     *   · 一旦有面积 → `#dim` 让位，只由 `#sel` 的超大阴影"掏洞"：
+     *     洞内是原样，洞外才是暗的。 */
+    const hasArea = r.w > 0 && r.h > 0;
+    dim.style.background = hasArea ? 'transparent' : '';
+    sel.style.display = hasArea ? 'block' : 'none';
     sel.style.left = r.x + 'px';
     sel.style.top = r.y + 'px';
     sel.style.width = r.w + 'px';
@@ -406,7 +454,10 @@ function paint() {
         sizeEl.textContent = Math.round(r.w) + ' × ' + Math.round(r.h);
         // 贴着选框上方，顶到屏幕边就挪到里面
         const above = r.y - 26;
-        sizeEl.style.left = r.x + 'px';
+        /* v2.23.4：右边也要夹 —— 以前只夹上/下，框到屏幕右上角时
+         * 尺寸标签会伸出右边界被裁掉半截（只剩「2560 ×」）。 */
+        const sw = sizeEl.offsetWidth || 70;
+        sizeEl.style.left = Math.max(0, Math.min(r.x, window.innerWidth - sw - 2)) + 'px';
         sizeEl.style.top = (above > 4 ? above : r.y + 6) + 'px';
     } else {
         sizeEl.style.display = 'none';
@@ -437,9 +488,12 @@ function placeBar() {
     }
     if (!ok) {
         // 选区几乎占满整屏（框一整页）：贴着视口右下角，别跑出屏幕
-        bx = Math.min(Math.max(gap, rect.x + rect.w - bw), vw - bw - gap);
-        by = Math.min(rect.y + rect.h + gap, vh - bh - gap);
-        if (by < gap) by = Math.min(vh - bh - gap, Math.max(gap, rect.y + 6));
+        /* v2.23.4：再兜一层 `Math.max(gap, …)`。
+         * 视口比动作条还窄时（`vw - bw - gap < gap`），以前这里会把 bx 算成负数，
+         * 动作条左边被切掉，最左边那颗「识别」点不到。 */
+        bx = Math.max(gap, Math.min(Math.max(gap, rect.x + rect.w - bw), vw - bw - gap));
+        by = Math.max(gap, Math.min(rect.y + rect.h + gap, vh - bh - gap));
+        if (by < gap) by = Math.min(Math.max(gap, vh - bh - gap), Math.max(gap, rect.y + 6));
     }
     actbar.style.left = Math.round(bx) + 'px';
     actbar.style.top = Math.round(by) + 'px';
@@ -459,51 +513,80 @@ function hitTest(x, y) {
     if (phase !== 'adjust') return 'new';
     const { x: rx, y: ry, w: rw, h: rh } = rect;
     const T = 7;   // 手柄吸附半径（px）
+    const inside = x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+    // 只有落在"选区外扩 T"的范围内，才可能命中
+    if (!(x >= rx - T && x <= rx + rw + T && y >= ry - T && y <= ry + rh + T)) return 'new';
+    /* v2.23.4：小框（<24）不再细分边角。
+     *
+     * 宽度就那么点，左右两条吸附带会**重叠** —— 以前连"框的正中间"都会被判成
+     * `w`（拖起来在改左边，很费解），而且 <24 时手柄本来就是隐藏的（paint 里），
+     * 光标却还显示 resize。现在整块当一个"挪"的目标。 */
+    if (rw < 24 || rh < 24) return inside ? 'move' : 'new';
     const nearL = Math.abs(x - rx) <= T;
     const nearR = Math.abs(x - (rx + rw)) <= T;
     const nearT = Math.abs(y - ry) <= T;
     const nearB = Math.abs(y - (ry + rh)) <= T;
-    // 只有落在"选区外扩 T"的范围内，才可能是手柄
-    if (x >= rx - T && x <= rx + rw + T && y >= ry - T && y <= ry + rh + T) {
-        if (nearL && nearT) return 'nw';
-        if (nearR && nearT) return 'ne';
-        if (nearL && nearB) return 'sw';
-        if (nearR && nearB) return 'se';
-        if (nearL) return 'w';
-        if (nearR) return 'e';
-        if (nearT) return 'n';
-        if (nearB) return 's';
-        if (rw >= 24 && rh >= 24) return 'move';
-    }
+    if (nearL && nearT) return 'nw';
+    if (nearR && nearT) return 'ne';
+    if (nearL && nearB) return 'sw';
+    if (nearR && nearB) return 'se';
+    if (nearL) return 'w';
+    if (nearR) return 'e';
+    if (nearT) return 'n';
+    if (nearB) return 's';
+    if (inside) return 'move';
     return 'new';
 }
 
 /* ------------------------------------------------------------------ */
 /* 调整阶段的动作条                                                    */
 /* ------------------------------------------------------------------ */
+/** 提示文案那一段（重建结构时才换，平时只改 innerHTML）。 */
+let barHint = null;
+
 function buildBar() {
-    actbar.textContent = '';
-    const list = ['ocr', 'trans', 'img', 'qr', 'copy'];
-    for (const a of list) {
-        const b = document.createElement('button');
-        b.dataset.act = a;
-        b.textContent = ACT_NAME[a];
-        // 高亮"双击会执行的那一个"（上次用过的 → 否则这次框选本来的用途）
-        if (a === defaultAct()) b.classList.add('on');
-        b.addEventListener('click', (e) => {
-            e.stopPropagation();
-            commit(a);
-        });
-        actbar.appendChild(b);
+    /* 关掉的功能不画（见 `featOn` 的注释）。「二维码 / 复制图片」一直是常开，
+     * 「识别」「识图」「翻译」跟各自的开关走。 */
+    const list = ['ocr', 'trans', 'img', 'qr', 'copy']
+        .filter((a) => a !== 'trans' || featOn.trans)
+        .filter((a) => a !== 'ocr' || featOn.ocr)
+        .filter((a) => a !== 'img' || featOn.img);
+
+    /* ⚠ v2.23.4：**结构没变就不重建 DOM**。
+     *
+     * 以前这里无条件 `textContent=''` 重建：配置比拖框晚到几十毫秒时，
+     * 回调里会再调一次 buildBar()，如果用户的手正好按在某颗按钮上，
+     * 那颗按钮的节点被摘掉 —— click 永远不会派发，表现是"点了没反应"。
+     * 现在只在"成员变了"时重建，其余情况只更新高亮和文案。 */
+    const cur = [...actbar.querySelectorAll('button[data-act]')].map((b) => b.dataset.act);
+    if (cur.join(',') !== list.join(',')) {
+        actbar.textContent = '';
+        for (const a of list) {
+            const b = document.createElement('button');
+            b.dataset.act = a;
+            b.textContent = ACT_NAME[a];
+            b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                commit(a);
+            });
+            actbar.appendChild(b);
+        }
+        const sep = document.createElement('span');
+        sep.className = 'sep';
+        actbar.appendChild(sep);
+        barHint = document.createElement('span');
+        barHint.className = 'hint';
+        actbar.appendChild(barHint);
     }
-    const sep = document.createElement('span');
-    sep.className = 'sep';
-    actbar.appendChild(sep);
-    const hint = document.createElement('span');
-    hint.className = 'hint';
-    /* 写清"双击会执行哪一个"：不然记忆生效之后，用户会以为双击还是识别 */
-    hint.innerHTML = '拖角调整 · 双击<b>' + (ACT_NAME[defaultAct()] || '执行') + '</b> · <b>Esc</b> 取消';
-    actbar.appendChild(hint);
+    // 高亮"双击会执行的那一个"（上次用过的 → 否则这次框选本来的用途）
+    for (const b of actbar.querySelectorAll('button[data-act]')) {
+        b.classList.toggle('on', b.dataset.act === defaultAct());
+    }
+    if (barHint) {
+        /* 写清"双击会执行哪一个"：不然记忆生效之后，用户会以为双击还是识别 */
+        barHint.innerHTML = '拖角调整 · 双击<b>' + (ACT_NAME[defaultAct()] || '执行')
+            + '</b> · <b>Esc</b> 取消';
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -517,6 +600,9 @@ document.addEventListener('pointerdown', (e) => {
     // 点在动作条上：交给按钮自己处理，别在这里开新框
     if (actbar.contains(e.target)) return;
 
+    // 重新框了 → 上一轮"等配置回来再决定"的挂起作废
+    pendingRelease = false;
+
     const x = e.clientX, y = e.clientY;
     const kind = hitTest(x, y);
 
@@ -529,10 +615,13 @@ document.addEventListener('pointerdown', (e) => {
         return;
     }
 
-    /* 新框：从零开始（adjust 阶段点空白处 = 重来，符合截图工具习惯） */
-    gesture = { mode: 'new', ox: x, oy: y, start: null };
+    /* 新框：从零开始（adjust 阶段点空白处 = 重来，符合截图工具习惯）。
+     * v2.23.4：起点也吸附一下 —— 以前只 snap 移动中的那条边，从屏幕边缘外
+     * 5px 起拖，左边就永远停在 5px（框出来比屏幕窄一条，用户只能重拖）。 */
+    const sx = snap(x, window.innerWidth), sy = snap(y, window.innerHeight);
+    gesture = { mode: 'new', ox: sx, oy: sy, start: null };
     phase = 'drag';
-    rect = { x, y, w: 0, h: 0 };
+    rect = { x: sx, y: sy, w: 0, h: 0 };
     tip.style.display = 'none';
     actbar.style.display = 'none';
     jlog('pointerdown at ' + Math.round(x) + ',' + Math.round(y));
@@ -542,6 +631,13 @@ document.addEventListener('pointerdown', (e) => {
 document.addEventListener('pointermove', (e) => {
     if (done) return;
     const x = e.clientX, y = e.clientY;
+
+    /* v2.23.4：没按键却还带着手势 = 抬起事件丢了（见 pointercancel 那段）。
+     * 这里直接把手势结束掉，免得框跟着鼠标"橡皮筋"地跑。 */
+    if (e.buttons === 0 && (phase === 'drag' || gesture.mode)) {
+        if (phase === 'drag') { finishDrag(); return; }
+        gesture.mode = '';
+    }
 
     if (phase === 'idle' || phase === 'adjust') {
         // 只改光标，不画任何东西（idle 时鼠标划过不该有任何反馈）
@@ -602,44 +698,78 @@ document.addEventListener('pointermove', (e) => {
     }
 });
 
-document.addEventListener('pointerup', (e) => {
-    if (done || e.button !== 0 || phase === 'committed') return;
-
-    if (phase === 'drag') {
-        gesture.mode = '';
-        // 太小的框基本是误点，直接当没框过
-        if (rect.w < 8 || rect.h < 8) {
-            rect = { x: 0, y: 0, w: 0, h: 0 };
-            phase = 'idle';
-            sel.style.display = 'none';
-            frame.style.display = 'none';
-            sizeEl.style.display = 'none';
-            tip.innerHTML = TIP_IDLE;
-            tip.style.display = '';
-            return;
-        }
-        if (holdMode) {
-            // 显式打开了「框选后可调整」才走这条：停下来微调 / 换用途
-            phase = 'adjust';
-            buildBar();
-            tip.textContent = '还能调整：拖角改大小 · 双击执行 · Esc 取消';
-            paint();
-            document.body.style.cursor = 'move';
-            jlog('adjust: ' + JSON.stringify(rect));
-        } else {
-            // 关掉「框选后停留」→ 老行为：松手就走
-            phase = 'adjust';
-            commit(MODE);
-        }
+/* 松手/取消之后的收尾。**抽出来**是因为它有两个调用点：
+ * 正常的 `pointerup`，以及"抬起事件丢了"之后的兜底（见下面的 pointercancel 与
+ * pointermove 里的 `e.buttons` 判断）—— 两处各写一遍迟早会分叉。 */
+function finishDrag() {
+    gesture.mode = '';
+    // 太小的框基本是误点，直接当没框过
+    if (rect.w < 8 || rect.h < 8) {
+        rect = { x: 0, y: 0, w: 0, h: 0 };
+        phase = 'idle';
+        sel.style.display = 'none';
+        frame.style.display = 'none';
+        sizeEl.style.display = 'none';
+        // 选区没了 → 把整屏压暗交还给 #dim（见 paint() 里的说明）
+        dim.style.background = '';
+        tip.innerHTML = TIP_IDLE;
+        tip.style.display = '';
         return;
     }
+    /* v2.23.4：配置还没回来时**先别执行**。
+     *
+     * `get_config` 是异步的，初值 `holdMode` 对 ocr/img/qr 是 `null`（未知）。
+     * 以前这里按 `falsy` 当"不停"，于是"开了框选后可调整、但手快在配置回来前
+     * 松手"会被立刻执行，和用户刚打开的开关正好相反。
+     * 现在挂起：等配置落地（通常几十毫秒）再决定进 adjust 还是直接执行。 */
+    if (holdMode === null) {
+        pendingRelease = true;
+        tip.textContent = '正在读取设置…';
+        return;
+    }
+    applyRelease();
+}
 
+/** 松手之后到底干什么：停（进 adjust）还是直接执行。 */
+function applyRelease() {
+    if (holdMode) {
+        phase = 'adjust';
+        buildBar();
+        tip.textContent = MODE === 'any'
+            ? '选择要做什么：点一下上面的按钮（双击执行上次那个） · Esc 取消'
+            : '还能调整：拖角改大小 · 双击执行 · Esc 取消';
+        paint();
+        document.body.style.cursor = 'move';
+        jlog('adjust: ' + JSON.stringify(rect));
+    } else {
+        // 默认路径：框完立刻按这次打开的用途执行（不出现动作条、不出现手柄）
+        commit(MODE);
+    }
+}
+
+document.addEventListener('pointerup', (e) => {
+    if (done || e.button !== 0 || phase === 'committed') return;
+    if (phase === 'drag') { finishDrag(); return; }
     if (phase === 'adjust') {
         // 松手 = 结束这次移动/改大小，继续留在 adjust
         if (gesture.mode) jlog('adjust end ' + JSON.stringify(rect));
         gesture.mode = '';
         paint();
     }
+});
+
+/* 抬起事件**收不到**的兜底（触屏取消、窗口被切走、在窗口外松手）。
+ * 不补这一手，`gesture.mode` 会一直留着：之后鼠标一动，框就跟着变
+ * （"橡皮筋"），而用户根本没按键。 */
+document.addEventListener('pointercancel', () => {
+    if (done || phase === 'committed') return;
+    if (phase === 'drag') { finishDrag(); return; }
+    gesture.mode = '';
+    paint();
+});
+window.addEventListener('blur', () => {
+    if (done || phase === 'committed') return;
+    gesture.mode = '';
 });
 
 /* 双击执行默认动作：手已经停在选区上，这一下几乎是零成本 ——
@@ -657,8 +787,16 @@ document.addEventListener('keydown', (e) => {
         bail();
         return;
     }
-    if (e.key === 'Enter' && phase === 'adjust') {
-        commit(defaultAct());
+    /* v2.23.4：焦点在动作条的按钮上时**不要抢回车**。
+     *
+     * Tab 能走到那些按钮上（而且没有 focus 样式，看不出来），以前这里会先
+     * `commit(defaultAct())`（常常是「识别」），紧接着焦点按钮自己的 click
+     * 被 `committed` 吞掉 —— 用户以为在点「翻译」，实际识别了。
+     * 空格反而是对的（这里不处理 Space），两相对照就是这个 bug 的形状。 */
+    if (e.key === 'Enter') {
+        const t = e.target;
+        if (t && t.closest && t.closest('#actbar')) return;   // 让按钮自己响应
+        if (phase === 'adjust') commit(defaultAct());
     }
 });
 
@@ -703,13 +841,36 @@ if (MODE === 'app') {
          *   那个开关只管"具体功能要不要也停"。 */
         holdMode = (MODE === 'any') || !!(c && c.regionAdjust);
         lastAct = (c && typeof c.regionLastAction === 'string') ? c.regionLastAction : '';
-        jlog('regionAdjust=' + holdMode + ' lastAct=' + (lastAct || '(none)'));
-        /* 配置比"拖框"慢到时（偶尔会比首帧晚几十毫秒），动作条已经画好了 ——
-         * 这里重建一次，让高亮和"双击XXX"的文案立刻对上。 */
-        if (phase === 'adjust') { buildBar(); paint(); }
+        /* 各功能开关：动作条只画开着的（后端那几条路也会再查一次，这里是为了
+         * 不让用户看见一颗"点了必然白框"的按钮）。 */
+        featOn = {
+            ocr: !c || c.ocrEnable !== false,
+            img: !c || c.imgEnable !== false,
+            trans: !c || c.transEnable !== false,
+        };
+        jlog('regionAdjust=' + holdMode + ' lastAct=' + (lastAct || '(none)')
+            + ' feat=' + JSON.stringify(featOn));
+        /* 配置比"拖框"慢到时（偶尔会比首帧晚几十毫秒）：
+         *   · 松手已经发生、正挂着 → 现在可以决定"停"还是"执行"了；
+         *   · 已经在 adjust → 重建动作条（成员可能因为开关变了）。
+         * ⚠ buildBar() 现在**结构没变就不重建 DOM**，所以这里不会把用户
+         *   正按着的那颗按钮换掉（那会导致 click 永远不派发）。 */
+        if (pendingRelease) {
+            pendingRelease = false;
+            applyRelease();
+        } else if (phase === 'adjust') {
+            buildBar();
+            paint();
+        }
     }).catch((e) => {
         // 读不到就按默认（框完直接执行）走 —— 那才是主路径，不能因为读配置失败就变成"停下来问"
         jlog('get_config failed: ' + ((e && e.message) || e) + ' -> 按「框完直接执行」处理');
+        // 挂起的松手必须有结果，否则用户会卡在"框好了但什么都不发生"
+        holdMode = (MODE === 'any');
+        if (pendingRelease) {
+            pendingRelease = false;
+            applyRelease();
+        }
     });
 }
 

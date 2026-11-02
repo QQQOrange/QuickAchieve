@@ -843,6 +843,22 @@ async function testSettings() {
         await flush();
         ok('  加进横条后这一行就变成正式成员（入口行消失）',
             ![...$('barList').children].some((r) => r.classList.contains('any-add-row')));
+        {
+            /* 正式成员这一行必须说人话：名字是「万能框选」、
+             * 说明里能看出它和"直接识别"的区别、并且给了换图标/移出。 */
+            const row = [...$('barList').children].find((r) => /@any|万能框选/.test(r.textContent));
+            ok('  「横条上的引擎」里能渲染出万能框选这一行', !!row,
+                [...$('barList').children].map((r) => r.textContent.trim().slice(0, 12)).join(' / '));
+            ok('  行名不是内部代号 @any，也不是「未命名功能」',
+                !!row && /万能框选/.test(row.textContent)
+                && !/未命名功能/.test(row.textContent)
+                && !/@any/.test(row.textContent),
+                row && row.textContent.replace(/\s+/g, ' ').slice(0, 60));
+            ok('  行里给了「移出」按钮（能像别的引擎一样拿下去）',
+                !!row && [...row.querySelectorAll('button')]
+                    .some((b) => /移出|移除/.test(b.textContent + b.title)),
+                row && [...row.querySelectorAll('button')].map((b) => b.textContent.trim()).join('/'));
+        }
         env.pushConfig(baseConf({ barList: ['百度', 'Google', '|', '知乎', '淘宝'] }));
         await flush();
     }
@@ -2422,8 +2438,11 @@ function mouse(env, type, x, y, button = 0) {
     const mapped = type.startsWith('mouse')
         ? 'pointer' + type.slice(5)
         : type;
+    /* `buttons` 也要给对：region.html 用 `e.buttons === 0` 判断
+     * "抬起事件丢了没有"（橡皮筋兜底）。默认 0 会让每次 mousemove 都像松手。 */
     const ev = new env.w.MouseEvent(mapped, {
         bubbles: true, cancelable: true, clientX: x, clientY: y, button,
+        buttons: /up$/.test(mapped) ? 0 : 1,
     });
     env.w.document.dispatchEvent(ev);
     return ev;

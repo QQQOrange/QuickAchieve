@@ -795,11 +795,17 @@ window.qsAnyIconNode = function () {
     box.setAttribute('data-i18n-skip', '');
     // 内联样式而不是加 CSS：这条链上有横条 / 网格 / 设置 / 预览四个页面，
     // 各引各的 css，只为一枚图标去四处加规则不划算。
-    box.style.cssText = 'display:inline-flex;width:100%;height:100%;'
+    // ⚠ min-width/min-height 是兜底：万一某个宿主容器没给确定高度（100% 就会塌成 0），
+    //   图标至少还在，而不是"这一格空了"。
+    box.style.cssText = 'display:inline-flex;width:100%;height:100%;min-width:14px;min-height:14px;'
         + 'align-items:center;justify-content:center;';
     box.innerHTML =
         '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"'
-        + ' style="display:block;width:100%;height:100%;max-width:22px;max-height:22px">'
+        /* ⚠ 不要在这里写死 `max-width/max-height` —— 别的功能哨兵（ocr / trans /
+         * wrap / txt）都是 `100%` 铺满 `.ico`（边长 = 图标大小 + 6，可调到 100+）。
+         * 写死 22px 的后果：用户把「外观 → 图标大小」调大之后，横条上这一格
+         * 永远比别人小一号。下界靠 span 的 min-width/min-height 兜着。 */
+        + ' style="display:block;width:100%;height:100%">'
         + '<g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".85">'
         + '<path d="M4 9V6.6C4 5.7 4.7 5 5.6 5H8"/>'
         + '<path d="M16 5h2.4c.9 0 1.6.7 1.6 1.6V9"/>'

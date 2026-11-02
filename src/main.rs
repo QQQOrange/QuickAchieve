@@ -6413,7 +6413,9 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     if let Some(x) = n("barIdleSec") { cfg.bar_idle_sec = x.clamp(0, 300) as u32; }
     if let Some(x) = n("barAwayPx") { cfg.bar_away_px = x.clamp(0, 4000) as i32; }
     if let Some(x) = b("barNeedText") { cfg.bar_need_text = x; }
-    // v2.16.0：老备份没有这个键 → 保持当前值（默认 true）
+    /* v2.16.0 引入、v2.23.3 改默认。老备份里**没有这个键**就是老版本留下的 →
+     * 保持当前值（默认 **false** = 框完直接执行），不要因为恢复一份旧备份
+     * 就把用户刚关掉的"先停一下"又打开。 */
     if let Some(x) = b("regionAdjust") { cfg.region_adjust = x; }
     /* v2.14.0：触发方式。老备份里没有这个键 → 保持当前值（= always），
      * 不要因为恢复一份 2026 年之前的备份就把用户改成"必须按 Ctrl"。 */
@@ -8200,6 +8202,14 @@ fn restore_from_text(text: &str) -> Result<String, String> {
              * 赋值后再走一遍 `sanitize`（剪掉指向已删收藏/软件的哨兵、
              * 语言归一…），和启动读盘同一条归一链路。 */
             BackupFormat::Config => {
+                /* v2.23.4：`region_adjust` 这个键是 v2.23.3 才改的名，
+                 * 所以**老备份里必然没有**。下面是从 `v` 整份赋值的，
+                 * 缺键会被 serde 填成默认 false —— 于是"用户升级后刚打开
+                 * 框选后可调整 → 恢复一份升级前的 config.auto(...) /
+                 * config.before-webdav(...)（两者都是 Config 格式）→
+                 * 开关被静默关回去，界面还只提了令牌"。
+                 * 这里和 `apply_view` 的口径对齐：键缺失 = 不动。 */
+                let backup_has_region_adjust = v.get("region_adjust").is_some();
                 let mut incoming: config::Config = serde_json::from_value(v)
                     .map_err(|e| format!("备份内容解析失败：{e}"))?;
                 /* ⚠ v1.4.1：**绝不把备份密码降级成空**（和 apply_view 同一口径）。
@@ -8220,6 +8230,10 @@ fn restore_from_text(text: &str) -> Result<String, String> {
                 if keep_local_secret(&cfg.github_token, &mut incoming.github_token) {
                     win::log("restore: 备份里没有个人访问令牌，保留本机的（别让同步把令牌冲掉）");
                     kept_token = true;
+                }
+                if !backup_has_region_adjust {
+                    win::log("restore: 老备份没有 region_adjust，保留本机当前值");
+                    incoming.region_adjust = cfg.region_adjust;
                 }
                 *cfg = config::sanitize(incoming);
             }
@@ -15095,6 +15109,18 @@ fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
          * 「识图」都会继续用那份残留名单，完全忽略设置里勾的引擎。
          * 这里的语义就是"普通入口"，与 img_start(None) 对齐。 */
         RegionAction::Img => {
+            /* v2.23.4：识图关着就别跑了。
+             *
+             * 以前只有「翻译」在自己那条路上查开关，识别 / 识图都不查 ——
+             * 于是"设置里关掉 OCR / 识图，但从万能框选的动作条点「识别」"
+             * 照样跑一遍（在线引擎还可能计费）。等于给关掉的功能留了后门。
+             * 前端现在也不画那颗按钮（见 region.html 的 featOn），这里是第二道。 */
+            if !cfg_snapshot().img_enable {
+                win::log("region_action: 识图功能已关闭，直接退出框选");
+                close_window("region");
+                ui_say("识图搜索已在设置里关闭（设置 → 附加功能 → 识图）", 3000);
+                return;
+            }
             set_img_force_engines(None);
             img_region(x, y, w, h, dpr)
         }
@@ -15107,6 +15133,13 @@ fn region_action(action: String, x: f64, y: f64, w: f64, h: f64, dpr: f64) {
                 win::log(&format!(
                     "region_action: 不认识的 action={action:?}，按识别处理"
                 ));
+            }
+            /* v2.23.4：识别关着同理（见 Img 分支的注释）。 */
+            if !cfg_snapshot().ocr_enable {
+                win::log("region_action: 文字识别已关闭，直接退出框选");
+                close_window("region");
+                ui_say("文字识别已在设置里关闭（设置 → 文字识别）", 3000);
+                return;
             }
             ocr_region(x, y, w, h, dpr);
         }
@@ -15162,8 +15195,10 @@ fn region_translate(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
     /* 翻译功能关着就**先说话再退出**。
      *
      * 框选动作条（ui/region.html 的 buildBar）会把 5 个动作无条件全画出来，
-     * 它只读 regionHold / regionLastAction，不看 transEnable —— 所以"按钮不渲染"
-     * 这个前提在这里不成立。以前会先白跑一次 OCR（几秒、可能计费），
+     * 它只读 regionAdjust / regionLastAction，不看 transEnable —— 所以"按钮不渲染"
+     * 这个前提在这里不成立。（v2.23.3 起动作条只在「万能框选」或显式打开
+     * 「框选后可调整」时出现，但只要出现就仍然是 5 个全画。）
+     * 以前会先白跑一次 OCR（几秒、可能计费），
      * 到 trans_start 里才 `return`，用户看到的是"识别完了然后什么都没有"。 */
     if !cfg_snapshot().trans_enable {
         win::log("region_trans: 翻译功能已关闭，直接退出框选");
@@ -17626,10 +17661,12 @@ fn clean_custom_engine(
     if name.contains(config::SEP) {
         return Err("名字里不能有竖线「|」，它被用作分隔线的标记".into());
     }
-    // 同理：@ocr 是「OCR 那颗按钮」在 bar_list 里的哨兵。
-    // 不挡的话，用户建一个叫 @ocr 的引擎就能顶掉 OCR 按钮（排序里两者不可区分）。
-    if name == config::BAR_OCR {
-        return Err("名字不能是「@ocr」，它是横条上 OCR 按钮的标记".into());
+    /* 同理：`@ocr` / `@any` … 都是横条上那几颗功能按钮在 bar_list 里的哨兵。
+     * 不挡的话，用户建一个同名引擎就能顶掉那颗按钮（渲染时哨兵分支先命中，
+     * 他自己的那条永远点不出来）。v2.23.4 起按 `config::reserved_sentinel_name`
+     * 的整张表挡，不再只挡 @ocr。 */
+    if let Some(who) = config::reserved_sentinel_name(name) {
+        return Err(format!("名字不能是「{name}」，它是{who}"));
     }
     if name.chars().any(|c| c.is_control()) {
         return Err("名字里不能有换行之类的控制字符".into());
@@ -22928,6 +22965,21 @@ mod tests {
         // 只有冒号没有模型 id 的畸形哨兵也拒
         toggle_bar_engine_impl(&mut cfg, "@ocr:", true);
         assert!(!cfg.bar_list.iter().any(|n| n == "@ocr:"), "畸形哨兵必须拒");
+
+        /* v2.23.3：**万能框选**（`@any`）也必须放行 —— 它是和 @ocr / @img
+         * 同级的"金刚位"，设置页那颗「＋ 加进横条」走的就是这里。
+         * 准入链是一串手写的 `&& engine != …`，漏一条的症状是
+         * "点了没反应、列表也不变"，所以在准入这一层单独钉一次。 */
+        let n1 = cfg.bar_list.len();
+        toggle_bar_engine_impl(&mut cfg, config::BAR_ANY, true);
+        assert_eq!(cfg.bar_list.len(), n1 + 1, "@any 被准入链拒了");
+        assert!(cfg.bar_list.iter().any(|n| n == config::BAR_ANY));
+        // 也不能加重复
+        toggle_bar_engine_impl(&mut cfg, config::BAR_ANY, true);
+        assert_eq!(cfg.bar_list.len(), n1 + 1, "@any 不该重复入列表");
+        // 想拿下去也得拿得掉
+        toggle_bar_engine_impl(&mut cfg, config::BAR_ANY, false);
+        assert!(!cfg.bar_list.iter().any(|n| n == config::BAR_ANY), "@any 要能移出");
     }
 
     /// engines.json 的数据不变量（管线 tools/add-engines.py 的产出质量在这兜底）：

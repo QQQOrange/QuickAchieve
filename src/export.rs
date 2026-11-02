@@ -124,6 +124,20 @@ pub static GROUPS: &[Group] = &[
             "anchorAtMouse",
             "autoStart",
             "autoElevate",
+            /* v2.23.4：**这四项本来就该在这里** —— 组的 desc 明写覆盖
+             * 「行为（触发方式、延时、生效范围）」，可 keys 里一直没有它们，
+             * 于是勾了「应用设置」导出、换台机器导入，触发方式 / 延时 /
+             * 收起的距离 / "没选中文字不弹"全都退回了默认值，
+             * 而界面上明明勾着这一组。
+             * 用户报的措辞是"设置没跟着备份走"，根因就是这几行缺项。 */
+            "barTriggerMode",
+            "barIdleSec",
+            "barAwayPx",
+            "barNeedText",
+            /* v2.23.4：框选行为（默认"框完立刻执行"，打开才停）。
+             * 和上面四项同一个来路：不加进这张表，导入时会被 `allow_keys()`
+             * **硬裁**掉，用户以为带过去了，其实静默回到默认。 */
+            "regionAdjust",
             "iconSize",
             "alpha",
             "barDimAlpha",

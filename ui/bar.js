@@ -1227,10 +1227,10 @@ function renderBar(force) {
             // 右键菜单按 .engine + dataset.engine 认人（换图标 / 移出与普通引擎一致）
             b.dataset.engine = window.QS_ANY;
             b.appendChild(window.qsAnyIconNode ? window.qsAnyIconNode() : document.createTextNode('⊞'));
-            b.addEventListener('click', (e) => {
-                e.stopPropagation();
-                invoke('region_any_start').catch(() => {});
-            });
+            /* 点击**交给下面 barEl 的委派处理器**（和 @ocr / @qr 同一条路）。
+             * v2.23.4 之前这里挂了一个自己的监听，同时留着 `data-any` 却没人读 ——
+             * 两套并存的后果是"看起来有委派、其实是私有监听"，谁把其中一套
+             * 删掉都会变成点了没反应。 */
             enginesEl.appendChild(b);
             engines++;
             continue;
@@ -2747,6 +2747,11 @@ barEl.addEventListener('click', (e) => {
     }
     if (btn.dataset.qr === '1') {
         invoke('qr_start').catch(() => {});
+        return;
+    }
+    /* v2.23.3：万能框选（@any）—— 只开遮罩，框完让你挑。 */
+    if (btn.dataset.any === '1') {
+        invoke('region_any_start').catch(() => {});
         return;
     }
     if (btn.dataset.qrmake === '1') {

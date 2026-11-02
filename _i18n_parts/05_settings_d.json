@@ -128,7 +128,5 @@
   "分享给别人是安全的": "Safe to share",
   "分享给别人是安全的：软件本体里不含任何账号信息 —— OCR 的 API Key / Secret Key、WebDAV 的账号密码都只写在本机那份 config.json 里，跟着配置走、不跟着软件走。 对方拿到的是一份「干净」的程序，第一次打开时各项凭据都是空的。": "Safe to share: the executable contains no account information. OCR API keys and WebDAV credentials live only in your local config.json, so they travel with your settings, not with the app. Whoever receives it gets a clean copy with every credential empty.",
   "想退出软件：右键托盘图标 → 退出。设置页不再放退出按钮 （没有账号体系，「退出」纯属多余入口）。": "To quit: right-click the tray icon → Quit. There is no Quit button here — without accounts it would be a redundant entry point.",
-  "第一次用？切到「帮助」页，从第一条开始看。": "New here? Open the Help tab and start from the first item.",
-  "框选后先停一下": "Pause after selecting a region",
-  "开着：松开鼠标先不执行，四角出现手柄、旁边浮出动作条 —— 可以拖角微调，也能临时换成识别 / 识图 / 二维码 / 复制图片，双击或按回车才真正执行。关掉：松手就按当前用途直接跑（老行为）": "On: releasing the mouse does not run anything yet — corner handles appear and an action bar shows up beside the region, so you can drag a corner to fine-tune it or switch to recognize / image search / QR code / copy image; <b>double-click</b> or press Enter to run it. Off: releasing runs the current action straight away (the old behaviour)"
+  "第一次用？切到「帮助」页，从第一条开始看。": "New here? Open the Help tab and start from the first item."
 }

@@ -407,7 +407,39 @@ const clean = (errs) => errs.filter((e) =>
         env.dom.window.close();
     }
 
-    /* ==================== 8. 万能框选（region.html?mode=any）==================== */
+    /* ============ 8. 框选三种具体用途：框完直接执行，不弹动作条 ============ */
+    {
+        console.log('');
+        console.log('=== 框选：打开哪个就只做哪个（region.html?mode=ocr/img/qr）===');
+        for (const [mode, want] of [['ocr', 'ocr'], ['img', 'img'], ['qr', 'qr']]) {
+            const env = await makePage('region.html', {
+                query: '?mode=' + mode,
+                stubs: { region_action: () => null, region_beat: () => null, ocr_cancel: () => null },
+            });
+            const { w, calls } = env;
+            const errs = clean(env.errors);
+            ok(`[${mode}] 页面加载无未捕获异常`, errs.length === 0, errs.join(' | '));
+            const pe = (type, x, y) => w.document.dispatchEvent(new w.MouseEvent(type, {
+                bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+                buttons: /up$/.test(type) ? 0 : 1,
+            }));
+            pe('pointerdown', 60, 60);
+            pe('pointermove', 260, 200);
+            pe('pointerup', 260, 200);
+            await new Promise((r) => setTimeout(r, 40));
+            const ra = calls.filter((c) => c.cmd === 'region_action').pop();
+            ok(`[${mode}] 松手立刻执行，不用再确认`,
+                !!ra, JSON.stringify(calls.map((c) => c.cmd)));
+            ok(`[${mode}] 执行的就是这个用途（action=${want}）`,
+                !!ra && ra.args.action === want, JSON.stringify(ra && ra.args));
+            ok(`[${mode}] 不出现动作条（不会再问"识别还是翻译还是识图"）`,
+                w.document.getElementById('actbar').style.display !== 'flex'
+                && w.document.querySelectorAll('#actbar button[data-act]').length === 0);
+            env.dom.window.close();
+        }
+    }
+
+    /* ==================== 9. 万能框选（region.html?mode=any）==================== */
     {
         console.log('');
         console.log('=== 万能框选（ui/region.html?mode=any）===');
@@ -421,6 +453,7 @@ const clean = (errs) => errs.filter((e) =>
 
         const pe = (type, x, y) => w.document.dispatchEvent(new w.MouseEvent(type, {
             bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+                buttons: /up$/.test(type) ? 0 : 1,
         }));
         pe('pointerdown', 100, 100);
         pe('pointermove', 300, 240);
@@ -443,6 +476,33 @@ const clean = (errs) => errs.filter((e) =>
         const ra = calls.filter((c) => c.cmd === 'region_action').pop();
         ok('  点「翻译」→ region_action(action=trans)',
             !!ra && ra.args.action === 'trans', JSON.stringify(ra && ra.args));
+        env.dom.window.close();
+    }
+
+    /* ==== 10. 万能框选：关掉的功能不画那颗按钮（避免"点了白框一次"）==== */
+    {
+        console.log('');
+        console.log('=== 万能框选：动作条按开关过滤 ===');
+        const env = await makePage('region.html', {
+            query: '?mode=any',
+            conf: { transEnable: false, imgEnable: false, ocrEnable: true },
+            stubs: { region_action: () => null, region_beat: () => null, ocr_cancel: () => null },
+        });
+        const { w } = env;
+        const pe = (type, x, y) => w.document.dispatchEvent(new w.MouseEvent(type, {
+            bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+            buttons: /up$/.test(type) ? 0 : 1,
+        }));
+        pe('pointerdown', 80, 80);
+        pe('pointermove', 280, 220);
+        pe('pointerup', 280, 220);
+        await new Promise((r) => setTimeout(r, 60));
+        const acts = [...w.document.querySelectorAll('#actbar button[data-act]')]
+            .map((b) => b.dataset.act);
+        ok('翻译 / 识图关着 → 动作条只画识别 / 二维码 / 复制图片',
+            acts.join(',') === 'ocr,qr,copy', acts.join(','));
+        ok('  没有「翻译」那颗按钮', !acts.includes('trans'));
+        ok('  没有「识图」那颗按钮', !acts.includes('img'));
         env.dom.window.close();
     }
 
