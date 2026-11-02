@@ -104,14 +104,25 @@ pub fn runtime_available() -> bool {
         return false;
     }
     // 用一次最小代价的 ORT 调用探测：环境初始化成功即说明 dll 在且版本对得上。
+    /* ⚠ v2.23.29：这个静音标记必须**一定复原**。
+     *
+     * 裸的 `store(true) … store(false)` 在"探测期间又 panic 一次、把外层
+     * catch_unwind 也带走"之类的情况下会漏掉复位 —— 而它一旦卡在 true，
+     * **之后所有 panic 都不写日志**，等于把最要紧的诊断能力关掉了。
+     * 用 RAII：不管怎么退出（正常返回 / unwind），Drop 都会复原。 */
+    struct QuietGuard;
+    impl Drop for QuietGuard {
+        fn drop(&mut self) {
+            crate::QUIET_PANIC.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
     crate::QUIET_PANIC.store(true, std::sync::atomic::Ordering::SeqCst);
-    let ok = std::panic::catch_unwind(|| {
+    let _quiet = QuietGuard;
+    std::panic::catch_unwind(|| {
         // ort 的初始化是惰性的，构造一个 SessionBuilder 就足以触发加载
         ort::session::Session::builder().is_ok()
     })
-    .unwrap_or(false);
-    crate::QUIET_PANIC.store(false, std::sync::atomic::Ordering::SeqCst);
-    ok
+    .unwrap_or(false)
 }
 
 /// 一次 AI 推理的结果。
