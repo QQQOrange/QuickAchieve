@@ -942,6 +942,22 @@ pub fn download_runtime(progress: &mut dyn FnMut(&str, u64, u64)) -> Result<Path
         match extract_runtime_from_zip(&zip_path, &runtime_path()) {
             Ok(()) => {
                 let _ = std::fs::remove_file(&zip_path);
+                /* v2.23.37：**解出来不算完，还要真能加载**。
+                 *
+                 * 这条链路没有（也没法有）zip 的 SHA256 —— 官方 zip 的哈希没钉在代码里。
+                 * 而 `runtime_ready()` 只比体积，于是一个"体积对、内容坏"的 dll
+                 * 会同时满足两者：界面显示"运行库已就位"，真要用 AI 抠图时却加载失败 ——
+                 * 用户只看到"不可用"，也不会想到要重新下。
+                 *
+                 * 所以这里当场试加载一次（`runtime_available()` 内部有 catch_unwind，
+                 * 缺文件 / 版本不对都不会把进程带走）。加载不了就删掉、换下一个源，
+                 * 绝不留一个"看着在、用不了"的文件。 */
+                if !crate::aimatte::runtime_available() {
+                    let _ = std::fs::remove_file(runtime_path());
+                    crate::win::log("aimodels: 运行库解出来了但加载不了，删掉换下一个源");
+                    failures.push(format!("{host}: 解出来的运行库加载不了"));
+                    continue;
+                }
                 crate::win::log(&format!(
                     "aimodels: 运行库已就位（{}，{}）",
                     runtime_path().display(),

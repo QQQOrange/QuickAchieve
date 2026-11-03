@@ -4328,8 +4328,62 @@ fn load_backup_of(path: &std::path::Path) -> Option<Config> {
 ///   删几个、挪个位置。这种人如果只按上面那些字段判，会被当成"被清空"，
 ///   于是恢复出一份**更旧**的横条排列 —— 正是用户明令禁止的"一刀切".
 ///   判据用"和默认排列不一样"（不是"非空"：`bar_list` 永远非空）。
+/// 这一份 `bar_list` 是不是"默认横条"（**允许带我们自己补的哨兵**）。
+///
+/// # 为什么需要这个函数（v2.23.37 抓到的假阴性）
+///
+/// `looks_wiped` 原来直接拿 `c.bar_list != DEFAULT_BAR` 当"用户定制过"的证据。
+/// 但迁移代码（`ensure_img_bar_sentinel` / `ensure_trans_bar_sentinel`）
+/// 会往**任何**配置里补 `@img` / `@trans` —— 包括一份刚出厂的默认配置。
+/// 于是：
+///
+///   ① 用户 `config.json` 损坏 → 挑"最新那份备份"恢复；
+///   ② 那份最新备份其实是某次"默认配置"跑出来的（完整度 0）；
+///   ③ 它因为被补过哨兵，`looks_wiped` 判成"没被清空" → 直接拿它恢复；
+///   ④ **用户的引擎 / 收藏 / 密钥全丢**，备份目录里明明还有完整的历史备份。
+///
+/// 现在把 `@` 开头的哨兵剔掉再比：只剩默认那几项 → 判定为默认横条。
+fn bar_list_is_defaultish(list: &[String]) -> bool {
+    let kept: Vec<&String> = list.iter().filter(|s| !s.starts_with('@')).collect();
+    if kept.len() != DEFAULT_BAR.len() {
+        return false;
+    }
+    kept.iter().zip(DEFAULT_BAR.iter()).all(|(a, b)| a.as_str() == *b)
+}
+
+/// v2.23.37：**默认配置被迁移代码补过哨兵之后，仍然要认成"被清空"**。
+///
+/// 这是实测抓到的假阴性：`looks_wiped` 原来把 `bar_list != DEFAULT_BAR`
+/// 当成"用户定制过"，而 `ensure_img_bar_sentinel` / `ensure_trans_bar_sentinel`
+/// 会往任何配置里补 `@img` / `@trans` —— 于是一份**刚出厂的默认配置**
+/// 也被判成"有用户痕迹"，校验失效。
+///
+/// 后果很具体：用户 config.json 损坏 → 挑"最新备份" → 那份其实是默认配置 →
+/// 直接拿它恢复 → 引擎/收藏/密钥全丢，而备份目录里还有完整的历史备份。
+#[test]
+fn 默认横条补过哨兵仍算默认() {
+    let mut cfg = Config::default();
+    assert!(looks_wiped(&cfg), "出厂默认配置必须算 wiped");
+
+    // 迁移补哨兵（真机上启动就会发生）之后，仍然要算默认
+    cfg.bar_list.push("@img".to_string());
+    cfg.bar_list.push("@trans".to_string());
+    assert!(
+        looks_wiped(&cfg),
+        "只多了我们自己的 @ 哨兵，仍然必须算 wiped（否则恢复会挑中空配置）"
+    );
+
+    // 真的定制了才算有痕迹
+    let mut custom = cfg.clone();
+    custom.bar_list.insert(0, "百度".to_string());
+    assert!(!looks_wiped(&custom), "用户真加了一颗引擎就算有痕迹");
+
+    // 分隔线也是用户定制（不是 @ 哨兵），不能被当成默认
+    let mut sep = Config::default();
+    sep.bar_list.push("—".to_string());
+    assert!(!looks_wiped(&sep), "分隔线是用户定制");
+}
 fn looks_wiped(c: &Config) -> bool {
-    let default_bar: Vec<String> = DEFAULT_BAR.iter().map(|s| s.to_string()).collect();
     let has_traces = !c.custom_engines.is_empty()
         || !c.overrides.is_empty()
         || !c.url_overrides.is_empty()
@@ -4344,7 +4398,7 @@ fn looks_wiped(c: &Config) -> bool {
         || !c.ai_matting_model.trim().is_empty()
         || !c.apps.is_empty()
         || !c.recent_engines.is_empty()
-        || c.bar_list != default_bar;
+        || !bar_list_is_defaultish(&c.bar_list);
     !has_traces
 }
 
