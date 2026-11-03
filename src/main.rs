@@ -1509,6 +1509,11 @@ fn capture_selection(target_pid: u32) -> Option<String> {
     let before = clip::seq();
     let last_round = SEL_RETRY_BACKOFF_MS.len();
     let mut got: Option<String> = None;
+    /* v2.23.32：**第一次发模拟复制之前**的序号。和 `before` 不同就说明
+     * 这段窗口里已经有人写过剪贴板（用户自己复制了），那种情况下不能还原。 */
+    let mut pre_send_seq: Option<u32> = None;
+    // v2.23.32：这一轮有没有"用户先复制"的情况（见下面还原处的注释）
+    let mut user_wrote_first = false;
     for round in 0..=last_round {
         if round > 0 {
             std::thread::sleep(Duration::from_millis(SEL_RETRY_BACKOFF_MS[round - 1]));
@@ -1520,9 +1525,19 @@ fn capture_selection(target_pid: u32) -> Option<String> {
             .map(|v| v == "1")
             .unwrap_or(false);
         let copy_round = if skip_sendinput { 0 } else { 1 };
+        if pre_send_seq.is_none() {
+            pre_send_seq = Some(clip::seq());
+        }
         let ch: String = if round == 0 && !skip_sendinput {
-            win::send_ctrl_c();
-            "SendInput".to_string()
+            /* v2.23.32：send_ctrl_c 现在会告诉我们"没发"（用户正按着修饰键）。
+             * 没发就如实标出来 —— 不假装成功，也不马上换下一条通道去抢：
+             * 等一拍再看剪贴板（用户自己那次 Ctrl+C 多半就在这一刻落地）。 */
+            if win::send_ctrl_c() {
+                "SendInput".to_string()
+            } else {
+                win::log("capture: 这一轮跳过模拟复制（用户正在按键），先看剪贴板会不会自己变");
+                "跳过(用户按键)".to_string()
+            }
         } else if round == copy_round {
             let ok = win::post_copy_to_focus();
             format!("WM_COPY{}", if ok { "" } else { "(投递失败)" })
@@ -1611,7 +1626,11 @@ fn capture_selection(target_pid: u32) -> Option<String> {
             }
             std::thread::sleep(Duration::from_millis(40));
         }
-        let owned = changed && clipboard_owned_by(target_pid);
+        /* v2.23.32：**复制前剪贴板就已经被改过** = 用户自己先复制了（右键菜单"复制"、
+     * 或者他的 Ctrl+C 抢在我们前面落地）。那种情况下哪怕是同一段文字，
+     * 还原也会把他这次复制抹掉 —— 所以只看"改动发生在谁之后"。 */
+    user_wrote_first = matches!(pre_send_seq, Some(s) if s != before);
+    let owned = changed && clipboard_owned_by(target_pid);
         // 日志里展示"最后读到的那一份"（不管接不接受），排查时信息更全
         let raw = probe.clone();
         let text = got_text.clone();
@@ -1675,7 +1694,11 @@ fn capture_selection(target_pid: u32) -> Option<String> {
      *
      * 现在交给 `restore_if_still_holds`：剪贴板里还是我们取走的那段文字才还原，
      * 出现了别的新内容就放手。 */
-    clip::restore_if_still_holds(&snap, got.as_deref());
+    if user_wrote_first {
+        win::log("capture: 复制前剪贴板就已经变过（用户自己先复制了）—— 不还原，保住他那次复制");
+    } else {
+        clip::restore_if_still_holds(&snap, got.as_deref());
+    }
     let t = got?;
     win::log(&format!("capture: 最终拿到 {} chars", t.chars().count()));
     Some(t)
@@ -1756,7 +1779,12 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
      * 等过 60ms 稳定期），所以这里只留一点点余量。 */
     std::thread::sleep(Duration::from_millis(20));
     let before = clip::seq();
-    win::send_ctrl_c();
+    /* v2.23.32：用户按着修饰键时**不发**（见 `win::modifiers_down`）——
+     * 宁可这一轮复核拿不到字，也不能把他的 Ctrl 松开、把复制搅坏。 */
+    if !win::send_ctrl_c() {
+        win::log("capture(exact): 用户正按着修饰键，跳过这次模拟复制");
+        return None;
+    }
     let t0 = std::time::Instant::now();
     let mut got: Option<String> = None;
     while t0.elapsed() < Duration::from_millis(budget_ms) {
@@ -21040,7 +21068,19 @@ fn main() {
     // 一旦测坏就是"程序没了"。这条 run-and-exit 的探针让外部脚本能：
     //   · 拿一个假的 GitHub（QS_UPDATE_API / QS_UPDATE_WEB 指过去）验发现新版；
     //   · 再跑 --update-install 验下载 / 校验 / 替换 / 清理，全程可断言文件状态。
-    if flag("--update-probe") {
+    /* --ctrlc-probe：只报"此刻有没有修饰键按着 / 模拟复制会不会被跳过"，然后退出。
+     *
+     * 为什么需要它：v2.23.32 那条"用户按着修饰键就不注入"的守卫没法靠界面自动化
+     * 验证（要先真的把 Ctrl 按住）。这个 run-and-exit 探针让外部脚本能：
+     *   ① 什么都不按时 → MODS=false SENT=true（正常发）；
+     *   ② 按住 Ctrl 时   → MODS=true  SENT=false（跳过，正是我们要的）。 */
+    if flag("--ctrlc-probe") {
+        let mods = win::modifiers_down();
+        let sent = if mods { false } else { win::send_ctrl_c() };
+        println!("MODS={mods}");
+        println!("SENT={sent}");
+        std::process::exit(0);
+    }    if flag("--update-probe") {
         /* ⚠ v2.23.27：**两条更新探针都得先 `init_state()`**。
          *
          * `update::check` 会读配置里的 GitHub 令牌（`cfg_with`），而

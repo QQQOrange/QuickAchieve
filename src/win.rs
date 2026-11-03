@@ -1083,7 +1083,33 @@ pub const SELF_INJECT_TAG: usize = 0x0051_5345_4C46; // "QSELF" 的十六进制�
 ///    "非真实按键"而忽略的风险。
 /// 2. **四个按键分四次 SendInput**，中间留 8ms。以前把「Ctrl 按下 + C 按下」
 ///    塞在同一次调用里，部分程序的按键队列会漏掉后半截。
-pub fn send_ctrl_c() {
+/// **用户此刻正按着修饰键吗**（Ctrl / Shift / Alt / Win 任一）。
+///
+/// # 为什么模拟复制必须先问这个
+///
+/// 这是用户报「系统的 Ctrl+C 复制有时失效」的根因：
+///
+/// 拖选结束时我们会注入一整套 `Ctrl↓ C↓ C↑ Ctrl↑`。而用户选完文字**马上按
+/// Ctrl+C** 是最常见的动作 —— 两套按键在系统里交错时，我们末尾那次
+/// **`Ctrl↑` 会把他物理按住的 Ctrl 在系统状态里"松开"**。接下来他按的 C
+/// 到了目标程序那里就是一个光秃秃的 `c`，不构成快捷键 → **复制不发生**。
+/// （反过来我们的 `C↑` 也可能把他正在按的 C 提前松开。）
+///
+/// 所以：只要他正按着任何修饰键，这一轮就**不发**模拟复制，让上层走
+/// "复制没拿到 → 屏幕识别/UIA" 的兜底，或者干脆等他自己的复制落地。
+pub fn modifiers_down() -> bool {
+    const VKS: [i32; 5] = [0x11, 0x10, 0x12, 0x5B, 0x5C]; // Ctrl Shift Alt LWin RWin
+    VKS.iter()
+        .any(|vk| unsafe { GetAsyncKeyState(*vk) } as u16 & 0x8000 != 0)
+}
+
+pub fn send_ctrl_c() -> bool {
+    /* v2.23.32：用户按着修饰键时**绝不注入** —— 详见 `modifiers_down` 的注释。
+     * 注入和不注入的取舍：漏一次取词（有 UIA / OCR 兜底）远好过打断用户的复制。 */
+    if modifiers_down() {
+        crate::win::log("send_ctrl_c: 用户正按着修饰键，跳过这次模拟复制（避免把他的 Ctrl 松开）");
+        return false;
+    }
     let key = |vk: VIRTUAL_KEY, scan: u16, up: bool| -> INPUT {
         INPUT {
             r#type: INPUT_KEYBOARD,
@@ -1114,6 +1140,7 @@ pub fn send_ctrl_c() {
             std::thread::sleep(Duration::from_millis(8));
         }
     }
+    true
 }
 
 /// 模拟一次 Ctrl+V（r54 识图搜索用）。
