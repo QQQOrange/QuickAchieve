@@ -3591,37 +3591,44 @@ async function testOcrDepCheck() {
  *  icons 目录同名默认图 → 内置 iconFile），前端只负责把原图找出来。 */
 async function testIconEditorEntries() {
     console.log('');
-    console.log('=== 图标编辑器入口（设置页「编辑图标」，#143）===');
+    console.log('=== 图标编辑器入口（v2.23.33：只留「换图标」，选完自动进编辑器）===');
 
-    // ① 横条行：换过图的亮按钮、递 override 的 data URL；没图标的（字母徽标）不亮
+    /* 用户口径：「每一个引擎上面都会显示一个编辑图标按钮，这个按钮就不显示，
+     * 只显示换图标跟默认图标这两个就行。要编辑图标的话，点完换图标、选好一个图标，
+     * 然后就会自动进入编辑页面」。
+     *
+     * 所以这组用例从"点按钮开编辑器"改成"按钮**不存在** + 换图标仍走 pick_icon"：
+     * 自动进编辑器是**后端**做的（main.rs::pick_icon 里调 open_icon_edit_win），
+     * 前端不该再有第二颗入口。 */
+
+    // ① 横条行：换过图标的行只该有「换图标」，「编辑图标」必须消失
     {
         const env = makeEnv('ui/settings.html', baseConf({
             barList: ['百度', 'Google', '测试引擎'],
             overrideIcons: { '百度': 'data:image/png;base64,QmFpZHU=' },
-            // 自定义引擎没有 iconFile、也没挑过图 → 纯字母徽标，没有像素可编辑
             customEngines: [{ name: '测试引擎', url: 'https://x.com/s?q=%s', category: '自定义' }],
         }));
         runScripts(env, ['ui/shared.js', 'ui/settings.js']);
         await flush();
+
         const rows = [...env.w.document.querySelectorAll('#barList .item:not(.add-row)')];
         const bdRow = rows.find((r) => r.textContent.includes('百度'));
-        const csRow = rows.find((r) => r.textContent.includes('测试引擎'));
-        const bdBtn = [...bdRow.querySelectorAll('.mini')].find((b) => b.textContent === '编辑图标');
-        ok('横条行换过图标 → 有「编辑图标」按钮', !!bdBtn);
-        ok('横条行只有字母徽标 → 不亮「编辑图标」（没像素可编辑）',
-            ![...csRow.querySelectorAll('.mini')].some((b) => b.textContent === '编辑图标'));
+        const bdBtns = [...bdRow.querySelectorAll('.mini')].map((b) => b.textContent);
+        ok('横条行：没有「编辑图标」按钮了', !bdBtns.includes('编辑图标'), bdBtns.join('/'));
+        ok('横条行：只剩「换图标」+「默认图标」这类按钮',
+            bdBtns.includes('换图标') && bdBtns.includes('默认图标'), bdBtns.join('/'));
+
         env.calls.length = 0;
-        bdBtn.dispatchEvent(new env.w.Event('click', { bubbles: true }));
+        [...bdRow.querySelectorAll('.mini')].find((b) => b.textContent === '换图标')
+            .dispatchEvent(new env.w.Event('click', { bubbles: true }));
         await flush();
-        const c = env.lastCmd('open_icon_editor');
-        ok('点「编辑图标」调用了 open_icon_editor', !!c,
+        const p = env.lastCmd('pick_icon');
+        ok('点「换图标」仍然调 pick_icon（后端选完图会自动开编辑器）', !!p,
             JSON.stringify(env.calls.map((x) => x.cmd)));
-        eq('  键 = 引擎名', c && c.args.key, '百度');
-        eq('  srcHint = 当前图标（override 的 data URL）',
-            c && c.args.srcHint, 'data:image/png;base64,QmFpZHU=');
+        eq('  键 = 引擎名', p && p.args.engine, '百度');
     }
 
-    // ② OCR 行：同一套条件（@ocr 哨兵，没有内置图，只认 override）
+    // ② OCR 行：同样只有「换图标」
     {
         const env = makeEnv('ui/settings.html', baseConf({
             barList: ['百度', '@ocr'],
@@ -3631,39 +3638,12 @@ async function testIconEditorEntries() {
         await flush();
         const row = [...env.w.document.querySelectorAll('#barList .item:not(.add-row)')]
             .find((r) => r.classList.contains('ocr-row'));
-        const btn = [...row.querySelectorAll('.mini')].find((b) => b.textContent === '编辑图标');
-        ok('OCR 行换过图标 → 有「编辑图标」按钮', !!btn);
-        env.calls.length = 0;
-        btn.dispatchEvent(new env.w.Event('click', { bubbles: true }));
-        await flush();
-        const c = env.lastCmd('open_icon_editor');
-        ok('点它调用了 open_icon_editor', !!c);
-        eq('  键 = @ocr 哨兵', c && c.args.key, '@ocr');
-        eq('  srcHint = OCR 当前图标', c && c.args.srcHint, 'data:image/png;base64,T0NS');
+        const btns = [...row.querySelectorAll('.mini')].map((b) => b.textContent);
+        ok('OCR 行：没有「编辑图标」按钮了', !btns.includes('编辑图标'), btns.join('/'));
+        ok('OCR 行：仍有「换图标」', btns.includes('换图标'), btns.join('/'));
     }
 
-    // ③ 只有内置 iconFile 的引擎：按钮也亮（Rust 三级解析的第三级），
-    //    前端先把 data/icons/xxx.svg fetch 成 data URL 递过去
-    {
-        const env = makeEnv('ui/settings.html', baseConf({ barList: ['Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/settings.js']);
-        await flush();
-        const row = [...env.w.document.querySelectorAll('#barList .item:not(.add-row)')]
-            .find((r) => r.textContent.includes('Google'));
-        const btn = [...row.querySelectorAll('.mini')].find((b) => b.textContent === '编辑图标');
-        ok('只有内置 iconFile 的引擎也有「编辑图标」（吃第三级解析）', !!btn);
-        env.calls.length = 0;
-        btn.dispatchEvent(new env.w.Event('click', { bubbles: true }));
-        await flush();
-        await new Promise((r) => setTimeout(r, 30));
-        const c = env.lastCmd('open_icon_editor');
-        ok('点它调用了 open_icon_editor', !!c);
-        ok('  srcHint 是 fetch 内置图标得到的 data URL',
-            !!(c && /^data:/.test(c.args.srcHint || '')),
-            c && String(c.args.srcHint).slice(0, 40));
-    }
-
-    // ④ 自定义引擎行：和表单那个「编辑」并存，文案必须是「编辑图标」不重名
+    // ③ 自定义引擎行：表单的「编辑」还在，图标那颗只剩「换图标」
     {
         const env = makeEnv('ui/settings.html', baseConf({
             barList: [],
@@ -3672,35 +3652,24 @@ async function testIconEditorEntries() {
         }));
         runScripts(env, ['ui/shared.js', 'ui/settings.js']);
         await flush();
-        // 自定义列表在「引擎」页里渲染，直接调渲染函数（和真机同一条路）
         env.w.eval('renderCustomList()');
         const row = [...env.w.document.querySelectorAll('#customList .item')]
             .find((r) => r.textContent.includes('我的镜像'));
         const btns = [...row.querySelectorAll('.mini')].map((b) => b.textContent);
-        ok('自定义引擎行同时有表单「编辑」和「编辑图标」（不重名）',
-            btns.includes('编辑') && btns.includes('编辑图标'), btns.join('/'));
-        env.calls.length = 0;
-        [...row.querySelectorAll('.mini')].find((b) => b.textContent === '编辑图标')
-            .dispatchEvent(new env.w.Event('click', { bubbles: true }));
-        await flush();
-        const c = env.lastCmd('open_icon_editor');
-        ok('点「编辑图标」调用了 open_icon_editor', !!c);
-        eq('  键 = 自定义引擎名', c && c.args.key, '我的镜像');
+        ok('自定义引擎行：有表单「编辑」、没有「编辑图标」',
+            btns.includes('编辑') && !btns.includes('编辑图标'), btns.join('/'));
+        ok('自定义引擎行：仍有「换图标」', btns.includes('换图标'), btns.join('/'));
     }
 
-    // ⑤ 静态口径：六个挂点一个不少（防止将来改渲染时悄悄漏掉哪处）
+    // ④ 静态口径：整个设置页不该再渲染出「编辑图标」按钮
     {
         const src = read('ui/settings.js');
-        const hooks = (src.match(/openIconEditor\(/g) || []).length;
-        ok('settings.js 里 openIconEditor 挂点 ≥ 6（横条 OCR/普通、全部引擎、自定义、软件、收藏目录）',
-            hooks >= 6, '实际 ' + hooks);
-        ok('helper 有「没有图片就不亮按钮」的护栏（hasIconToEdit）',
-            /function hasIconToEdit/.test(src));
-        ok('helper 只把 data: 开头的原图递进编辑器（Rust 只认 data URL）',
-            /src\.indexOf\('data:'\) === 0/.test(src));
+        ok('settings.js 里没有 mk(\'编辑图标\' / favBtn(ops, \'编辑图标\' 这类挂点',
+            !/mk\('编辑图标'/.test(src) && !/favBtn\(ops, '编辑图标'/.test(src));
+        ok('「换图标」仍然用 pick_icon（自动进编辑器的入口在后端）',
+            (src.match(/pick_icon/g) || []).length >= 5);
     }
 }
-
 /** 编辑器窗口页面本身（ui/iconedit.html）：会话装载 / 消除 / 容差重算 /
  *  保存 / 取消 / SVG / 窗口复用 / 会话过期。 */
 async function testIconEditorPage() {

@@ -846,13 +846,18 @@ function renderBarList() {
             // OCR 行：位置直接拖；图标也能自己换（用户点名要的）。
             // 「去掉」只是把它从横条上拿掉，不影响热键 Ctrl+Alt+O。
             mk('换图标', '给 OCR 按钮挑一张图片', () => invoke('pick_icon', { engine: QS_OCR }));
-            // #143：挑过图才能编辑（一键消除背景），没挑过就是 OCR 徽标
-            if (hasIconToEdit(QS_OCR, QS_OCR)) {
-                mk('编辑图标', '编辑这颗图标：一键消除背景、前后对比', () => openIconEditor(QS_OCR, QS_OCR));
-            }
+            /* v2.23.33：「编辑图标」按钮**已去掉**。
+             *
+             * 用户口径：「每一个引擎上面都会显示一个编辑图标按钮，这个按钮就不显示，
+             * 只显示换图标跟默认图标这两个就行。要编辑图标的话，点完换图标、
+             * 选好一个图标，然后就会自动进入编辑页面」。
+             *
+             * 「选完自动进编辑器」其实后端早就做了 —— `pick_icon` 在编辑器开关
+             * 打开时会直接调 `open_icon_edit_win`（见 main.rs::pick_icon），
+             * 所以界面上不必再摆一颗独立入口。 */
             if (CONF.overrideIcons[QS_OCR]) {
-                /* 「默认图标」是**同级独立按钮**（不是「编辑图标」的附属动作）：
-                 * 换图标 / 编辑图标 / 默认图标 / 去掉 四颗一字排开，各管一件事。
+                /* 「默认图标」是**同级独立按钮**：
+                 * 换图标 / 默认图标 / 去掉 三颗一字排开，各管一件事。
                  * 点它 → `reset_icon` 把图标换回内置那张 → 配置广播回来时
                  * `overrideIcons[QS_OCR]` 已经没了，这颗按钮**随即消失**
                  * （没有自定义图标可恢复了，留着只会是个点了没反应的死按钮）。 */
@@ -861,31 +866,12 @@ function renderBarList() {
             }
             mk('去掉', '把 OCR 从横条上拿掉（不影响热键 Ctrl+Alt+O）', () => invoke('remove_bar_ocr'));
         } else {
-            mk('换图标', '从电脑里挑一张图片', () => invoke('pick_icon', { engine: name }));
-            /* #143「编辑图标」：收藏夹目录 / 外部软件的哨兵行也走这条
-             * （它们的键就是哨兵本身，和 pick_icon 同一套机制）。
-             * 外部软件按**软件名**找 icons 目录默认图（和 qsAppIconNode 同口径）；
-             * 收藏夹目录额外认 legacy 的 g.icon。
-             *
-             * r72：识图（@img）这一行**始终**摆出「编辑图标」—— 用户明确要求
-             * 「应该也要有一个编辑图标」。还没换过图标时它没有像素可编辑，
-             * 点了会提示先挑一张（比"按钮凭空消失"清楚）。
-             *
-             * r80：这个"始终"要**叠加总开关** —— 编辑器功能没开时，
-             * 任何行都不该出现编辑按钮（用户口径："彻底禁用编辑器"）。 */
-            const ieName = isApp ? app.name : (isFav ? null : name);
-            const ieExtra = isFav ? ((favGroup && favGroup.icon) || '') : '';
-            if (iconEditorEnabled() && (hasIconToEdit(name, ieName, ieExtra) || isImg)) {
-                mk('编辑图标', '编辑这颗图标：一键消除背景、前后对比', () => {
-                    if (hasIconToEdit(name, ieName, ieExtra)) {
-                        openIconEditor(name, ieName, ieExtra);
-                    } else {
-                        toast('这颗图标还没有图片，先点「换图标」挑一张');
-                    }
-                });
-            }
+            mk('换图标', '从电脑里挑一张图片（选完自动进编辑器）', () => invoke('pick_icon', { engine: name }));
+            /* v2.23.33：「编辑图标」按钮**已去掉**（用户口径见 OCR 行那段注释）。
+             * 换完图标会自动进编辑器 —— 后端 `pick_icon` 里就调了
+             * `open_icon_edit_win`，前端不需要第二颗入口。 */
             if (CONF.overrideIcons[name]) {
-                /* 同 OCR 行：**同级独立按钮**，固定排在「编辑图标」右边。
+                /* 同 OCR 行：**同级独立按钮**，排在「换图标」右边。
                  * 以前它只叫「默认」，而自定义引擎 / 外部软件那两页叫「默认图标」，
                  * 同一个动作两种叫法，看着像两个不同的东西 —— 现在统一成
                  * 「默认图标」。点完图标回内置图，这颗按钮随之消失。 */
@@ -1270,20 +1256,11 @@ function allRowNode(r) {
     const bIcon = document.createElement('button');
     bIcon.className = 'mini';
     bIcon.textContent = '换图标';
-    bIcon.title = '从电脑里挑一张图片';
+    bIcon.title = '从电脑里挑一张图片（选完自动进编辑器）';
     bIcon.addEventListener('click', () => invoke('pick_icon', { engine: key }));
     ops.appendChild(bIcon);
 
-    // #143「编辑图标」：软件行按**软件名**找默认图（r.name 就是软件名），
-    // 网页/快捷键行键和名相同。没有图片图标（字母徽标）时不亮按钮。
-    if (hasIconToEdit(key, r.name)) {
-        const bE = document.createElement('button');
-        bE.className = 'mini';
-        bE.textContent = '编辑图标';
-        bE.title = '编辑这颗图标：一键消除背景、前后对比';
-        bE.addEventListener('click', () => openIconEditor(key, r.name));
-        ops.appendChild(bE);
-    }
+    // v2.23.33：「编辑图标」按钮已去掉 —— 换完图标会自动进编辑器（见 pick_icon）。
 
     if (CONF.overrideIcons[key]) {
         const bR = document.createElement('button');
@@ -2593,12 +2570,8 @@ function renderCustomList() {
             return b;
         };
 
-        mk('换图标', '从电脑里挑一张图片当图标', () => invoke('pick_icon', { engine: ce.name }));
-        // #143「编辑图标」（和下面读表单的「编辑」区分开：一个是修图，一个是改配置）
-        if (hasIconToEdit(ce.name, ce.name)) {
-            mk('编辑图标', '编辑这颗图标：一键消除背景、前后对比',
-                () => openIconEditor(ce.name, ce.name));
-        }
+        mk('换图标', '从电脑里挑一张图片当图标（选完自动进编辑器）', () => invoke('pick_icon', { engine: ce.name }));
+        // v2.23.33：「编辑图标」按钮已去掉 —— 换完图标会自动进编辑器（见 pick_icon）。
         if (CONF.overrideIcons[ce.name]) {
             mk('默认图标', '恢复成首字母徽标', () => invoke('reset_icon', { engine: ce.name }));
         }
@@ -2864,12 +2837,8 @@ function appManageRow(ap) {
         return b;
     };
 
-    mk('换图标', '从电脑里挑一张图片当图标', () => invoke('pick_icon', { engine: sentinel }));
-    // #143「编辑图标」（和下面读表单的「编辑」分开）：按**软件名**找默认图
-    if (hasIconToEdit(sentinel, ap.name)) {
-        mk('编辑图标', '编辑这颗图标：一键消除背景、前后对比',
-            () => openIconEditor(sentinel, ap.name));
-    }
+    mk('换图标', '从电脑里挑一张图片当图标（选完自动进编辑器）', () => invoke('pick_icon', { engine: sentinel }));
+    // v2.23.33：「编辑图标」按钮已去掉 —— 换完图标会自动进编辑器（见 pick_icon）。
     if (CONF.overrideIcons[sentinel]) {
         mk('默认图标', '恢复成首字徽标', () => invoke('reset_icon', { engine: sentinel }));
     }
@@ -9018,13 +8987,8 @@ function favGroupNode(g, level) {
         const t = favBtn(ops, on ? '已在横条' : '放进横条', '把目录放进横条，点开就能看到内容',
             () => invoke('toggle_bar_engine', { engine: sentinel, on: !on }).then(favRender));
         if (on) t.classList.add('on');
-        favBtn(ops, '换图标', '给横条上这颗目录换个图标', () => invoke('pick_icon', { engine: sentinel }));
-        // #143「编辑图标」：目录图标只有 overrideIcons 和 legacy g.icon 两个来源
-        // （qsFavIconNode 的口径），没有内置图可吃，所以第三个参数把 g.icon 递进去。
-        if (hasIconToEdit(sentinel, null, (favCur(g) || {}).icon || '')) {
-            favBtn(ops, '编辑图标', '编辑这颗图标：一键消除背景、前后对比',
-                () => openIconEditor(sentinel, null, (favCur(g) || {}).icon || ''));
-        }
+        favBtn(ops, '换图标', '给横条上这颗目录换个图标（选完自动进编辑器）', () => invoke('pick_icon', { engine: sentinel }));
+        // v2.23.33：「编辑图标」按钮已去掉 —— 换完图标会自动进编辑器（见 pick_icon）。
         if (level === 1) {
             favBtn(ops, '＋ 二级目录', '在这个一级目录里建一个二级目录', () => {
                 const cur = favCur(g);
