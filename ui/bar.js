@@ -468,6 +468,15 @@ function renderFavPanel() {
     // 用户要的是收藏夹，把光标塞进一个他没在看的输入框只会碍事。
     if (!groups.length) { panelFav = null; renderPanel(); return; }
     panelBody.textContent = '';
+    /* v2.23.30（**重新补回**）：收藏面板换了 panelBody 的内容，必须让引擎面板的
+     * 渲染指纹失效 —— 否则"先看收藏夹、再点 ⋯ 回引擎面板"时签名和上次一样、
+     * panelBody 里又有子节点，renderPanel 会直接 return，引擎格子一个都不重建。
+     *
+     * ⚠ v2.23.22 加过这一行，但被后续某次改动覆盖掉了（本轮查这个 bug 时发现
+     * 源码里已经没有它）—— 所以"收藏页粘住"这个现象又回来了。
+     * 除了清指纹，还标一个 DOM 归属（panelRenderOwner），双保险。 */
+    panelRenderSig = '';
+    panelRenderOwner = 'fav';
     panelEl.classList.add('fav-mode');   // 到这里才确定是收藏面板，样式才挂得上
     // 进收藏面板 = 离开引擎列表：引擎过滤词一并清掉（框在收藏面板里本来就是
     // display:none，清了也看不见）。这样下次点 ⋯ 回到引擎面板是「全部引擎都在」，
@@ -1520,6 +1529,9 @@ let panelSearchMode = false;
 /** r92：面板上一次渲染的指纹（避免 `qs://config` 广播导致的无谓重建 + 闪烁）。
  *  详见 `renderPanel` 里那段说明。空串 = 还没画过。 */
 let panelRenderSig = '';
+/* v2.23.30：panelBody 当前这块 DOM 是谁画的（'engines' / 'fav'）。
+ * 用来兜住"指纹相同但内容属于另一套面板"的情况，见 renderPanel 的注释。 */
+let panelRenderOwner = '';
 
 /** 三大类的展示结构。每次现算 —— 自定义引擎合进目录后分类会变，不能缓存。 */
 function panelTree() {
@@ -2099,7 +2111,17 @@ function renderPanel(focusFilter, keepScroll) {
      * 打开面板变成"啪"的一下 —— 没有中间态，没有白闪。
      *
      * `keepScroll` 仍然管住"配置广播引起的重画不该把用户正在看的位置滚回顶部"。 */
-    if (sig === panelRenderSig && panelBody.childElementCount) {
+    /* v2.23.30：**缓存判据还要看"现在这块 DOM 是谁画的"**。
+     *
+     * 指纹里虽然有 `panelFav`，但收藏面板是另一套渲染路径（renderFavPanel），
+     * 它改了 panelBody 却（在 v2.23.22 之前）不动指纹。于是用户
+     * 「打开更多引擎 → 点进收藏 → 再点更多引擎」会看到收藏内容挂在那儿、
+     * 引擎列表消失，而且怎么点都回不来 —— 用户报的"重启之后进更多引擎
+     * 还是收藏"就是这条（他那个进程一直没退，所以看起来像跨重启）。
+     *
+     * v2.23.22 已经让 renderFavPanel 清空指纹；这里再加一道独立保险：
+     * 记录 DOM 的归属，归属不对就**必然重建**，不再依赖指纹是否恰好不同。 */
+    if (sig === panelRenderSig && panelRenderOwner === 'engines' && panelBody.childElementCount) {
         if (keepScroll) panelBody.scrollTop = prevScroll;
         else panelBody.scrollTop = 0;
         if (focusFilter && inputEngFilter && !panelEl.classList.contains('fav-mode')) {
@@ -2109,6 +2131,7 @@ function renderPanel(focusFilter, keepScroll) {
         return;
     }
     panelRenderSig = sig;
+    panelRenderOwner = 'engines';
 
     panelBody.textContent = '';
 
@@ -6374,6 +6397,15 @@ let barSession = 0;
 
 listen('qs://show', (ev) => {
     barSession++;
+    /* v2.23.30：**每一条新横条都从"默认面板状态"开始**。
+     *
+     * 用户口径：「确保每次重新进入更多引擎页面，它都是默认的那个样子」。
+     * 面板状态（panelFav / favFromEngines）原来只在 togglePanel 收起时清 ——
+     * 但横条可能被别的路径收掉（Esc、点别处、鼠标移远、后端 hide_bar），
+     * 那些路径不走 togglePanel，于是下一轮点 ⋯ 会"接着上次的收藏页"。
+     * 这里在每轮 show 的口子上统一复位，和"重启之后还是收藏"彻底绝缘。 */
+    panelFav = null;
+    favFromEngines = false;
     const p = ev.payload || {};
     /* ── 网格页（Ctrl+C / 自定义快捷键） ────────────────────────────
      * 后端每次唤起都会带 `grid`：非 null 表示"这次画网格"，null 表示普通文字横条。

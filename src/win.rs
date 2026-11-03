@@ -235,6 +235,56 @@ pub fn log_sync(msg: &str) {
 ///
 /// 用 Win32 的 `MessageBoxW` 而不是 Tauri 的对话框：这个时候 Tauri 的
 /// 事件循环还没建起来，任何依赖它的东西都用不了。
+/// 另一个实例看起来是**升级前的旧进程**吗？
+///
+/// # 为什么需要它
+///
+/// 用户升级后双击图标，如果旧进程还占着单实例互斥体，新进程会**静默退出** ——
+/// 用户看到的就是"点了没反应，还是旧界面"。更糟的是旧进程可能根本没有
+/// "磁盘换人就自动交班"的能力（那是 v2.23.10 才加的），于是永远卡在那儿。
+///
+/// 判断依据很直接：拿托盘宿主窗口（`QS_TrayHostWnd`，每个实例都有）反查 PID，
+/// 再比"进程创建时间"和"exe 文件的修改时间" —— 进程比文件还早，说明它跑的
+/// 是已经被替换掉的旧映像。
+pub fn other_instance_is_stale() -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let Ok(mtime) = std::fs::metadata(&exe).and_then(|m| m.modified()) else { return false };
+    let cls = wide("QS_TrayHostWnd");
+    let hwnd = unsafe { FindWindowW(PCWSTR(cls.as_ptr()), PCWSTR::null()) };
+    let Ok(hwnd) = hwnd else { return false };
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    if pid == 0 {
+        return false;
+    }
+    let Ok(h) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }) else {
+        return false;
+    };
+    let mut created = windows::Win32::Foundation::FILETIME::default();
+    let mut exit = windows::Win32::Foundation::FILETIME::default();
+    let mut kernel = windows::Win32::Foundation::FILETIME::default();
+    let mut user = windows::Win32::Foundation::FILETIME::default();
+    let ok = unsafe { GetProcessTimes(h, &mut created, &mut exit, &mut kernel, &mut user) }.is_ok();
+    let _ = unsafe { CloseHandle(h) };
+    if !ok {
+        return false;
+    }
+    // FILETIME（100ns since 1601）→ SystemTime 的比较：直接比 64 位值
+    let created_100ns = ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64;
+    let Some(file_100ns) = mtime
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() * 10_000_000 + d.subsec_nanos() as u64 / 100)
+        .map(|since_1970| since_1970 + 116_444_736_000_000_000)
+    else {
+        return false;
+    };
+    // 留 2 秒余量：正在写入的 exe / 文件系统时间精度都可能差一点
+    created_100ns + 20_000_000 < file_100ns
+}
 pub fn message_box(title: &str, text: &str) {
     use windows::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND, MB_TOPMOST,
