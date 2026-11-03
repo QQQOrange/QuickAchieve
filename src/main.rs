@@ -5794,7 +5794,8 @@ fn spawn_detector() {
                                 .unwrap_or(false);
                         last_click = if was { None } else { Some((x, y, std::time::Instant::now())) };
                         dragging = false;
-                        win::log(&format!(
+                        // v2.23.35：原始事件流水降级为 trace（见 hook.rs 那段注释）
+                        win::trace(&format!(
                             "mouseup: drag={} (move={was} moved_far={moved_far}) from={:?} at=({},{})",
                             was, d, x, y
                         ));
@@ -5821,7 +5822,8 @@ fn spawn_detector() {
                             let br = bar_rects()
                                 .map(|(o, _)| format!("{}x{}@({},{})", o.2 - o.0, o.3 - o.1, o.0, o.1))
                                 .unwrap_or_else(|| "hidden".to_string());
-                            win::log(&format!(
+                            // v2.23.35：trace —— 这行还顺手取窗口类名，每次点击都做不值得
+                            win::trace(&format!(
                                 "up-check: dt={dt} barOuterEnd={bo_end} barOuterStart={bo_start} trySelect={ok_sel} bar={br} target={:?} cls={}",
                                 tgt.0,
                                 win::class_name(tgt)
@@ -5976,8 +5978,13 @@ fn spawn_detector() {
                                 }
                             }
                         }
-                        if ctrl || alt {
-                            win::log(&format!(
+                        /* v2.23.35：这条是**每一次带 Ctrl/Alt 的按键**都写一行
+                         * （Ctrl+C/V/Z/A…全算）。用户日志里它有 448 行/天，
+                         * 而用途只是"排查时看看钩子读到的修饰键对不对" ——
+                         * 归到 trace（`QS_TRACE=1` 才落盘），门槛放在调用点，
+                         * 连格式化那笔开销都省掉。 */
+                        if (ctrl || alt) && win::trace_on() {
+                            win::trace(&format!(
                                 "kbd: vk=0x{vk:X} ctrl={ctrl} alt={alt} ours={ours} ocrEnable={}",
                                 cfg_with(|c| c.ocr_enable)
                             ));

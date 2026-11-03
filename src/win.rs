@@ -149,16 +149,26 @@ fn log_flush_loop(rx: std::sync::mpsc::Receiver<String>) {
         if buf.is_empty() {
             continue;
         }
-        // 超过 2MB 就从头重写（截由 sink 保证：本机调试常年开着也不至于长到几百 MB）
+        /* v2.23.35：超过 2MB 时**轮转**而不是截断。
+         *
+         * 原来是 `truncate(true)` —— 从头重写。问题是它正好会抹掉最需要的那一段：
+         * 卡死 / 崩溃之后重启，日志刚好越过 2MB，于是"出事前那几分钟"被清空，
+         * 只剩重启后的几百行。
+         *
+         * 现在改名成 `log.1.txt`（覆盖上一代），主文件从空开始 —— 永远保留
+         * 一节前一世代的历史，总量上限 4MB。 */
+        let p_old = crate::config::data_dir().join("log.1.txt");
         let too_big = std::fs::metadata(&p).map(|m| m.len() > 2_000_000).unwrap_or(false);
         let mut opt = std::fs::OpenOptions::new();
         opt.create(true).append(true);
         if too_big {
-            opt.append(false).truncate(true).write(true);
+            let _ = std::fs::rename(&p, &p_old);
+            opt = std::fs::OpenOptions::new();
+            opt.create(true).append(true);
         }
         if let Ok(mut f) = opt.open(&p) {
             if too_big {
-                let _ = writeln!(f, "[log 超过 2MB，已从头开始]");
+                let _ = writeln!(f, "[上一段日志已轮转到 log.1.txt]");
             }
             for line in buf.drain(..) {
                 let _ = writeln!(f, "{}", line);
@@ -203,6 +213,34 @@ pub fn log(msg: &str) {
     let line = format!("[{:?}] {}", std::time::SystemTime::now(), msg);
     // try_send：队列满就丢 —— 日志永远是"有就行"，绝不能反过来把业务线程堵住
     // （堵住的后果可能是钩子超时被系统卸载，那才是真正的事故）。
+    let _ = tx.try_send(line);
+}
+
+/// 高频**追踪**日志：只有排查时设 `QS_TRACE=1` 才落盘。
+///
+/// # 为什么必须单独一条通道（而不是直接用 `log`）
+///
+/// 低级鼠标钩子里原本对**每一次**左键按下/抬起都写一行 `hook: mouse DOWN ...`，
+/// 加上 `mouseup:` / `up-check:` 每次点击共 4 行。这些行看着人畜无害，实际是：
+///
+///   · 钩子回调在**系统输入的关键路径**上（`LowLevelMouseProc` 返回慢会被系统
+///     静默摘钩），每次都拼 `format!` + 取窗口类名 + 入队，纯属给关键路径加负担；
+///   · 一天下来能把 log.txt 刷到几 MB，真正有用的那几行被淹没。
+///
+/// 默认关；打开后这些行会带 `[trace]` 前缀进同一份 log.txt，排查时照常能看。
+pub fn trace_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        std::env::var("QS_TRACE").map(|v| v == "1").unwrap_or(false) && log_on()
+    })
+}
+
+pub fn trace(msg: &str) {
+    if !trace_on() {
+        return;
+    }
+    let Some(tx) = log_writer() else { return };
+    let line = format!("[{:?}] [trace] {}", std::time::SystemTime::now(), msg);
     let _ = tx.try_send(line);
 }
 

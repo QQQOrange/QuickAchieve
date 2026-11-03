@@ -253,18 +253,31 @@ unsafe extern "system" fn mouse_proc(code: i32, w: WPARAM, l: LPARAM) -> LRESULT
         {
             let msg = w.0 as u32;
             if msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP {
-                win::log(&format!(
-                    /* `ctrl=` 是 v2.14.0 加的：触发方式选「按住 Ctrl 才弹」时，
-                     * 用户报"按着 Ctrl 也不弹"第一件要确认的就是**钩子当时读到
-                     * 的修饰键到底是什么** —— 没有这一位只能靠猜。 */
-                    "hook: mouse {:?} at ({}, {}) injected={} ctrl={} allow={}",
-                    if msg == WM_LBUTTONDOWN { "DOWN" } else { "UP" },
-                    info.pt.x,
-                    info.pt.y,
-                    info.flags & LLMHF_INJECTED != 0,
-                    win::ctrl_down(),
-                    allow_injected()
-                ));
+                /* v2.23.35：改成 `trace`（默认不落盘）。
+                 *
+                 * 钩子回调在**系统输入的关键路径**上：每次点击都拼三四个
+                 * `format!`、还调一次 `win::ctrl_down()`，纯属给关键路径加负担；
+                 * 一天下来还能把 log.txt 刷到几 MB，把真正有用的结论行淹掉。
+                 * 这次点击的结论（弹没弹、为什么没弹）在 `start_capture:` 那几行里
+                 * 已经有了，原始事件流水只在排查时需要（`QS_TRACE=1`）。
+                 *
+                 * ⚠ 门槛必须放在**调用点**：`trace` 内部虽然会立刻返回，但
+                 *   `&format!(...)` 在传参之前就求值了 —— 关着的时候那笔开销
+                 *   一点没省。 */
+                if win::trace_on() {
+                    win::trace(&format!(
+                        /* `ctrl=` 是 v2.14.0 加的：触发方式选「按住 Ctrl 才弹」时，
+                         * 用户报"按着 Ctrl 也不弹"第一件要确认的就是**钩子当时读到
+                         * 的修饰键到底是什么** —— 没有这一位只能靠猜。 */
+                        "hook: mouse {:?} at ({}, {}) injected={} ctrl={} allow={}",
+                        if msg == WM_LBUTTONDOWN { "DOWN" } else { "UP" },
+                        info.pt.x,
+                        info.pt.y,
+                        info.flags & LLMHF_INJECTED != 0,
+                        win::ctrl_down(),
+                        allow_injected()
+                    ));
+                }
             }
         }
         if allow_injected() || info.flags & LLMHF_INJECTED == 0 {
