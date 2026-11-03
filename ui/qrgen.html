@@ -16,7 +16,7 @@ html, body {
     height: 100%;
     background: var(--bg);
     color: var(--fg);
-    font: 13px/1.55 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     user-select: none;
     -webkit-user-select: none;
 }
@@ -38,11 +38,12 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     align-items: center;
     gap: 6px;
     padding: 2px 8px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 12px;
     font-weight: 700;
-    color: #0E7490;
-    background: rgba(14, 116, 144, .10);
+    /* v2.23.34：原来是旧品牌青色 #0E7490，和全软件的蓝强调色不是一套（用户能看到）。 */
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
     white-space: nowrap;
 }
 .badge.ok { color: var(--ok); background: var(--ok-bg); }
@@ -68,7 +69,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     justify-content: center;
     padding: 12px;
     background: #fff;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 3px 14px rgba(0, 0, 0, .18);
 }
 .qrbox canvas { display: block; width: 220px; height: 220px; image-rendering: pixelated; }
@@ -88,7 +89,7 @@ textarea {
     resize: none;
     padding: 8px 10px;
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: var(--card);
     color: var(--fg);
     font: inherit;
@@ -111,7 +112,7 @@ textarea:focus { border-color: var(--accent); }
     gap: 8px;
     padding: 18px;
     border: 1px dashed var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     text-align: center;
     color: var(--fg-dim);
     font-size: 12.5px;
@@ -136,7 +137,7 @@ button {
     height: 32px;
     padding: 0 14px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--fg);
     font: inherit;

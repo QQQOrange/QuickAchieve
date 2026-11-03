@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <title>拾取程序</title>
+<link rel="stylesheet" href="theme.css">
 <style>
 /* 和 region.html 一样内联：整屏就一层透明板 + 一行提示，不值得拆文件。 */
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,7 +18,7 @@ html, body {
     cursor: crosshair;
     user-select: none;
     -webkit-user-select: none;
-    font: 13px/1.5 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
 }
 
 /* 极淡的一层底色，只为让用户看出「现在处于拾取状态」，
@@ -30,15 +31,15 @@ body { background: rgba(80, 140, 255, .05); }
     top: 40px;
     transform: translateX(-50%);
     padding: 9px 18px;
-    border-radius: 10px;
-    background: rgba(16, 18, 24, .88);
-    color: #F0F2F6;
+    border-radius: var(--radius-md);
+    background: var(--overlay-bg);
+    color: var(--overlay-fg);
     font-size: 13px;
     box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .7);
     pointer-events: none;
     white-space: nowrap;
 }
-#tip b { color: #7FB0FF; font-weight: 600; }
+#tip b { color: var(--overlay-accent); font-weight: 600; }
 </style>
 </head>
 <body>

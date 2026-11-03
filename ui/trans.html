@@ -15,7 +15,7 @@ html, body {
     height: 100%;
     background: var(--bg);
     color: var(--fg);
-    font: 13px/1.55 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     user-select: none;
     -webkit-user-select: none;
 }
@@ -43,7 +43,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     max-width: 220px;
     padding: 0 8px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: var(--card);
     color: var(--fg);
     font: inherit;
@@ -110,10 +110,10 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     min-height: 72px;
     padding: 11px 13px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--card);
     color: var(--fg);
-    font: 13.5px/1.7 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: 13.5px/1.7 var(--font-ui);
     outline: none;
     overflow: auto;
     /* ★ 可拖拽调整宽高 */
@@ -188,10 +188,10 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     width: 100%;
     padding: 11px 13px;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--card);
     color: var(--fg);
-    font: 13.5px/1.7 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: 13.5px/1.7 var(--font-ui);
     outline: none;
     resize: none;
     user-select: text;
@@ -224,7 +224,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     color: var(--fg-dim);
     background: color-mix(in srgb, var(--accent) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     padding: 7px 10px;
 }
 .note.err {
@@ -256,7 +256,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     height: 30px;
     padding: 0 13px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--fg);
     font: inherit;
@@ -294,7 +294,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     bottom: 18px;
     transform: translateX(-50%) translateY(8px);
     padding: 7px 15px;
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: rgba(20, 22, 28, .93);
     color: #fff;
     font-size: 12.5px;

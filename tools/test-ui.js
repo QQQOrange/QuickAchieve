@@ -2870,8 +2870,10 @@ async function testTrans() {
             ok('  CSS 源里 #src 声明了 1px 实线边框',
                 /border:\s*1px\s+solid/.test(srcRule),
                 (srcRule.match(/border[^;]*/) || ['(没有)'])[0].trim());
-            ok('  CSS 源里 #src 声明了圆角 10px',
-                /border-radius:\s*10px/.test(srcRule),
+            /* v2.23.34：圆角改成设计令牌（--radius-md = 10px）—— 断言跟着令牌走，
+             * 不再钉字面量，否则以后每次调令牌值都要改测试。 */
+            ok('  CSS 源里 #src 声明了圆角（10px / --radius-md）',
+                /border-radius:\s*(10px|var\(--radius-md\))/.test(srcRule),
                 (srcRule.match(/border-radius[^;]*/) || ['(没有)'])[0].trim());
         }
 

@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <title>Quick Achieve 横条</title>
+<!-- v2.23.34：横条也引设计令牌。它自己的颜色走 bar.js 注入的 `--qs-*`（液态玻璃要按背景取样），
+     但**字体 / 圆角 / 行高**这些排版令牌必须和别的窗口同一份 —— bar.css 里已经写了
+     `var(--font-ui)` 之类，不引这份会全落到浏览器默认字体（Times）。 -->
+<link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="bar.css">
 </head>
 <body>

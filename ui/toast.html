@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <title>Quick Achieve 提示</title>
+<link rel="stylesheet" href="theme.css">
 <style>
 /* 右下角内置提示（v2.6.8）。
  * 独立小窗（336×88 逻辑像素、无边框、透明、置顶、不抢焦点、鼠标穿透），
@@ -11,24 +12,18 @@
  * 一个 3800 行，为了这么一张小卡片去解析它们只会拖慢首帧）。 */
 * { box-sizing: border-box; }
 
+/* v2.23.34：**调色板改成和所有窗口同一份**（theme.css 的设计令牌）。
+ *
+ * 原来这里自带一整套：--card/#202228、--accent/#4E6EF2（亮色 #2563EB），
+ * 而且只认 `prefers-color-scheme` —— 两处不一致用户都看得见：
+ *   ① 提示条左边那条强调色的蓝，和设置页 / 结果窗的蓝不是同一个蓝；
+ *   ② 用户在设置里强制亮色 / 暗色时提示条**不跟随**
+ *      （别的窗口都变白了，右下角这张卡片还是黑的）。
+ *
+ * 现在颜色全部来自令牌，只保留一个 `--dim` 别名（标题行用它）。
+ * 卡片原本那 96% 的轻微透明改用 `color-mix` 表达（WebView2 156 支持）。 */
 :root {
-    --card: rgba(32, 34, 40, .96);
-    --fg: #eceef3;
-    --dim: #9aa1af;
-    --line: rgba(255, 255, 255, .10);
-    --accent: #4E6EF2;
-    --shadow: 0 8px 26px rgba(0, 0, 0, .42);
-}
-
-@media (prefers-color-scheme: light) {
-    :root {
-        --card: rgba(252, 252, 254, .98);
-        --fg: #1b1c20;
-        --dim: #6b7280;
-        --line: rgba(15, 20, 40, .12);
-        --accent: #2563EB;
-        --shadow: 0 8px 24px rgba(15, 20, 40, .18);
-    }
+    --dim: var(--fg-dim);
 }
 
 html, body {
@@ -38,7 +33,7 @@ html, body {
     overflow: hidden;
     /* 窗口本身就是这张卡片，留 6px 给投影，别让它贴边被裁 */
     padding: 6px;
-    font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     color: var(--fg);
     user-select: none;
     cursor: default;
@@ -52,8 +47,9 @@ html, body {
     height: 100%;
     padding: 10px 12px;
     border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--card);
+    border-radius: var(--radius-lg);
+    /* 96% 不透明：卡片压在别人窗口上时还能透一点底色（原来是写死的 rgba） */
+    background: color-mix(in srgb, var(--card) 96%, transparent);
     box-shadow: var(--shadow);
     /* 进场：从下方 10px 滑上来 + 淡入；退场反过来 */
     opacity: 0;
@@ -76,7 +72,7 @@ html, body {
     flex: none;
     width: 3px;
     height: 30px;
-    border-radius: 2px;
+    border-radius: var(--radius-xs);
     background: var(--accent);
 }
 
@@ -118,6 +114,36 @@ html, body {
     </div>
 </div>
 <script>
+/* v2.23.34：**主题要跟着软件设置走**。
+ *
+ * 这个窗口没引 shared.js（2000 行，为一张小卡片拉进来不划算），
+ * 所以这里写一份和 shared.js 里 `qsApplyPageTheme` 同源的最小版本：
+ * 读一次配置写 `data-theme`，之后配置广播（qs://config）来了再更新。
+ * 少了它，用户在设置里强制亮色 / 暗色时，只有这张卡片不跟随。 */
+(function () {
+    const el = document.documentElement;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    let cur = 'system';
+    const paint = () => {
+        el.dataset.theme = cur;
+        const dark = cur === 'dark' || (cur !== 'light' && mq.matches);
+        el.style.colorScheme = dark ? 'dark' : 'light';
+    };
+    paint();
+    if (mq.addEventListener) mq.addEventListener('change', () => { if (cur === 'system') paint(); });
+    const core = window.__TAURI__ && window.__TAURI__.core;
+    if (core && core.invoke) {
+        core.invoke('get_config').then((c) => { cur = (c && c.theme) || 'system'; paint(); }).catch(() => { });
+    }
+    const evt = window.__TAURI__ && window.__TAURI__.event;
+    if (evt && evt.listen) {
+        evt.listen('qs://config', (e) => {
+            cur = (e && e.payload && e.payload.theme) || 'system';
+            paint();
+        }).catch(() => { });
+    }
+})();
+
 (function () {
     const invoke = window.__TAURI__.core.invoke;
     const listen = window.__TAURI__.event.listen;

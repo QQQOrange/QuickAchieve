@@ -7034,6 +7034,7 @@ fn broadcast() {
      * 只是省掉构建 JSON 的两份 clone）。 */
     const CFG_TARGETS: &[&str] = &[
         "bar", "settings", "ocr", "trans", "qr", "qrgen", "iconedit", "lock", "update", "picker",
+        "toast", "gridpreview",
     ];
     for label in CFG_TARGETS {
         if a.get_webview_window(label).is_some() {

@@ -21,6 +21,7 @@
     · 拖动格子 → 调整各项顺序（松手同步到「格子内容」列表并落库）。
 -->
 <link rel="stylesheet" href="bar.css">
+<link rel="stylesheet" href="theme.css">
 <style>
     /* 透明的"画布"：设置页那边有卡片底色，这里不要再铺一层白 */
     html, body {
@@ -65,7 +66,7 @@
     #empty-tip {
         display: none;
         padding: 18px 10px;
-        font: 12px/1.6 system-ui, "Microsoft YaHei", sans-serif;
+        font: 12px/var(--lh-body) var(--font-ui);
         color: #8A8D95;
         text-align: center;
     }
@@ -86,15 +87,15 @@
     }
 
     /* 右边缘：改格子宽 */
-    #rzR { top: 0; right: 0; width: 8px; height: 100%; cursor: ew-resize; border-radius: 4px; }
+    #rzR { top: 0; right: 0; width: 8px; height: 100%; cursor: ew-resize; border-radius: var(--radius-xs); }
 
     /* 下边缘：改格子高 */
-    #rzB { left: 0; bottom: 0; height: 8px; width: 100%; cursor: ns-resize; border-radius: 4px; }
+    #rzB { left: 0; bottom: 0; height: 8px; width: 100%; cursor: ns-resize; border-radius: var(--radius-xs); }
 
     /* 右下角：宽高一起改 */
     #rzC {
         right: 0; bottom: 0; width: 14px; height: 14px;
-        cursor: nwse-resize; border-radius: 5px;
+        cursor: nwse-resize; border-radius: var(--radius-xs);
         background: rgba(78, 110, 242, .55);
         border: 1px solid rgba(78, 110, 242, .9);
     }
@@ -113,7 +114,7 @@
         bottom: 0;
         transform: translateY(100%);
         padding: 2px 6px;
-        font: 10px/1.5 system-ui, "Microsoft YaHei", sans-serif;
+        font: 10px/1.5 var(--font-ui);
         color: #8A8D95;
         white-space: nowrap;
         opacity: 0;

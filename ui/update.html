@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="dark light">
 <title>Quick Achieve 更新</title>
+<link rel="stylesheet" href="theme.css">
 <style>
 /* 更新窗（v1.5.13）。
  *
@@ -14,33 +15,25 @@
  * 一个窗口三种状态，而不是弹三个窗 —— 用户不需要在多个窗口之间找"现在到哪一步"。
  * 任务栏可见由 Rust 侧 skip_taskbar(false) 保证（见 show_update_window）。 */
 * { box-sizing: border-box; }
+/* v2.23.34：**不再自己抄一份调色板**（同 lock.html）。
+ *
+ * 原来这里硬编码 `--bg/#17181c`、`--accent/#4E6EF2` 且只认 `prefers-color-scheme`：
+ * 用户在设置里强制亮色时更新窗仍是深色，强调色也比其它窗口深一档。
+ * 现在颜色全部来自 theme.css 的令牌，`data-theme` 三档由 shared.js 写。
+ * `--err` 是语义色（失败态），沿用通用 --danger；其余全交给令牌。 */
 :root {
-    --bg: #17181c;
-    --fg: #e9eaee;
-    --dim: #9aa0ac;
-    --line: rgba(255,255,255,.10);
-    --accent: #4E6EF2;
-    --err: #ff6b6b;
-    --ok: #3ddc97;
-    --warn: #f0b429;
-}
-@media (prefers-color-scheme: light) {
-    :root {
-        --bg: #f5f6f8;
-        --fg: #1b1c20;
-        --dim: #6b7280;
-        --line: rgba(0,0,0,.10);
-    }
+    --dim: var(--fg-dim);
+    --err: var(--danger);
 }
 html, body { height: 100%; margin: 0; }
 body {
     background: var(--bg);
     color: var(--fg);
-    font: 13px/1.55 "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     display: flex;
     flex-direction: column;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
     user-select: none;
 }
@@ -62,7 +55,7 @@ header .grow { flex: 1; }
 .x {
     width: 26px; height: 26px;
     display: grid; place-items: center;
-    border: 0; border-radius: 7px;
+    border: 0; border-radius: var(--radius-sm);
     background: transparent;
     color: var(--dim);
     font-size: 15px;
@@ -83,7 +76,7 @@ h1 .ver { color: var(--accent); }
     color: var(--dim);
     background: rgba(127,127,127,.08);
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     padding: 9px 11px;
     margin-bottom: 12px;
     user-select: text;
@@ -92,14 +85,14 @@ h1 .ver { color: var(--accent); }
 .bar-wrap { margin: 4px 0 8px; }
 .track {
     height: 8px;
-    border-radius: 99px;
+    border-radius: var(--radius-pill);
     background: rgba(127,127,127,.20);
     overflow: hidden;
 }
 #bar {
     height: 100%;
     width: 0%;
-    border-radius: 99px;
+    border-radius: var(--radius-pill);
     background: var(--accent);
     transition: width .18s linear;
 }
@@ -126,7 +119,7 @@ button.btn {
     padding: 0 15px;
     font-size: 12.5px;
     font-weight: 600;
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     border: 1px solid var(--line);
     background: transparent;
     color: var(--fg);

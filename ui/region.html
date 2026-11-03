@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <title>框选识别区域</title>
+<link rel="stylesheet" href="theme.css">
 <style>
 /* 这个页面的样式故意内联：整个窗口就一个遮罩 + 一个方框 + 一条动作条，
    不值得再拆一个 css 文件，而且少一个文件就少一种「打包漏了导致一片空白」的可能。 */
@@ -17,7 +18,7 @@ html, body {
     cursor: crosshair;
     user-select: none;
     -webkit-user-select: none;
-    font: 13px/1.5 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     /* v2.23.4：光标统一从 body 继承（#dim 不再自己声明，否则会把它盖掉）。
        JS 改 `document.body.style.cursor` 就能换成 resize / move。 */
     cursor: crosshair;
@@ -40,7 +41,7 @@ html, body {
 #sel {
     position: fixed;
     display: none;
-    border: 1.5px solid #4C8DFF;
+    border: 1.5px solid var(--accent);
     border-radius: 2px;
     background: rgba(255, 255, 255, .04);
     box-shadow: 0 0 0 9999px rgba(10, 12, 18, .34);
@@ -60,7 +61,7 @@ html, body {
     width: 7px;
     height: 7px;
     margin: -3.5px 0 0 -3.5px;
-    background: #4C8DFF;
+    background: var(--accent);
     border: 1px solid #fff;
     border-radius: 1px;
 }
@@ -69,9 +70,9 @@ html, body {
     position: fixed;
     display: none;
     padding: 3px 8px;
-    border-radius: 6px;
-    background: rgba(16, 18, 24, .9);
-    color: #fff;
+    border-radius: var(--radius-sm);
+    background: var(--overlay-bg);
+    color: var(--overlay-fg);
     font-size: 11.5px;
     font-variant-numeric: tabular-nums;
     pointer-events: none;
@@ -84,15 +85,15 @@ html, body {
     top: 40px;
     transform: translateX(-50%);
     padding: 9px 18px;
-    border-radius: 10px;
-    background: rgba(16, 18, 24, .88);
-    color: #F0F2F6;
+    border-radius: var(--radius-md);
+    background: var(--overlay-bg);
+    color: var(--overlay-fg);
     font-size: 13px;
     box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .7);
     pointer-events: none;
     white-space: nowrap;
 }
-#tip b { color: #7FB0FF; font-weight: 600; }
+#tip b { color: var(--overlay-accent); font-weight: 600; }
 
 /* ---------------- 动作条（v2.16.0） ----------------
    松手之后浮出来，一行按钮决定「这块区域拿去干什么」。
@@ -103,8 +104,8 @@ html, body {
     align-items: center;
     gap: 2px;
     padding: 4px;
-    border-radius: 9px;
-    background: rgba(16, 18, 24, .94);
+    border-radius: var(--radius-ctl);
+    background: var(--overlay-bg-strong);
     box-shadow: 0 10px 26px -8px rgba(0, 0, 0, .75), 0 0 0 1px rgba(255, 255, 255, .08) inset;
     white-space: nowrap;
     z-index: 10;
@@ -113,11 +114,11 @@ html, body {
     appearance: none;
     border: 0;
     background: transparent;
-    color: #E8EDF6;
+    color: var(--overlay-fg-dim);
     font: inherit;
     font-size: 12.5px;
     padding: 5px 10px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -126,8 +127,8 @@ html, body {
 #actbar button:hover { background: rgba(255, 255, 255, .12); }
 /* 默认动作（= 这次框选本来的用途）高亮：不想换用途的人直接双击就行，
    想换的人一眼能看到「现在按下去会发生什么」。 */
-#actbar button.on { background: #4C8DFF; color: #fff; }
-#actbar button.on:hover { background: #5C99FF; }
+#actbar button.on { background: var(--accent); color: #fff; }
+#actbar button.on:hover { background: var(--overlay-accent); }
 #actbar button .k {
     font-size: 10.5px;
     opacity: .72;

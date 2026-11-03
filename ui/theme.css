@@ -21,6 +21,10 @@
     /* ---------- 中性色 / 品牌色（浅色默认） ---------- */
     --bg: #F5F6F8;
     --card: #FFFFFF;
+    /* 次级表面（卡片里再嵌一层的小块，比如预览区 / 只读行）——
+     * v2.23.34 之前它只是个**从未定义**的 --bg2，调用处吃 gba(0,0,0,.02) 的写死回退：
+     * 浅色下勉强看得见，深色下等于不存在（黑叠黑），于是同一个组件两种主题两副样子。 */
+    --bg2: #EDEFF3;
     --fg: #1B1D23;
     --fg-dim: #6B6F7A;
     --line: #E4E6EB;
@@ -40,10 +44,45 @@
     /* ---------- UI 令牌：统一圆角与过渡曲线 ----------
      * 以前圆角散落成 4/6/8/10/12/14px 各种值，过渡曲线也各写各的。
      * 这里收敛成三档圆角 + 一条 ease，组件按语义挑档位。 */
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 12px;
+    --radius-xs: 4px;   /* 小徽标 / 标签 */
+    --radius-sm: 6px;   /* 微型按钮、输入框内的小块 */
+    --radius-ctl: 8px;  /* 控件档（按钮 / 输入框 / 小卡片）—— 以前散落成 8px 和 9px 两种 */
+    --radius-md: 10px;  /* 卡片里的条目、按钮 */
+    --radius-lg: 12px;  /* 窗口里的主卡片、浮层 */
+    --radius-pill: 999px; /* 胶囊（开关、标签） */
     --ease: cubic-bezier(.2, .7, .3, 1);
+
+    /* ---------- 排版令牌 ----------
+     *
+     * v2.23.34：以前每个窗口自己抄一份字体栈，实测漂移成三种：
+     *   · `"Microsoft YaHei", "Segoe UI", system-ui, sans-serif`（多数页面）
+     *   · `"Microsoft YaHei UI", ...`（锁屏 / 更新窗 / 提示条）
+     *   · `system-ui, "Microsoft YaHei"`（网格预览，顺序还反了）
+     * 前两种在 Windows 上会命中**不同的字体文件**（YaHei UI 是系统 UI 版，
+     * 字宽/行高都略有差别），同一个软件里两个窗口的字看着不一样。
+     *
+     * 现在统一到一份：优先 YaHei UI（Win10+ 都有，正文更清晰），
+     * 没有就退回 YaHei，再退回系统字体。行高也收敛到 1.55。
+     * 等宽栈同理（日志/代码/网址输入框用）。 */
+    --font-ui: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Microsoft YaHei", monospace;
+    --lh-body: 1.55;
+    /* 窗口正文的字号（各页面自己的组件可以覆盖） */
+    --fs-body: 13px;
+
+    /* ---------- 覆盖层专用色（**不跟随主题**，刻意恒定）----------
+     *
+     * 框选 / 拾取 / 动作条这些元素浮在**任意**屏幕内容之上：浅色主题下
+     * 白底提示条会在白色文档 / 白色网页上看不见，所以它们必须固定用深色。
+     *
+     * v2.23.34 之前这些值散落在 region.html / picker.html 里各写一份，
+     * 已经漂移成三种透明度（.88/.90/.94）、三种白字和两种高亮蓝。
+     * 收敛到这里一份，两个覆盖层共用。 */
+    --overlay-bg: rgba(16, 18, 24, .90);
+    --overlay-bg-strong: rgba(16, 18, 24, .94);
+    --overlay-fg: #F0F2F6;
+    --overlay-fg-dim: #E8EDF6;
+    --overlay-accent: #7FB0FF;
 }
 
 /* 跟随系统深色（未强制亮色时生效） */
@@ -51,6 +90,7 @@
     :root:not([data-theme="light"]) {
         --bg: #17181C;
         --card: #1E1F24;
+        --bg2: rgba(255, 255, 255, .05);
         --fg: #ECEDF1;
         --fg-dim: #A0A4AF;
         --line: rgba(255, 255, 255, .12);
@@ -71,6 +111,7 @@
 :root[data-theme="dark"] {
     --bg: #17181C;
     --card: #1E1F24;
+    --bg2: rgba(255, 255, 255, .05);
     --fg: #ECEDF1;
     --fg-dim: #A0A4AF;
     --line: rgba(255, 255, 255, .12);
@@ -90,6 +131,10 @@
 :root[data-theme="light"] {
     --bg: #F5F6F8;
     --card: #FFFFFF;
+    /* 次级表面（卡片里再嵌一层的小块，比如预览区 / 只读行）——
+     * v2.23.34 之前它只是个**从未定义**的 --bg2，调用处吃 gba(0,0,0,.02) 的写死回退：
+     * 浅色下勉强看得见，深色下等于不存在（黑叠黑），于是同一个组件两种主题两副样子。 */
+    --bg2: #EDEFF3;
     --fg: #1B1D23;
     --fg-dim: #6B6F7A;
     --line: #E4E6EB;

@@ -17,7 +17,7 @@ html, body {
     height: 100%;
     background: var(--bg);
     color: var(--fg);
-    font: 13px/1.55 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     user-select: none;
     -webkit-user-select: none;
 }
@@ -50,7 +50,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     width: 28px;
     height: 28px;
     border: 0;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--fg-dim);
     font-size: 14px;
@@ -72,7 +72,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     display: flex;
     flex-direction: column;
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--card);
     overflow: hidden;
 }
@@ -107,7 +107,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     /* 图标普遍偏小，放大到看清边缘；消除背景后边缘质量是重点 */
     image-rendering: auto;
 }
@@ -140,7 +140,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     cursor: crosshair;
     touch-action: none;
     /* 画出的是半透明红：既看得见自己描了哪儿，又不遮住底下的图 */
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
 }
 .cv .mask:not([hidden]) { display: block; }
 /* 描边模式：给「编辑前」面板一圈提示色，让人知道现在点在画哪边 */
@@ -166,14 +166,14 @@ body { display: flex; flex-direction: column; overflow: hidden; }
    宽度限制一下 —— 引擎名 + 体积可能挺长，别把工具栏挤变形。 */
 .mdl { display: inline-flex; align-items: center; }
 .mdl select {
-    font-size: 12px; padding: 4px 8px; border-radius: 7px;
+    font-size: 12px; padding: 4px 8px; border-radius: var(--radius-sm);
     border: 1px solid var(--line); background: var(--bg); color: var(--fg);
     max-width: 190px;
 }
 /* r80g：涂抹模式的两个模式按钮（保留 / 擦除）。
    做成"分段控件"的样子：选中的那颗高亮，一眼看出当前是哪种笔。 */
 .seg-b {
-    font-size: 12px; padding: 3px 10px; border-radius: 6px;
+    font-size: 12px; padding: 3px 10px; border-radius: var(--radius-sm);
     border: 1px solid var(--line); background: var(--bg); color: var(--fg);
     cursor: pointer; margin-right: 4px;
 }
@@ -197,7 +197,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     height: 30px;
     padding: 0 13px;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--fg);
     font: inherit;
@@ -236,7 +236,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     display: flex; flex-direction: column; gap: 2px;
     padding: 10px 14px 12px; margin-top: 6px;
     border-top: 1px solid var(--line);
-    background: var(--bg2, rgba(0,0,0,.02));
+    background: var(--bg2);
 }
 .params[hidden] { display: none; }
 .pm-row {
@@ -308,7 +308,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     bottom: 18px;
     transform: translateX(-50%) translateY(8px);
     padding: 7px 15px;
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: rgba(20, 22, 28, .93);
     color: #fff;
     font-size: 12.5px;

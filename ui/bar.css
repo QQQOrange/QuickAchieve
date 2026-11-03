@@ -14,7 +14,7 @@ html, body {
     user-select: none;
     -webkit-user-select: none;
     cursor: default;
-    font: 13px/1.4 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     /* ⚠ 这里**只能**是文档级兜底，不能写 var(--qs-fg) —— 那是本条 bug 的现场。
      *
      *   --qs-fg 定义在 .stage 上，而 .stage 是 body 的**子元素**：自定义属性只向下
@@ -88,6 +88,9 @@ body {
     --qs-field: rgba(15, 20, 40, .055);
     --qs-tip: #8A8D95;
     --qs-accent: #3B7DFF;
+    /* v2.23.34：这个变量以前**只被使用、从未定义** —— 于是选中态一直吃
+     * gba(14,116,144,.10) 那个旧品牌青色的写死回退，和蓝色强调色不是一套。 */
+    --qs-accent-soft: color-mix(in srgb, var(--qs-accent) 12%, transparent);
 }
 
 .stage.qs-dark {
@@ -101,6 +104,7 @@ body {
     --qs-field: rgba(255, 255, 255, .09);
     --qs-tip: #949AA6;
     --qs-accent: #6FA1FF;
+    --qs-accent-soft: color-mix(in srgb, var(--qs-accent) 16%, transparent);
 }
 
 /* ---------------------------- 浮层投影 ----------------------------
@@ -268,7 +272,7 @@ body {
     font-size: 11.5px;
     height: 22px;
     padding: 0 6px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
 }
 .fav-pin:hover { background: var(--qs-hover); color: var(--qs-fg); }
@@ -325,7 +329,7 @@ button.fav-grp-head {
     font: inherit;
     text-align: left;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
 }
 button.fav-grp-head:hover { background: var(--qs-hover); }
 button.fav-grp-head:focus-visible {
@@ -373,7 +377,7 @@ button.fav-grp-head:focus-visible {
     line-height: 1;
     height: 20px;
     padding: 0 6px;
-    border-radius: 5px;
+    border-radius: var(--radius-xs);
     cursor: pointer;
     white-space: nowrap;
     flex: none;
@@ -463,7 +467,7 @@ button.fav-grp-head:focus-visible {
     max-height: 26px;
     max-width: 140px;
     object-fit: contain;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     border: 1px solid color-mix(in srgb, var(--qs-fg) 10%, transparent);
     background: color-mix(in srgb, var(--qs-fg) 4%, transparent);
     padding: 2px;
@@ -496,7 +500,7 @@ button.fav-grp-head:focus-visible {
     text-align: center;
     font-size: 12px;
     border: 1px dashed color-mix(in srgb, var(--qs-fg) 22%, transparent);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     margin: 10px 4px;
 }
 .fav-empty::before {
@@ -519,7 +523,7 @@ button.fav-grp-head:focus-visible {
  *   hover 才出一层淡底。和下面的引擎分类胶囊在视觉上明确区分开。 */
 .cat-nav-item.fav-entry {
     border-color: transparent;
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     padding: 0 8px 0 3px;
     color: var(--qs-fg);
     font-weight: 600;
@@ -988,7 +992,7 @@ button.fav-grp-head:focus-visible {
     font-size: 9.5px;
     font-weight: 700;
     letter-spacing: .04em;
-    font-family: "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--qs-accent);
 }
 .ico.qs-ocr:hover {
@@ -1003,7 +1007,7 @@ button.fav-grp-head:focus-visible {
     font-size: 9.5px;
     font-weight: 700;
     letter-spacing: .04em;
-    font-family: "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--qs-accent);
 }
 .ico.qs-ocr-inbar:hover {
@@ -1019,7 +1023,7 @@ button.fav-grp-head:focus-visible {
     font-size: 9.5px;
     font-weight: 700;
     letter-spacing: .04em;
-    font-family: "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--qs-accent);
     pointer-events: none;
 }
@@ -1031,7 +1035,7 @@ button.fav-grp-head:focus-visible {
 .ico.qs-trans-inbar {
     font-size: 13px;
     font-weight: 700;
-    font-family: "Microsoft YaHei", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--qs-accent);
 }
 .ico.qs-trans-inbar:hover {
@@ -1041,7 +1045,7 @@ button.fav-grp-head:focus-visible {
 .qs-trans-tag {
     font-size: 13px;
     font-weight: 700;
-    font-family: "Microsoft YaHei", system-ui, sans-serif;
+    font-family: var(--font-ui);
     color: var(--qs-accent);
     pointer-events: none;
 }
@@ -1135,7 +1139,7 @@ button.fav-grp-head:focus-visible {
 .panel {
     width: 552px;
     padding: 10px;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     border: none;
     background-color: var(--qs-bg-fill, var(--qs-bg));
     box-shadow: var(--qs-shadow);
@@ -1217,7 +1221,7 @@ button.fav-grp-head:focus-visible {
     height: 32px;
     padding: 0 12px;
     border: 1px solid var(--qs-border);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background-color: var(--qs-field);
     color: var(--qs-fg);
     font: inherit;
@@ -1241,7 +1245,7 @@ button.fav-grp-head:focus-visible {
     height: 32px;
     padding: 0 10px;
     border: 1px solid var(--qs-border);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background-color: var(--qs-field);
     color: var(--qs-fg);
     font: inherit;
@@ -1270,7 +1274,7 @@ button.fav-grp-head:focus-visible {
     font-size: 12px;
     color: var(--qs-tip);
     border: 1px dashed var(--qs-border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
 }
 
 #q:focus {
@@ -1283,7 +1287,7 @@ button.fav-grp-head:focus-visible {
     height: 32px;
     padding: 0 11px;
     border: 1px solid var(--qs-border);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--qs-fg-dim);
     font: inherit;
@@ -1309,7 +1313,7 @@ button.fav-grp-head:focus-visible {
 .panel-body::-webkit-scrollbar { width: 8px; }
 .panel-body::-webkit-scrollbar-thumb {
     background-color: var(--qs-sep);
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
 }
 .panel-body::-webkit-scrollbar-thumb:hover { background-color: var(--qs-fg-dim); }
 
@@ -1333,7 +1337,7 @@ button.fav-grp-head:focus-visible {
     gap: 6px;
     margin: 2px 0 6px;
     padding: 5px 9px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--qs-accent) 12%, transparent);
     color: var(--qs-fg);
     font-size: 11.5px;
@@ -1426,7 +1430,7 @@ button.fav-grp-head:focus-visible {
     height: 22px;
     padding: 0 9px;
     border: 1px solid var(--qs-border);
-    border-radius: 11px;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--qs-fg-dim);
     font: inherit;
@@ -1461,7 +1465,7 @@ button.fav-grp-head:focus-visible {
 .cat-nav.cat-row .cat-nav-item {
     height: 19px;
     padding: 0 7px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     font-size: 10.5px;
 }
 
@@ -1486,7 +1490,7 @@ button.fav-grp-head:focus-visible {
     height: 32px;
     padding: 0 8px 0 6px;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--qs-fg);
     font: inherit;
@@ -1510,7 +1514,7 @@ button.fav-grp-head:focus-visible {
     min-width: 15px;
     height: 14px;
     padding: 0 3px;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     font-size: 9.5px;
     font-style: normal;
     line-height: 14px;
@@ -1565,7 +1569,7 @@ button.fav-grp-head:focus-visible {
 .cell .ci .letter {
     transform: scale(1);
     font-size: 11px;
-    border-radius: 5px;
+    border-radius: var(--radius-xs);
 }
 
 .stage.qs-dark .cell.qs-mono > .ci > img { filter: invert(1) brightness(1.7); }
@@ -1585,7 +1589,7 @@ button.fav-grp-head:focus-visible {
     z-index: 50;
     min-width: 156px;
     padding: 5px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     border: none;
     background-color: var(--qs-bg-fill, var(--qs-bg));
     box-shadow: var(--qs-shadow);
@@ -1606,7 +1610,7 @@ button.fav-grp-head:focus-visible {
     width: 100%;
     padding: 7px 10px;
     border: none;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--qs-fg);
     font: inherit;
@@ -1643,7 +1647,7 @@ button.fav-grp-head:focus-visible {
     flex: none;
     padding: 6px 12px;
     border: 1px solid var(--qs-border);
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--qs-fg);
     font: inherit;
@@ -1710,7 +1714,7 @@ button.fav-grp-head:focus-visible {
 .qs-pick {
     display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
     padding: 3px 9px; border: 1px solid var(--line, rgba(127,127,127,.35));
-    border-radius: 999px; background: transparent;
+    border-radius: var(--radius-pill); background: transparent;
     color: var(--qs-fg-dim, var(--fg-dim, #9aa0a6)); font: inherit; font-size: 12px; cursor: pointer;
 }
 .qs-pick:hover { color: var(--qs-fg, var(--fg, #e8eaed)); border-color: var(--qs-fg-dim, var(--fg-dim, #9aa0a6)); }
@@ -1721,7 +1725,7 @@ button.fav-grp-head:focus-visible {
 .qs-pick-menu {
     position: absolute; z-index: 60; top: calc(100% + 5px); left: 0;
     min-width: 152px; max-height: 42vh; overflow-y: auto; padding: 4px;
-    border: 1px solid var(--line, rgba(127,127,127,.35)); border-radius: 10px;
+    border: 1px solid var(--line, rgba(127,127,127,.35)); border-radius: var(--radius-md);
     background: var(--qs-bg-fill, var(--menu-bg, var(--bg, #ffffff)));
     box-shadow: var(--qs-shadow, 0 10px 30px rgba(0,0,0,.25));
 }
@@ -1730,7 +1734,7 @@ button.fav-grp-head:focus-visible {
 .qs-pick-item:hover { background: var(--qs-hover, var(--hover, rgba(127,127,127,.16))); }
 .qs-pick-item {
     display: flex; align-items: center; gap: 8px; width: 100%;
-    padding: 5px 8px; border: 0; border-radius: 6px; background: transparent;
+    padding: 5px 8px; border: 0; border-radius: var(--radius-sm); background: transparent;
     color: var(--qs-fg, var(--fg, #1B1D23)); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
 }
 .qs-pick-item:hover { background: var(--hover, rgba(127,127,127,.16)); }
@@ -1856,7 +1860,7 @@ button.fav-grp-head:focus-visible {
     align-items: center;
     gap: 1px;
     padding: 0 2px;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     background: var(--qs-hover);
     overflow: hidden;
 }
@@ -1870,7 +1874,7 @@ button.fav-grp-head:focus-visible {
     height: 18px;
     padding: 0;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--radius-xs);
     background: transparent;
     color: var(--qs-fg-dim);
     font: inherit;
@@ -1914,7 +1918,7 @@ button.fav-grp-head:focus-visible {
     height: 22px;
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--qs-fg-dim);
     font: inherit;
@@ -2106,7 +2110,7 @@ button.fav-grp-head:focus-visible {
     height: 22px;
     padding: 0;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--qs-fg-dim);
     font: inherit;
@@ -2125,7 +2129,7 @@ button.fav-grp-head:focus-visible {
     box-sizing: border-box;
     padding: 6px 10px;
     border: 1px solid var(--qs-border);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: var(--qs-field, rgba(15, 20, 40, .05));
     color: var(--qs-fg);
     font: inherit;
@@ -2149,7 +2153,7 @@ button.fav-grp-head:focus-visible {
     flex: none;
     padding: 3px 10px;
     border: 1px solid var(--qs-border);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: transparent;
     color: var(--qs-fg-dim);
     font: inherit;
@@ -2247,7 +2251,7 @@ button.fav-grp-head:focus-visible {
 .qs-gpick-block-n {
     flex: none;
     padding: 0 5px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--qs-hover);
     font-size: 10px;
     color: var(--qs-fg-dim);
@@ -2304,7 +2308,7 @@ button.fav-grp-head:focus-visible {
     min-width: 0;
     padding: 6px 8px;
     border: 1px solid var(--qs-border);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: var(--qs-field, rgba(15, 20, 40, .04));
     color: var(--qs-fg);
     font: inherit;
@@ -2387,8 +2391,8 @@ button.fav-grp-head:focus-visible {
     font-size: 11px;
 }
 .qs-gpick-foot.is-multi .qs-gpick-ok {
-    border-color: var(--qs-accent, #0E7490);
-    color: var(--qs-accent, #0E7490);
+    border-color: var(--qs-accent, #3B7DFF);
+    color: var(--qs-accent, #3B7DFF);
     font-weight: 600;
 }
 .qs-gpick-foot.is-multi .qs-gpick-ok[disabled] {
@@ -2410,7 +2414,7 @@ button.fav-grp-head:focus-visible {
     width: 100%;
     padding: 7px 8px;
     border: 1px solid transparent;
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: transparent;
     color: var(--qs-fg);
     font: inherit;
@@ -2422,8 +2426,8 @@ button.fav-grp-head:focus-visible {
     background: var(--qs-hover, rgba(127, 127, 127, .12));
 }
 .qs-gpick-mrow.on {
-    border-color: var(--qs-accent, #0E7490);
-    background: var(--qs-accent-soft, rgba(14, 116, 144, .10));
+    border-color: var(--qs-accent, #3B7DFF);
+    background: var(--qs-accent-soft, color-mix(in srgb, var(--accent) 12%, transparent));
 }
 .qs-gpick-mbox {
     flex: none;
@@ -2433,13 +2437,13 @@ button.fav-grp-head:focus-visible {
     align-items: center;
     justify-content: center;
     border: 1px solid var(--qs-border);
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     font-size: 10px;
     line-height: 1;
 }
 .qs-gpick-mrow.on .qs-gpick-mbox {
-    border-color: var(--qs-accent, #0E7490);
-    background: var(--qs-accent, #0E7490);
+    border-color: var(--qs-accent, #3B7DFF);
+    background: var(--qs-accent, #3B7DFF);
     color: #fff;
 }
 .qs-gpick-mnm {
@@ -2462,7 +2466,7 @@ button.fav-grp-head:focus-visible {
     bottom: 2px;
     width: 17px;
     height: 17px;
-    border-radius: 5px;
+    border-radius: var(--radius-xs);
     cursor: nwse-resize;
     opacity: .45;
     background:
@@ -2636,7 +2640,7 @@ button.fav-grp-head:focus-visible {
 .wrapmenu {
     width: 364px;
     padding: 10px;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     border: none;
     background-color: var(--qs-bg-fill, var(--qs-bg));
     box-shadow: var(--qs-shadow);
@@ -2692,7 +2696,7 @@ button.fav-grp-head:focus-visible {
     gap: 3px;
     padding: 7px 2px 6px;
     border: 1px solid var(--qs-border);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     background: var(--qs-field);
     color: var(--qs-fg);
     font: inherit;
@@ -2804,9 +2808,9 @@ button.fav-grp-head:focus-visible {
  * 那个变量在有些主题里不存在，会退回一个**固定青色**，和边框的蓝色对不上
  * （实测槽位"蓝框青底"）。color-mix 在 WebView2(Chromium 156) 上完全支持。 */
 .bar.qs-grid .qs-gcell.qs-gph {
-    background: rgba(14, 116, 144, .14);
-    background: color-mix(in srgb, var(--qs-accent, #0E7490) 14%, transparent);
-    border: 1px dashed var(--qs-accent, #0E7490);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    background: color-mix(in srgb, var(--qs-accent, #3B7DFF) 14%, transparent);
+    border: 1px dashed var(--qs-accent, #3B7DFF);
     box-shadow: none;
 }
 .bar.qs-grid .qs-gcell.qs-gph > * {
@@ -2862,7 +2866,7 @@ button.fav-grp-head:focus-visible {
 .qs-grz {
     position: absolute;
     pointer-events: auto;
-    border-radius: 4px;
+    border-radius: var(--radius-xs);
     background: rgba(78, 110, 242, .16);
     border: 1px solid rgba(78, 110, 242, .45);
     opacity: 0;
@@ -2923,7 +2927,7 @@ button.fav-grp-head:focus-visible {
     justify-content: center;
     width: 100%;
     height: 100%;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     color: #fff;
     font-weight: 600;
     line-height: 1;

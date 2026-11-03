@@ -4,38 +4,35 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="dark light">
 <title>Quick Achieve 解锁</title>
+<link rel="stylesheet" href="theme.css">
 <style>
 /* 锁屏窗是**独立窗口**（420×268，无边框、常驻置顶、任务栏可见），
  * 所以样式全在这里，不引 settings.css —— 那个文件 3800 行、绝大多数是设置页
  * 面板的规则，引进来只会拖慢首帧（用户在等一个"马上就能输密码"的小窗）。 */
 * { box-sizing: border-box; }
+/* v2.23.34：**不再自己抄一份调色板**。
+ *
+ * 原来这里硬编码了 `--bg/#17181c`、`--accent/#4E6EF2`，并且只认
+ * `prefers-color-scheme` —— 也就是说用户在设置里强制"亮色/暗色"时，
+ * 锁屏**不跟随**（系统深色 + 软件强制亮色 → 解锁窗还是黑的），
+ * 而强调色也比其它窗口（#6FA1FF / #3B7DFF）深一档。
+ *
+ * 现在颜色全部来自 theme.css 的设计令牌（`data-theme` 三档由 shared.js 写），
+ * 这里只留两个语义色（错误/成功）——它们是"锁屏专用"的语义，不属于通用令牌。 */
 :root {
-    --bg: #17181c;
-    --fg: #e9eaee;
-    --dim: #9aa0ac;
-    --line: rgba(255,255,255,.10);
-    --accent: #4E6EF2;
-    --err: #ff6b6b;
-    --ok: #3ddc97;
-}
-@media (prefers-color-scheme: light) {
-    :root {
-        --bg: #f5f6f8;
-        --fg: #1b1c20;
-        --dim: #6b7280;
-        --line: rgba(0,0,0,.10);
-    }
+    --dim: var(--fg-dim);
+    --err: var(--danger);
 }
 html, body { height: 100%; margin: 0; }
 body {
     background: var(--bg);
     color: var(--fg);
-    font: 13px/1.5 "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    font: var(--fs-body)/var(--lh-body) var(--font-ui);
     display: flex;
     align-items: center;
     justify-content: center;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
     user-select: none;
 }
@@ -59,7 +56,7 @@ input[type="password"] {
     color: var(--fg);
     background: rgba(127,127,127,.10);
     border: 1px solid var(--line);
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     outline: none;
     transition: border-color .15s, box-shadow .15s;
 }
@@ -75,7 +72,7 @@ button {
     color: #fff;
     background: var(--accent);
     border: 0;
-    border-radius: 9px;
+    border-radius: var(--radius-ctl);
     cursor: pointer;
     transition: filter .15s, opacity .15s;
 }
@@ -102,7 +99,7 @@ button.ghost {
     color: var(--dim);
     background: transparent;
     border: 1px solid var(--line);
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
 }
 button.ghost:hover { color: var(--fg); border-color: var(--dim); filter: none; }
 .shake { animation: shake .28s ease-in-out; }
