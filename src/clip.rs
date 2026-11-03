@@ -241,6 +241,35 @@ pub fn snapshot() -> Option<Snapshot> {
 ///
 /// 判据用剪贴板序号：备份时记一份，还原前再读一份，不一样就说明中间有人写过。
 /// 代价是"序号变了但其实内容没变"时我们不还原 —— 那种情况用户本来也没丢东西。
+/// 只有在"剪贴板里现在放着的，仍然是我们取走的那段文字"时才还原。
+///
+/// # 为什么不能只靠序号（这是用户报的 bug）
+///
+/// 取词结束时调的是 `note_our_write()` —— 它把**此刻**的序号当成"我们写的"。
+/// 如果用户在这之前的一瞬间**自己按了 Ctrl+C**（很常见：横条弹出来他觉得
+/// 没复制上，又按一次），此刻的序号其实是**他那次写入**的。基准被他"骗"过去之后，
+/// 下面 `restore_if_unchanged` 就认为没人动过，于是把我们备份的**旧内容**写回去 ——
+/// 用户刚复制的东西被抹掉，表现就是「Ctrl+C 有时候没复制上 / 粘贴出来是旧的」。
+///
+/// 现在改成**比内容**：只有当剪贴板里还是我们取走的那段文字时才还原。
+/// 别人（或用户自己）写过新内容，一律放手 —— 宁可留一段选区在剪贴板上，
+/// 也绝不覆盖用户刚复制的东西。
+///
+/// `expected` = 我们这轮读到的文字（`None` 表示这一轮什么都没取到，
+/// 此时退回"和快照内容一致才还原"，同样不会覆盖新内容）。
+pub fn restore_if_still_holds(s: &Snapshot, expected: Option<&str>) {
+    let now_text = read_text_any_within(2);
+    let same = match expected {
+        Some(t) => now_text.as_deref() == Some(t),
+        // 没取到词：只有"内容还是备份时那一份"才算没人动过
+        None => now_text == s.text(),
+    };
+    if !same {
+        crate::win::log("clip: 期间剪贴板里出现了新内容（多半是用户自己又复制了一次）—— 跳过还原，不覆盖它");
+        return;
+    }
+    restore(s);
+}
 pub fn restore_if_unchanged(s: &Snapshot) {
     let now = seq();
     if now != s.seq {
@@ -1091,6 +1120,57 @@ mod tests {
     ///
     /// ⚠ 只测语义，不测实现细节；剪贴板打不开时（CI / 被占）第一步 set_text 就炸，
     ///   不会把断言悄悄跳过。
+    /// **用户自己又复制了一次**时，绝不能还原（否则等于把他的复制抹掉）。
+    ///
+    /// # 它钉住的是用户报的那个 bug
+    ///
+    /// 「有时候 Ctrl+C 复制不上」。机制：取词结束时我们把"此刻序号"当成自己写的
+    /// （`note_our_write`），而用户可能正好在这一瞬间按了自己的 Ctrl+C ——
+    /// 于是基准被他"骗"过去，还原照着旧快照写回，用户刚复制的内容消失。
+    ///
+    /// 现在按**内容**判断：剪贴板里还是我们取走的那段才还原。
+    #[test]
+    fn 用户自己复制的新内容不许被还原覆盖() {
+        let _serial = serial();
+        use windows::Win32::System::DataExchange::EmptyClipboard;
+        const OLD: &str = "QS-R83-OLD-CONTENT";
+        const OURS: &str = "QS-R83-OUR-CAPTURE";
+        const THEIRS: &str = "QS-R83-USER-COPY";
+
+        assert!(set_text_wait(OLD), "测试前置：约 2.5 秒内拿不到剪贴板");
+        let Some(snap) = snapshot() else {
+            panic!("测试前置：拿不到剪贴板");
+        };
+
+        /* 回合 ①：剪贴板里是我们取走的那段 → 应当还原成 OLD */
+        assert!(set_text_wait(OURS));
+        restore_if_still_holds(&snap, Some(OURS));
+        assert_eq!(
+            read_text_any().as_deref(),
+            Some(OLD),
+            "内容还是我们取走的那段时应当还原（否则'选中就复制'会留在剪贴板里）"
+        );
+
+        /* 回合 ②：用户在这中间自己复制了 THEIRS → 一步都不能动 */
+        let Some(snap2) = snapshot() else {
+            panic!("测试前置：第二轮拿不到剪贴板");
+        };
+        assert!(set_text_wait(THEIRS));
+        restore_if_still_holds(&snap2, Some(OURS));
+        assert_eq!(
+            read_text_any().as_deref(),
+            Some(THEIRS),
+            "用户自己复制的内容必须原样保留 —— 被旧快照覆盖就是'Ctrl+C 复制不上'"
+        );
+
+        // 收尾：别把测试痕迹留在剪贴板里
+        if open_clipboard() {
+            unsafe {
+                let _ = EmptyClipboard();
+                let _ = CloseClipboard();
+            }
+        }
+    }
     #[test]
     fn 自己写完剪贴板后要重新对齐基准才还原() {
         let _serial = serial();   // 剪贴板是进程级单例，测试必须串行

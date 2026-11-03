@@ -1665,9 +1665,17 @@ fn capture_selection(target_pid: u32) -> Option<String> {
      *
      * 对齐之后，基准 = 我们写完那一刻；此后若再有写入（用户手动 Ctrl+C、
      * 别的程序写了东西），才是真的"别人动过"，那时跳过还原才是对的。 */
-    // 快照一定存在（拿不到早就 return None 了），直接标"这次写是我们自己干的"
-    snap.note_our_write();
-    clip::restore_if_unchanged(&snap);
+    /* v2.23.31：**还原前要比内容，不能只信序号**。
+     *
+     * 这里原来是 `snap.note_our_write()` —— 把"此刻"的序号当成我们写的。
+     * 但用户完全可能在这一瞬间自己按了 Ctrl+C（横条弹出来他觉得没复制上、
+     * 或者他本来就想复制），那一刻的序号是**他的**写入。基准被骗过去之后
+     * 下面的还原会把我们备份的旧内容写回剪贴板 —— 用户刚复制的东西就没了，
+     * 表现正是他报的「Ctrl+C 有时候没复制上」。
+     *
+     * 现在交给 `restore_if_still_holds`：剪贴板里还是我们取走的那段文字才还原，
+     * 出现了别的新内容就放手。 */
+    clip::restore_if_still_holds(&snap, got.as_deref());
     let t = got?;
     win::log(&format!("capture: 最终拿到 {} chars", t.chars().count()));
     Some(t)
@@ -1769,10 +1777,11 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
     }
     let wrote = clip::seq() != before;
     if wrote {
-        // 标一下"这次写是我们自己干的"，`restore_if_unchanged` 才不会把自己的写
-        // 误判成第三方改动
-        snap.note_our_write();
-        clip::restore_if_unchanged(&snap);
+        /* v2.23.31：**同样不能只信序号**（和 capture_selection 一个道理）。
+         * 用户在这一小段时间里自己 Ctrl+C 的话，序号同样会变，而"变"既可能
+         * 是我们那次合成复制、也可能是他这次手动复制 —— 用内容判断才安全：
+         * 剪贴板里还是我们取到的那段文字才还原，否则说明他复制了新东西。 */
+        clip::restore_if_still_holds(&snap, got.as_deref());
     }
     if got.is_none() {
         win::log(&format!(
