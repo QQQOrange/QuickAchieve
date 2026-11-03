@@ -11483,7 +11483,15 @@ async fn trans_run(
     let tgt = crate::trans::normalize_lang(target.as_deref().unwrap_or(&cfg.trans_target));
     let rnd = round.unwrap_or_default();
     crate::t::async_runtime::spawn_blocking(move || {
+        /* v2.23.40：**翻译这条链路原来完全静默**。
+         *
+         * 整份用户日志里 0 条 trans 记录 —— 出了"点了翻译没反应 / 结果不对"
+         * 之类的问题，日志里没有任何证据（连"到底发没发请求"都看不出来）。
+         * OCR 那条链路是照着"输入几家 / 各自几十字 / 用时多少"记的，
+         * 这里对齐同一口径：**只记字数与耗时，绝不记原文**。 */
+        let started = std::time::Instant::now();
         let Some(info) = trans_engines::find(&engine) else {
+            crate::win::log(&format!("trans_run: 不认识的引擎 {engine}"));
             return Err(format!("不认识的翻译引擎：{engine}"));
         };
         let creds = config::trans_creds(&cfg, info.id);
@@ -11494,6 +11502,22 @@ async fn trans_run(
         };
         // 尾巴上那一小段（不到 40ms 的最后几个字）也要发出去
         sink.flush();
+        match &out {
+            Ok(s) => crate::win::log(&format!(
+                "trans_run: {} → {} 成功，输入 {} 字 / 输出 {} 字，耗时 {}ms",
+                info.id,
+                tgt,
+                text.chars().count(),
+                s.chars().count(),
+                started.elapsed().as_millis()
+            )),
+            Err(e) => crate::win::log(&format!(
+                "trans_run: {} → {} 失败（{}ms）：{e}",
+                info.id,
+                tgt,
+                started.elapsed().as_millis()
+            )),
+        }
         out
     })
     .await
@@ -18205,7 +18229,13 @@ fn fav_copy(id: String) -> String {
         if bytes.is_empty() {
             return "这张图片解码失败".into();
         }
-        return if clip::set_image(&bytes) {
+        let ok = clip::set_image(&bytes);
+        win::log(&format!(
+            "fav_copy: id={id} kind=image {} 字节 结果={}",
+            bytes.len(),
+            if ok { "已复制" } else { "复制失败（剪贴板被占）" }
+        ));
+        return if ok {
             format!("已复制图片{}", if item.remark.is_empty() { "" } else { "：" }.to_string() + &item.remark)
         } else {
             "图片复制失败".into()
@@ -18222,6 +18252,15 @@ fn fav_copy(id: String) -> String {
     } else {
         clip::set_rich_text(&item.text, &item.html)
     };
+    /* v2.23.40：**结果要留痕**。原来这条链路只在"注入失败"时有日志，
+     * 正常走"复制到剪贴板"这条路一个字都不写 —— 用户报"点收藏没反应"时
+     * 日志里什么都查不到（本轮就是被这个绊住的：整份日志 0 条 fav_ 记录，
+     * 分不清是"没用过"还是"用了没生效"）。 */
+    win::log(&format!(
+        "fav_copy: id={id} kind=text html={} 结果={}",
+        if item.html.is_empty() { "否" } else { "是" },
+        if copied { "已复制" } else { "复制失败（剪贴板被占）" }
+    ));
     if copied {
         format!("已复制{}", if item.remark.is_empty() { "" } else { "：" }.to_string() + &item.remark)
     } else {
@@ -18267,6 +18306,8 @@ fn restore_focus_to(hwnd: HWND) {
 /// 「鼠标下面是谁、它有没有文本框」只有 Rust 侧在 `show_bar` 时的快照里存着。
 #[crate::t::command]
 fn fav_send(id: String) -> String {
+    // v2.23.40：入口留痕（"点了但没生效"和"根本没点"是两类完全不同的排查方向）
+    win::log(&format!("fav_send: id={id}"));
     let groups = match st().cfg.lock() {
         Ok(c) => c.favorites.clone(),
         Err(_) => return "配置读不了".into(),
