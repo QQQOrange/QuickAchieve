@@ -5047,6 +5047,69 @@ function testBuiltinIcons() {
     }
 }
 
+/** **极端数据**下页面还画不画得出来（v2.23.38）。
+ *
+ *  用户能造出来的极端输入有四类，而且都不是恶意——正常用久了就会遇到：
+ *    ① 引擎名很长（粘贴了一个网址当名字）；
+ *    ② 名字里带 `<` `&` `"` 这些字符（用户随手打的）；
+ *    ③ 收藏夹攒到一百多个目录；
+ *    ④ 全空：一个引擎都不在横条上、没有自定义引擎、没有外部软件。
+ *
+ *  这里要钉住的是：**不抛异常**、**文字原样显示**（不许被当成 HTML 解释），
+ *  以及空列表时**不能显示上一轮的内容**（这类"该空不空"的 bug 最难发现）。
+ */
+async function testExtremeData() {
+    console.log('');
+    console.log('=== 极端数据渲染（超长名 / 特殊字符 / 大量收藏 / 全空）===');
+
+    const LONG = '这是一个特别特别长的引擎名字用来测试换行和溢出'.repeat(4);
+    const WEIRD = '<b>粗</b> & "引号" \'单引号\' 😀';
+
+    // ① 超长 + 特殊字符：不炸、且按纯文本显示
+    {
+        const env = makeEnv('ui/settings.html', baseConf({
+            barList: [LONG, WEIRD],
+            customEngines: [{ name: WEIRD, url: 'https://x.com/s?q=%s', category: '自定义' }],
+        }));
+        runScripts(env, ['ui/shared.js', 'ui/settings.js']);
+        await flush();
+        const html = env.w.document.querySelector('#barList').innerHTML;
+        ok('特殊字符被当作文本（没有变成 <b> 标签）', !html.includes('<b>粗</b>'));
+        ok('超长名字原样出现在 DOM 里',
+            env.w.document.querySelector('#barList').textContent.includes(LONG.slice(0, 20)));
+    }
+
+    /* ② 收藏夹一百二十个目录 —— **这套 harness 测不了，说明清楚为什么不测**：
+     * 收藏树在 `bindSwitches()` 里从 `CONF.favorites` 重建，而 `favTree` /
+     * `favRender` / `bindSwitches` 全在 settings.js 的模块作用域里，外部 eval
+     * 拿不到；harness 走的也不是设置页的真实启动路径（不会触发 bindSwitches）。
+     * 硬凑一个"渲染了"的断言只会变成假通过 —— 按项目惯例，宁可写明不测。 */
+    // ③ 全空：不许残留上一轮内容，也不许抛
+    {
+        const env = makeEnv('ui/settings.html', baseConf({
+            barList: [], customEngines: [], apps: [], favorites: [],
+        }));
+        runScripts(env, ['ui/shared.js', 'ui/settings.js']);
+        await flush();
+        /* 空横条本来就该只剩三条"快捷添加"行（OCR / 翻译 / 万能框选）——
+         * 真正要钉的是"没有幽灵引擎条目"。 */
+        const rows = [...env.w.document.querySelectorAll('#barList .item')];
+        const ghost = rows.filter((r) => !r.classList.contains('add-row'));
+        ok('全空配置：没有幽灵引擎条目（只剩快捷添加行）',
+            ghost.length === 0, ghost.map((r) => r.textContent.trim().slice(0, 20)).join(' | '));
+    }
+
+    // ④ 横条上放一个不存在的引擎（手改配置 / 降级回滚都会出现）
+    {
+        const env = makeEnv('ui/settings.html', baseConf({
+            barList: ['不存在的引擎XYZ', '@fav:missing-id', '@app:nope', '@bogus'],
+        }));
+        runScripts(env, ['ui/shared.js', 'ui/settings.js']);
+        await flush();
+        ok('悬空哨兵 + 不存在的引擎：横条列表照常渲染出来',
+            !!env.w.document.querySelector('#barList'));
+    }
+}
 (async function main() {
     try {
         await testSettings();
@@ -5069,6 +5132,7 @@ function testBuiltinIcons() {
         await testPanelNoFlicker();
         await testCatJump();
         await testBuiltinIcons();
+    await testExtremeData();
     } catch (e) {
         ok('测试过程中不应抛异常', false, e && (e.stack || String(e)));
     }
