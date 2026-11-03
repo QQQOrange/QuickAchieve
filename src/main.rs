@@ -1724,6 +1724,69 @@ fn capture_selection(target_pid: u32) -> Option<String> {
 ///     永远跳过还原 —— 选区就永久留在剪贴板里；
 ///   · 这一轮**根本没写成功**（序号没动）就整段跳过还原：剪贴板一动没动，
 ///     去还原反而可能把别人刚写进去的东西抹掉。
+/// 「这个窗口最近对合成 Ctrl+C 没反应」——短时备忘，避免对同一目标反复空等。
+///
+/// # 为什么要它（实测）
+///
+/// 用户日志里 `capture(exact): 700ms 内没读到新内容（目标 pid=… 写没写=false）`
+/// 是**成对**出现的：同一次取词会复核两遍，两遍都注定失败，白等 1.4 秒。
+/// 一个程序不会在 100ms 内从"不响应合成按键"变成"响应"，所以记住它、
+/// 5 秒内直接跳过。
+static EXACT_DEAF: std::sync::OnceLock<std::sync::Mutex<Vec<(u32, std::time::Instant)>>> =
+    std::sync::OnceLock::new();
+
+fn exact_recently_deaf(pid: u32) -> bool {
+    let m = EXACT_DEAF.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    let Ok(g) = m.lock() else { return false };
+    g.iter()
+        .any(|(p, at)| *p == pid && at.elapsed() < Duration::from_secs(5))
+}
+
+fn exact_mark_deaf(pid: u32) {
+    let m = EXACT_DEAF.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut g) = m.lock() {
+        g.retain(|(p, at)| *p != pid && at.elapsed() < Duration::from_secs(5));
+        g.push((pid, std::time::Instant::now()));
+    }
+}
+
+fn exact_clear_deaf(pid: u32) {
+    let m = EXACT_DEAF.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut g) = m.lock() {
+        g.retain(|(p, _)| *p != pid);
+    }
+}
+/// 「这个窗口读不到选区」——每个进程只提示一次（本次运行内）。
+///
+/// # 为什么要提示
+///
+/// 微信 4.x（Qt）、部分 WPF 程序**没有 UIA 文本模式**，而它们又会忽略我们
+/// 模拟的 Ctrl+C。用户在那种窗口里划词的结果是：**什么都不发生**——
+/// 按用户 2026-10-30 的口径（常规划词不调 OCR，因为慢且不稳），这是
+/// 设计内的取舍，但"毫无反馈"会让人以为软件坏了。
+///
+/// 所以第一次遇到这种窗口时给一条**可操作**的提示：
+/// 「这个窗口读不到选区，要用截图识别就按 Ctrl+Alt+O」。
+static NO_UIA_HINTED: std::sync::OnceLock<std::sync::Mutex<Vec<u32>>> = std::sync::OnceLock::new();
+
+fn hint_no_uia_once(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+    let m = NO_UIA_HINTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut g) = m.lock() {
+        if g.contains(&pid) {
+            return;
+        }
+        g.push(pid);
+    }
+    /* 用横条上的提示条（`toast_settings` 那条路是设置窗的，这里用户在任意软件里，
+     * 走右下角系统提示更合适 —— 和「已使用：xxx」同一张卡片）。 */
+    crate::toast_to_settings("这个窗口读不到选区（不支持系统无障碍文本）。想识别它的文字：按 Ctrl+Alt+O 截图识别");
+    win::log(&format!(
+        "hint: pid={pid} 读不到选区且不响应合成复制 —— 已提示改用截图识别（每个程序只提示一次）"
+    ));
+}
 fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
     /* ⚠ 先确认「前台还是它」再塞 Ctrl+C。
      *
@@ -1785,9 +1848,31 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
         win::log("capture(exact): 用户正按着修饰键，跳过这次模拟复制");
         return None;
     }
+    /* v2.23.39：这个窗口 5 秒内刚证明过"对合成 Ctrl+C 没反应"就直接认输，
+     * 不再陪着空等一整轮（实测同一目标会被复核两遍）。 */
+    if exact_recently_deaf(target_pid) {
+        win::log(&format!(
+            "capture(exact): 目标 pid={target_pid} 刚证明不响应合成复制，跳过这一轮（不再空等）"
+        ));
+        clip::restore_if_still_holds(&snap, None);
+        return None;
+    }
     let t0 = std::time::Instant::now();
     let mut got: Option<String> = None;
+    let mut left_target = false;
     while t0.elapsed() < Duration::from_millis(budget_ms) {
+        /* v2.23.39：**用户已经切到别的窗口了就别再等**。
+         *
+         * 实测（用户日志）：这条复核经常"等满 700ms 然后失败"——
+         * 因为它对着一份**早就不会再响应合成 Ctrl+C** 的程序傻等
+         * （日志里 `写没写=false` 成对出现，每对 1.4 秒）。
+         * 而窗口已经换了人，这次复核拿到的也只会是别人的剪贴板。
+         * 提前收手还有一个好处：`CLIP_LOCK` 少被占 700ms，
+         * 用户自己按 Ctrl+C 时不会撞上我们。 */
+        if win::window_pid(win::foreground_window()) != target_pid {
+            left_target = true;
+            break;
+        }
         if clip::seq() != before {
             if let Some(t) = clip::read_text_any() {
                 let t = t.trim().to_string();
@@ -1804,6 +1889,12 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
         std::thread::sleep(Duration::from_millis(25));
     }
     let wrote = clip::seq() != before;
+    /* 记一笔：没写进剪贴板 = 这个窗口不响应合成复制，5 秒内别再来一次 */
+    if !wrote && got.is_none() {
+        exact_mark_deaf(target_pid);
+    } else if wrote {
+        exact_clear_deaf(target_pid);
+    }
     if wrote {
         /* v2.23.31：**同样不能只信序号**（和 capture_selection 一个道理）。
          * 用户在这一小段时间里自己 Ctrl+C 的话，序号同样会变，而"变"既可能
@@ -1813,7 +1904,13 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
     }
     if got.is_none() {
         win::log(&format!(
-            "capture(exact): {budget_ms}ms 内没读到新内容（目标 pid={target_pid} 写没写={wrote}）"
+            "capture(exact): {} 内没读到新内容（目标 pid={target_pid} 写没写={wrote}）{}",
+            if left_target {
+                format!("提前收手（已用了 {}ms）", t0.elapsed().as_millis())
+            } else {
+                format!("{budget_ms}ms")
+            },
+            if left_target { "，前台已经换了窗口" } else { "" }
         ));
     }
     got
@@ -4248,6 +4345,9 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
     }
     if need_text {
         win::log("confirm: 复制通道没拿到文字，且「没取到文字就不弹」开着 —— 不拿屏幕识别顶替，不弹");
+        /* v2.23.39：这种窗口（Qt / WPF 自绘）划词会**毫无反应**，
+         * 给一次"改用截图识别"的提示，别让用户以为软件坏了。 */
+        hint_no_uia_once(target_pid);
         return None;
     }
     win::log("confirm: 复制通道没拿到 —— 改看屏幕（本地识别）确认选区");
