@@ -2074,6 +2074,22 @@
 
         <!-- v1.2.0：更新。一个开关 + 一个按钮 + 一块进度，都在这一张卡里 ——
              用户要的就是"在关于里面"能看到并操作。 -->
+        <!-- v2.23.36：**一键诊断**。用户（尤其新手）报问题时往往只能说"它不动了"，
+             而真正要看的是版本 / Windows / WebView2 / 权限 / 数据目录 / 关键开关 /
+             日志里的异常行。这些散落在三处，让用户自己翻不现实 —— 点一下复制成一段
+             纯文本，粘进聊天窗口即可。不含任何用户内容。 -->
+        <div class="tools">
+            <div class="tools-title">诊断</div>
+            <div class="hint">遇到问题想让别人帮你看，点下面的按钮把环境信息复制出来。
+                里面只有版本号、系统信息、开关状态和最近几条异常日志，<b>不包含任何你复制过的文字</b>。</div>
+            <div class="row">
+                <div class="rt"><b>复制诊断信息</b>
+                    <small>版本 / Windows / WebView2 / 权限 / 数据目录 / 关键开关 / 日志尾部异常</small>
+                </div>
+                <button type="button" class="btn ghost" id="btnDiag">复制诊断信息</button>
+            </div>
+        </div>
+
         <div class="tools">
             <div class="tools-title">更新</div>
             <div class="upd">

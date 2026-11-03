@@ -284,6 +284,67 @@ pub fn log_sync(msg: &str) {
 /// 判断依据很直接：拿托盘宿主窗口（`QS_TrayHostWnd`，每个实例都有）反查 PID，
 /// 再比"进程创建时间"和"exe 文件的修改时间" —— 进程比文件还早，说明它跑的
 /// 是已经被替换掉的旧映像。
+/// 人类可读的 Windows 版本，例如 `Windows 11 26100`。
+///
+/// # 为什么不用 `GetVersionExW` / `GetVersion`
+///
+/// 那两个 API 在**没有应用清单**时会撒谎：Win8.1 之后一律返回 6.2。
+/// `RtlGetVersion`（ntdll）不受这个兼容性垫片影响，返回真实版本，
+/// 而且不需要任何权限。这里手写 `OSVERSIONINFOEXW` 布局，避免为了一个
+/// 版本号去开 `windows` crate 的 Win32_System_SystemInformation 特性。
+pub fn os_version_string() -> String {
+    /* `[u16; 128]` 没有实现 Default，所以手写一个全零的构造 */
+    #[repr(C)]
+    struct OsVersionInfoExW {
+        size: u32,
+        major: u32,
+        minor: u32,
+        build: u32,
+        platform: u32,
+        csd: [u16; 128],
+        service_pack_major: u16,
+        service_pack_minor: u16,
+        suite_mask: u16,
+        product_type: u8,
+        reserved: u8,
+    }
+    impl OsVersionInfoExW {
+        fn zeroed() -> Self {
+            // SAFETY: 全体字段都是整数数组/POD，全零是合法初值
+            unsafe { std::mem::zeroed() }
+        }
+    }
+    extern "system" {
+        fn RtlGetVersion(info: *mut OsVersionInfoExW) -> i32;
+    }
+    let mut info = OsVersionInfoExW::zeroed();
+    info.size = std::mem::size_of::<OsVersionInfoExW>() as u32;
+    let ok = unsafe { RtlGetVersion(&mut info) } == 0;
+    if !ok || info.major == 0 {
+        return format!("Windows（未知版本，{} 位）", if cfg!(target_pointer_width = "64") { 64 } else { 32 });
+    }
+    // Win11 与 Win10 的 major.minor 都是 10.0，靠 build 号区分（22000 起为 11）
+    let name = if info.major == 10 && info.build >= 22000 {
+        "Windows 11"
+    } else if info.major == 10 {
+        "Windows 10"
+    } else if info.major == 6 && info.minor == 3 {
+        "Windows 8.1"
+    } else if info.major == 6 && info.minor == 2 {
+        "Windows 8"
+    } else if info.major == 6 && info.minor == 1 {
+        "Windows 7"
+    } else {
+        "Windows"
+    };
+    let bits = if cfg!(target_pointer_width = "64") { 64 } else { 32 };
+    if name == "Windows" {
+        // 认不出来的版本才把 major.minor 一起报出来，便于排查
+        format!("Windows {}.{} build {build} ({bits} 位)", info.major, info.minor, build = info.build)
+    } else {
+        format!("{name} build {build} ({bits} 位)", build = info.build)
+    }
+}
 pub fn other_instance_is_stale() -> bool {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};

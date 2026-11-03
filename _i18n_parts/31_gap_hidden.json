@@ -1,0 +1,19 @@
+{
+  "：行首勾选 = 参与搜索；「设为默认」= 截图完成直接搜它； 「换图标」给它挑张图（横条上跟着变，": ": the checkbox means it takes part; “Set as default” makes it the one a box selection goes straight to; “Change icon” lets you pick an image for it (the bar follows immediately, ",
+  "选完自动进图标编辑器": "and picking one opens the icon editor",
+  "可以抠背景）；「?」打开这家的官方页面 / 使用教程。": "to remove the background); “?” opens that engine's official page / how-to.",
+  "关掉的话仍然可以从设置页点「框一次试试」发起识图": "Turning it off only hides the 🖼 button — you can still start image search from Settings with “Try a capture”",
+  "划词横条 · 网格页 · 777 个引擎 · 软件直达 · 文字识别（本地 + 多在线引擎并行） · 翻译 · 截图识图 · 收藏夹 · 二维码 · 加密备份 · WebDAV 同步": "Selection bar · grid page · 777 engines · direct app launch · OCR (local + several online engines in parallel) · translation · image search · favourites · QR codes · encrypted backups · WebDAV sync",
+  "图标在数据目录的": "Icons live in",
+  "里，配置是同目录的": "inside the data folder, next to",
+  "（便携优先：默认就在 exe 同级的": "(portable first: by default right next to the exe, in",
+  "；那里写不进去才退回": "; only if that is not writable does it fall back to",
+  "）—— 具体路径见「数据」页顶部的「打开配置目录」。": ") — for the exact path see “Open config folder” at the top of the “Data” page.",
+  "只有一个网格页时不用切": "No need to switch while there is only one grid page",
+  "新页名字，如「工作」": "Name for the new page, e.g. “Work”",
+  "改完按回车或点旁边空白处生效": "Press Enter or click elsewhere to apply",
+  "从电脑里挑一张图片（选完自动进编辑器）": "Pick an image from your computer (the editor opens right after)",
+  "把「万能框选」放到横条上 —— 框完先不做事，弹动作条让你挑": "Put “capture anything” on the bar — after capturing, nothing runs until you pick an action",
+  "https://example.com ｜ D://Tools//App.exe ｜ %USERPROFILE%\\Desktop\\清单.xlsx": "https://example.com | D://Tools//App.exe | %USERPROFILE%\\Desktop\\list.xlsx",
+  "搜引擎 / 智能直达 / 收藏夹 / 附加功能…": "Search engines / smart jump / favourites / extras…"
+}

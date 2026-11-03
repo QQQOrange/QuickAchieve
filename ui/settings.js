@@ -4117,6 +4117,20 @@ $('btnDir').addEventListener('click', () => invoke('open_data_dir'));
 // 「退出 Quick Achieve」按钮已删：没有账号体系，退出走托盘右键菜单
 // （quit_app 命令保留，托盘还在用）。
 $('btnExport').addEventListener('click', () => invoke('export_config'));
+/* v2.23.36：一键诊断。复制动作在**后端**做（`clip::set_text`）——
+ * 不依赖 WebView2 里 navigator.clipboard 的权限 / 安全上下文。 */
+if ($('btnDiag')) {
+    $('btnDiag').addEventListener('click', () => {
+        invoke('copy_diagnostics')
+            .then((text) => {
+                const n = String(text || '').length;
+                toast(n > 0
+                    ? '诊断信息已复制（' + n + ' 字），粘贴给别人即可'
+                    : '诊断信息是空的，稍后再试');
+            })
+            .catch((e) => toast('复制失败：' + ((e && e.message) || e)));
+    });
+}
 $('btnImport').addEventListener('click', () => invoke('import_config'));
 $('btnReset').addEventListener('click', async () => {
     await invoke('reset_all');

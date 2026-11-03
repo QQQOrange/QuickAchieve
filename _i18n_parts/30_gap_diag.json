@@ -1,0 +1,11 @@
+{
+  "诊断": "Diagnostics",
+  "遇到问题想让别人帮你看，点下面的按钮把环境信息复制出来。 里面只有版本号、系统信息、开关状态和最近几条异常日志，": "If you need someone to look at a problem, copy the environment info with the button below. It only contains version numbers, system info, switch states and the last few error lines — ",
+  "不包含任何你复制过的文字": "no text you ever copied",
+  "复制诊断信息": "Copy diagnostics",
+  "版本 / Windows / WebView2 / 权限 / 数据目录 / 关键开关 / 日志尾部异常": "Version / Windows / WebView2 / privileges / data folder / key switches / tail of the log",
+  "诊断信息已复制（": "Diagnostics copied (",
+  " 字），粘贴给别人即可": " chars) — paste it wherever you need",
+  "诊断信息是空的，稍后再试": "The diagnostics text is empty; try again in a moment",
+  "复制失败：": "Copy failed: "
+}

@@ -7056,6 +7056,143 @@ fn broadcast() {
     let _ = a.emit_to("ocr", "qs://config", v);
 }
 
+/// **一键诊断**：把"排查问题时第一眼要看的东西"汇总成一段纯文本。
+///
+/// # 为什么要有它
+///
+/// 用户（尤其是不熟技术的）遇到问题时报过来的描述往往是"它不动了" ——
+/// 而真正需要的是：版本、Windows 版本、WebView2 版本、权限、
+/// 数据目录、关键开关、以及日志里最近几条异常。这些散落在三个地方
+/// （设置页 / 托盘 / log.txt），让用户自己去翻不现实。
+///
+/// 这里一次给全，用户点一下复制、粘进聊天窗口即可。**不含任何用户内容**
+/// （不读剪贴板、不读引擎列表以外的文本、日志只留判定过形态的几行）。
+/// 把诊断文本复制进剪贴板，并**返回它**（前端拿返回值弹提示）。
+///
+/// 为什么复制放在后端：`navigator.clipboard` 在 WebView2 里要权限 / 安全上下文，
+/// 而 `clip::set_text` 是我们自己维护的成熟路径（写失败会返回 false）。
+#[crate::t::command]
+fn copy_diagnostics() -> Result<String, String> {
+    let text = diagnostics_text();
+    if !clip::set_text(&text) {
+        return Err("复制失败（剪贴板被别的程序占用，稍后再试）".into());
+    }
+    win::log(&format!("diag: 已复制诊断信息（{} 字）", text.chars().count()));
+    Ok(text)
+}
+
+#[crate::t::command]
+fn diagnostics_text() -> String {
+    let cfg = cfg_snapshot();
+    let mut s = String::new();
+    let push = |s: &mut String, k: &str, v: &str| {
+        s.push_str(&format!("{k}: {v}\n"));
+    };
+
+    push(&mut s, "Quick Achieve", config::VERSION);
+    let exe = std::env::current_exe().unwrap_or_default();
+    let exe_ver = win::exe_file_version(&exe)
+        .map(|(a, b, c)| format!("{a}.{b}.{c}"))
+        .unwrap_or_else(|| "?".into());
+    push(&mut s, "exe 文件版本", &exe_ver);
+    push(&mut s, "exe 路径", &exe.display().to_string());
+
+    push(&mut s, "Windows", &win::os_version_string());
+    push(&mut s, "架构", std::env::consts::ARCH);
+    push(
+        &mut s,
+        "WebView2",
+        &win::webview2_version().unwrap_or_else(|| "未检测到".into()),
+    );
+    push(&mut s, "管理员权限", if win::is_admin() { "是" } else { "否" });
+    push(
+        &mut s,
+        "提权偏好",
+        &match crate::read_local_elevate_pref() {
+            Some(true) => "总是以管理员运行".to_string(),
+            Some(false) => "从不提权".to_string(),
+            None => "未表态（按构建默认）".to_string(),
+        },
+    );
+
+    let dir = config::data_dir();
+    push(&mut s, "数据目录", &dir.display().to_string());
+    let cfg_path = config::config_path();
+    push(
+        &mut s,
+        "config.json",
+        &format!(
+            "{:.1} KB",
+            std::fs::metadata(&cfg_path).map(|m| m.len() as f64 / 1024.0).unwrap_or(0.0)
+        ),
+    );
+    let log_path = dir.join("log.txt");
+    push(
+        &mut s,
+        "log.txt",
+        &format!(
+            "{:.0} KB",
+            std::fs::metadata(&log_path).map(|m| m.len() as f64 / 1024.0).unwrap_or(0.0)
+        ),
+    );
+    let bdir = config::backup_dir_of(&cfg);
+    let backups = std::fs::read_dir(&bdir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .filter(|e| e.path().is_file())
+                .count()
+        })
+        .unwrap_or(0);
+    push(&mut s, "备份目录", &bdir.display().to_string());
+    push(&mut s, "备份份数", &backups.to_string());
+
+    push(&mut s, "界面语言", if cfg.ui_lang.is_empty() { "zh" } else { &cfg.ui_lang });
+    push(&mut s, "主题", &cfg.theme);
+    push(&mut s, "触发方式", if cfg.trigger_select { "划词" } else { "按住Ctrl" });
+    push(&mut s, "Ctrl+C 触发", if cfg.trigger_copy { "开" } else { "关" });
+    push(&mut s, "横条格数", &cfg.bar_list.len().to_string());
+    push(&mut s, "自定义引擎", &cfg.custom_engines.len().to_string());
+    push(&mut s, "外部软件", &cfg.apps.len().to_string());
+    push(&mut s, "OCR 引擎", &cfg.ocr_engine);
+    push(
+        &mut s,
+        "网格页",
+        &format!(
+            "{}（{}）",
+            if cfg.grid_enable { "开" } else { "关" },
+            cfg.grid_hotkey
+        ),
+    );
+    push(&mut s, "收藏夹热键", &cfg.fav_hotkey);
+    push(
+        &mut s,
+        "WebDAV",
+        &format!(
+            "{}（启动同步 {}）",
+            if cfg.webdav_on_start || cfg.webdav_on_exit { "开" } else { "关" },
+            if cfg.webdav_on_start { "是" } else { "否" }
+        ),
+    );
+
+    /* 日志尾部：只挑"看起来是异常"的行，且**去掉时间戳里的噪声格式**。
+     * 最多 12 行 —— 再长用户粘着也费劲。 */
+    let tail = std::fs::read_to_string(&log_path).unwrap_or_default();
+    let marks = ["失败", "错误", "panic", "PANIC", "异常", "超时", "拒绝", "ERR="];
+    let hits: Vec<&str> = tail
+        .lines()
+        .filter(|l| marks.iter().any(|m| l.contains(m)))
+        .rev()
+        .take(12)
+        .collect();
+    if !hits.is_empty() {
+        s.push_str("\n-- 日志里最近 12 条异常 --\n");
+        for l in hits.iter().rev() {
+            s.push_str(l);
+            s.push('\n');
+        }
+    }
+    s
+}
 #[crate::t::command]
 fn get_config() -> Value {
     config_view()
@@ -21082,7 +21219,15 @@ fn main() {
      * 验证（要先真的把 Ctrl 按住）。这个 run-and-exit 探针让外部脚本能：
      *   ① 什么都不按时 → MODS=false SENT=true（正常发）；
      *   ② 按住 Ctrl 时   → MODS=true  SENT=false（跳过，正是我们要的）。 */
-    if flag("--ctrlc-probe") {
+    /* --diag-probe：把「复制诊断信息」那段原样打到 stdout 然后退出。
+     * 用途：① 我这边能实测输出是否合理；② 用户遇到问题时可以跑一次把结果贴出来
+     * （不写剪贴板、不动配置）。 */
+    if flag("--diag-probe") {
+        crate::PROBE.store(true, Ordering::SeqCst);
+        init_state();
+        println!("{}", diagnostics_text());
+        std::process::exit(0);
+    }    if flag("--ctrlc-probe") {
         let mods = win::modifiers_down();
         let sent = if mods { false } else { win::send_ctrl_c() };
         println!("MODS={mods}");
@@ -21511,6 +21656,9 @@ fn main() {
     crate::t::Builder::default()
         .invoke_handler(crate::t::generate_handler![
             get_config,
+            // v2.23.36：一键诊断（设置页「关于」里的「复制诊断信息」）
+            diagnostics_text,
+            copy_diagnostics,
             set_setting,
             set_settings,
             // v2.6.8：右下角内置提示（toast.html 用）

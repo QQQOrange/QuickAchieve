@@ -125,6 +125,16 @@ async function page(file) {
     w.QS_I18N.setLang('en');
     await new Promise((r) => setTimeout(r, 120));
 
+    /* ⚠ v2.23.36：**先把隐藏元素全亮出来再数**。
+     *
+     * 原来 `shouldSkip` 里有一句 `if (el.hidden) return true;` —— 设置页的分页
+     * 全是 `hidden` 的，于是「非当前分页」里的中文**一个都检查不到**。
+     * 实测就是这么漏掉的：新加的「复制诊断信息」整块在「关于」分页里，
+     * 覆盖率却报"残留 1 条"（那 1 条还是语言自称）。
+     *
+     * 现在统一把 `[hidden]` 去掉再走：宁可多查，也不要漏查。 */
+    for (const el of w.document.querySelectorAll('[hidden]')) el.hidden = false;
+
     const misses = new Map();
     const walk = (n) => {
         if (n.nodeType === 3) {
