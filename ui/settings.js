@@ -3840,7 +3840,11 @@ function qsSetText(id, s) {
 let findIndex = null;
 
 function findPaneName(pane) {
-    const nav = document.querySelector('#tabs button[data-tab="' + pane + '"]');
+    /* 子页（备份 / 帮助 / 数据…）没有顶栏 tab，只有分页里的 chip。
+     * 原来只查 `#tabs button[data-tab]`，于是这些页在结果列表里显示成英文 key
+     * （"backup" / "help"）—— 用户看到的是"这一半中文一半英文"的怪东西。 */
+    const nav = document.querySelector('#tabs button[data-tab="' + pane + '"]')
+        || document.querySelector('.subnav .chip[data-sub="' + pane + '"]');
     if (!nav) return pane;
     /* ⚠ 先把图标那个 span 的文字**精确**摘掉，再用剩下的当分页名。
      * 我第一版是用一条"去掉行首非空白"的正则去剪，而那条正则里的量词是
@@ -3849,7 +3853,9 @@ function findPaneName(pane) {
     let label = nav.textContent || '';
     const icon = nav.querySelector('.tb-i');
     if (icon) label = label.replace(icon.textContent || '', '');
-    label = label.trim();
+    // 顶栏 tab 的图标在 `.tb-i` 里，而分页里的 chip 是把 emoji 直接写在文字里的
+    // （`☁️ 备份与同步`）—— 把开头那串非文字字符一并剪掉，两种写法都干净。
+    label = label.replace(/^[^\p{L}\p{N}]+/u, '').trim();
     return label || pane;
 }
 
@@ -3887,6 +3893,9 @@ let findCursor = -1;
 function findReveal(el) {
     for (let n = el; n && n !== document.body; n = n.parentElement) {
         if (n.hidden) n.hidden = false;
+        /* 折叠的 `<details>` 也要打开：帮助页 / 本地 OCR 环境那些说明都在
+         * `<details>` 里，只摘 `hidden` 的话跳过去看到的是一片空白。 */
+        if (n.tagName === 'DETAILS') n.open = true;
     }
     try {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });

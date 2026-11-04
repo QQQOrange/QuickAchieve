@@ -5157,6 +5157,30 @@ async function testSettingsSearch() {
     input.dispatchEvent(new env.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await flush();
     ok('Esc 关闭结果列表', $('setSearchList').hidden === true);
+
+    /* ---- 子页面（备份 / 帮助…）的两条真 bug（v2.23.42）---- */
+    // ① 结果列表里的分页名：子页没有顶栏 tab，只有 chip，原来是显示英文 key
+    input.value = '云端';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    const subItems = [...$('setSearchList').querySelectorAll('.find-item')];
+    ok('子页结果能搜出来', subItems.length > 0, '实际 ' + subItems.length + ' 条');
+    const subPane = subItems.map((x) => x.querySelector('.fi-p').textContent).join(' | ');
+    ok('子页的分页名是中文而不是英文 key（backup/help）',
+        !/backup|help|data|about/i.test(subPane), subPane);
+
+    // ② 跳进折叠的 <details>：必须把它打开，否则跳过去是一片空白
+    //    （`<details class="help-item">` 全在帮助页里，见 settings.html）
+    const det = env.w.document.querySelector('.pane[data-pane="help"] details.help-item');
+    ok('帮助页里有折叠的 details（这条用例前提）', !!det);
+    if (det) {
+        det.open = false;
+        // findReveal 在模块作用域里，外部 eval 拿不到闭包参数 —— 挂到 window 上再调
+        env.w.__revealTarget = det.querySelector('summary') || det;
+        env.w.eval('findReveal(window.__revealTarget)');
+        await flush();
+        ok('跳到折叠区时自动展开 details', det.open === true);
+    }
 }
 (async function main() {
     try {

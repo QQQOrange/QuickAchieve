@@ -76,7 +76,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
  * 顶栏中间那个输入框 + 下拉结果。定位用 absolute，结果列表宽度跟着输入框，
  * 不参与 top 的 flex 计算 —— 打开设置页时布局一动不动。
  * 颜色全部走令牌，亮暗两档自动跟随。 */
-.find { position: relative; flex: 1 1 auto; max-width: 380px; margin: 0 16px; }
+/* 搜索框可以收缩（min-width:0 才能真的缩），但不能被挤没；\n   右侧版本号反过来是 lex: none + 不换行 —— 两边的优先级别搞反 */
+.find { position: relative; flex: 1 1 auto; min-width: 140px; max-width: 380px; margin: 0 16px; }
 .find input {
     width: 100%;
     height: 30px;
@@ -88,18 +89,32 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     border: 1px solid var(--line);
     border-radius: var(--radius-ctl);
     outline: none;
-    /* 放大镜用背景图，省一个 DOM 节点；颜色跟着 currentColor 走不了，
-       所以用 mask 叠一层 --fg-dim 的圆+柄。 */
-    background-image:
-        radial-gradient(circle at 11px 12px, transparent 0 3.2px, var(--fg-dim) 3.2px 4.6px, transparent 4.6px),
-        linear-gradient(45deg, transparent 0 8.2px, var(--fg-dim) 8.2px 9.6px, transparent 9.6px),
-        linear-gradient(45deg, transparent 0 9.2px, var(--fg-dim) 9.2px 10.4px, transparent 10.4px);
-    background-repeat: no-repeat;
-    background-position: 0 0, 0 0, 0 0;
-    background-size: 22px 22px, 12px 8px, 14px 8px;
-    background-position-y: 4px;
     transition: border-color .12s var(--ease), background-color .12s var(--ease);
 }
+/* 放大镜图标：挂在**容器的伪元素**上。
+ *
+ * ⚠ 不能直接把 `mask-image` 放在 `<input>` 上：mask 遮的是**整个元素**，
+ * 输入框的底色和边框会一起被遮成"一个放大镜形状的洞"。
+ * 伪元素 + `pointer-events: none` 才是对的：形状归它，交互照旧归输入框。 */
+.find::before {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: 8px;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    background-color: var(--fg-dim);
+    -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'><circle cx='6.5' cy='6.5' r='4.5'/><path d='M10.2 10.2 14.2 14.2'/></svg>");
+    mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'><circle cx='6.5' cy='6.5' r='4.5'/><path d='M10.2 10.2 14.2 14.2'/></svg>");
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 14px 14px;
+    mask-size: 14px 14px;
+    transition: background-color .12s var(--ease);
+}
+/* 聚焦时图标跟着强调色走（和边框一起变，读起来是"这个框醒了"） */
+.find:focus-within::before { background-color: var(--accent); }
 .find input::placeholder { color: var(--fg-dim); }
 .find input:focus { border-color: var(--accent); background-color: var(--card); }
 .find-list {
@@ -137,7 +152,7 @@ body { display: flex; flex-direction: column; overflow: hidden; }
     100% { background: transparent; }
 }
 .find-hit { animation: qsFindFlash 1.2s var(--ease); }
-.ver { font-size: 11px; color: var(--fg-dim); }
+.ver { flex: none; white-space: nowrap; font-size: 11px; color: var(--fg-dim); }
 
 /* ------------------------------ 主体 ------------------------------
    r56：左边多了一列目录（.tabs 变成 168px 侧栏，见下面「左侧目录」），
