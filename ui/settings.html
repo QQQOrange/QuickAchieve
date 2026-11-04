@@ -15,6 +15,18 @@
         <span class="dot"></span>
         <span>Quick Achieve<em>桌面版</em></span>
     </div>
+    <!-- v2.23.41：**设置项搜索**。
+         这个页面已经有十来个分页、上千行说明，用户想找"顺带把横条收起"
+         或"清空剪贴板"只能靠翻。搜索框把「知道名字但不知道在哪一页」
+         这一类查找从"翻三分钟"变成"打两个字"。
+         交互在 settings.js 的 bindSettingsSearch()：输入即筛、↑↓ 选择、
+         回车跳到那一行并高亮。 -->
+    <div class="find">
+        <input type="search" id="setSearch" autocomplete="off" spellcheck="false"
+               placeholder="搜设置项…（如：自动收起 / 剪贴板 / 主题）"
+               aria-label="搜索设置项">
+        <div class="find-list" id="setSearchList" hidden></div>
+    </div>
     <div class="ver" id="ver"></div>
 </header>
 

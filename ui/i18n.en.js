@@ -1354,7 +1354,10 @@ window.QS_I18N.add({
     "从电脑里挑一张图片（选完自动进编辑器）": "Pick an image from your computer (the editor opens right after)",
     "把「万能框选」放到横条上 —— 框完先不做事，弹动作条让你挑": "Put “capture anything” on the bar — after capturing, nothing runs until you pick an action",
     "https://example.com ｜ D://Tools//App.exe ｜ %USERPROFILE%\\Desktop\\清单.xlsx": "https://example.com | D://Tools//App.exe | %USERPROFILE%\\Desktop\\list.xlsx",
-    "搜引擎 / 智能直达 / 收藏夹 / 附加功能…": "Search engines / smart jump / favourites / extras…"
+    "搜引擎 / 智能直达 / 收藏夹 / 附加功能…": "Search engines / smart jump / favourites / extras…",
+    "搜设置项…（如：自动收起 / 剪贴板 / 主题）": "Search settings… (e.g. auto-hide / clipboard / theme)",
+    "搜索设置项": "Search settings",
+    "没找到相关设置": "No matching setting"
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

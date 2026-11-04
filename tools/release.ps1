@@ -84,6 +84,18 @@ try {
         Ok ("$suite  " + ($out | Select-Object -Last 1))
     }
 
+    # v2.23.41：**英文覆盖也进发布门槛**。
+    # 原来它只是"我偶尔手动跑一次"—— 而漏跑一次就等于把没翻译的中文带进版本
+    # （v2.23.36 就是这么漏的：整块「复制诊断信息」在隐藏分页里，没人发现）。
+    # 允许的残留只有三类应当保留中文的（语言自称 / 引擎名），阈值 3 写在
+    # tools/check-all.js 里，超了直接拦住发布。
+    $cov = node tools/check-all.js --quiet 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host $cov
+        Fail 'tools/check-all.js：前端自检有失败项（含英文覆盖超阈值）'
+    }
+    Ok '前端四项自检（UI / 页面 / 命令表 / 英文覆盖）全部通过'
+
     Step '3/7 构建 release'
     $env:ORT_SKIP_DOWNLOAD = '1'
     cargo build --release --message-format=short 2>&1 |

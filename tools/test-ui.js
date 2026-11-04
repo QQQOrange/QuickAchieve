@@ -5110,6 +5110,54 @@ async function testExtremeData() {
             !!env.w.document.querySelector('#barList'));
     }
 }
+/** 设置项搜索（v2.23.41）：输入 → 出结果（带分页）→ 回车 → 跳到那一页并高亮。 */
+async function testSettingsSearch() {
+    console.log('');
+    console.log('=== 设置项搜索（顶栏输入框）===');
+
+    const env = makeEnv('ui/settings.html', baseConf());
+    runScripts(env, ['ui/shared.js', 'ui/settings.js']);
+    await flush();
+    env.w.eval('bindSettingsSearch()');
+    await flush();
+
+    const $ = (id) => env.w.document.getElementById(id);
+    const input = $('setSearch');
+    ok('顶栏有搜索框', !!input);
+    if (!input) return;
+
+    // 输入一个只在某个分页里出现的词 → 出结果
+    input.value = '自动收起';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    const list = $('setSearchList');
+    ok('输入后弹出结果列表', !!list && list.hidden === false);
+    const items = [...list.querySelectorAll('.find-item')];
+    ok('结果列表有内容', items.length > 0, '实际 ' + items.length + ' 条');
+    ok('结果里带所属分页名', items.length > 0 && /通用|外观|范围|引擎|关于/.test(items[0].textContent),
+        items.length ? items[0].textContent : '(空)');
+
+    // 回车 → 跳到对应分页
+    input.dispatchEvent(new env.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    const activePane = [...env.w.document.querySelectorAll('.pane[data-pane]')]
+        .filter((p) => !p.hidden).map((p) => p.dataset.pane);
+    ok('回车后跳到了对应分页（有且只有一个 pane 可见）', activePane.length === 1, activePane.join(','));
+    ok('跳过去之后输入框已清空', input.value === '');
+    ok('结果列表已收起', $('setSearchList').hidden === true);
+
+    // 搜一个不存在的词 → 明确说"没找到"
+    input.value = 'zzzz不存在的设置zzzz';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    ok('搜不到时给出明确提示', /没找到/.test($('setSearchList').textContent),
+        $('setSearchList').textContent.slice(0, 40));
+
+    // Esc 关闭
+    input.dispatchEvent(new env.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    ok('Esc 关闭结果列表', $('setSearchList').hidden === true);
+}
 (async function main() {
     try {
         await testSettings();
@@ -5133,6 +5181,7 @@ async function testExtremeData() {
         await testCatJump();
         await testBuiltinIcons();
     await testExtremeData();
+    await testSettingsSearch();
     } catch (e) {
         ok('测试过程中不应抛异常', false, e && (e.stack || String(e)));
     }

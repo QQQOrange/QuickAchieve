@@ -3828,6 +3828,181 @@ function qsSetText(id, s) {
     if (el) el.textContent = s;
 }
 
+/* ==================== 设置项搜索（v2.23.41） ====================
+ *
+ * 这个页面有十来个分页、上千行说明。用户想找"顺带把横条收起"只能翻三分钟，
+ * 所以顶栏加了搜索框：输入 → 出结果（带所属分页）→ ↑↓ 选择 → 回车跳过去并闪一下。
+ *
+ * 索引不是一次性死表：分页里的列表（引擎 / 收藏 / 软件）会被配置广播重建，
+ * 而**设置行本身**（.row）是静态 HTML，不会重建 —— 所以索引可以只建一次；
+ * 真要碰上元素被换掉（比如某个卡片被整体重画），跳转时会按"标题文字"重新查一次。
+ */
+let findIndex = null;
+
+function findPaneName(pane) {
+    const nav = document.querySelector('#tabs button[data-tab="' + pane + '"]');
+    if (!nav) return pane;
+    /* ⚠ 先把图标那个 span 的文字**精确**摘掉，再用剩下的当分页名。
+     * 我第一版是用一条"去掉行首非空白"的正则去剪，而那条正则里的量词是
+     * 贪婪的 —— 会把「⚙️通用」整串吃掉，分页名于是退回英文 key
+     * （测试里表现为"结果里没有分页名"）。 */
+    let label = nav.textContent || '';
+    const icon = nav.querySelector('.tb-i');
+    if (icon) label = label.replace(icon.textContent || '', '');
+    label = label.trim();
+    return label || pane;
+}
+
+function findBuildIndex() {
+    const out = [];
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    document.querySelectorAll('.pane[data-pane]').forEach((paneEl) => {
+        const pane = paneEl.dataset.pane;
+        const paneName = findPaneName(pane);
+        /* 一行的"标题"优先取 .rt > b；没有 .rt 的（开关行、小标题行）取自身文字。 */
+        paneEl.querySelectorAll('.row, .tools-title, .help-item > summary').forEach((el) => {
+            const b = el.querySelector('.rt > b, .rt b');
+            const label = norm(b ? b.textContent : el.textContent).split('\n')[0];
+            if (!label || label.length > 60) return;
+            const body = norm(el.textContent);
+            out.push({ pane, paneName, label, body, el });
+        });
+    });
+    findIndex = out;
+    return out;
+}
+
+function findClose() {
+    const list = $('setSearchList');
+    if (list) {
+        list.hidden = true;
+        list.textContent = '';
+    }
+    findCursor = -1;
+}
+
+let findCursor = -1;
+
+/** 把一个元素"亮出来"：摘掉祖先上的 hidden，滚到视野中间，闪一下。 */
+function findReveal(el) {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+        if (n.hidden) n.hidden = false;
+    }
+    try {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } catch (_) { }
+    el.classList.remove('find-hit');
+    // 强制回流，保证同一元素连续跳两次也会重播动画
+    void el.offsetWidth;
+    el.classList.add('find-hit');
+    setTimeout(() => el.classList.remove('find-hit'), 1400);
+}
+
+function bindSettingsSearch() {
+    const input = $('setSearch');
+    const list = $('setSearchList');
+    if (!input || !list) return;
+
+    const paint = () => {
+        const q = String(input.value || '').replace(/\s+/g, '').toLowerCase();
+        list.textContent = '';
+        findCursor = -1;
+        if (!q) {
+            list.hidden = true;
+            return;
+        }
+        const idx = findIndex || findBuildIndex();
+        const hits = idx
+            .filter((it) => {
+                const hay = (it.label + ' ' + it.body).replace(/\s+/g, '').toLowerCase();
+                return hay.includes(q);
+            })
+            .slice(0, 20);
+        if (!hits.length) {
+            const d = document.createElement('div');
+            d.className = 'find-empty';
+            d.textContent = '没找到相关设置';
+            list.appendChild(d);
+            list.hidden = false;
+            return;
+        }
+        hits.forEach((it, i) => {
+            const row = document.createElement('div');
+            row.className = 'find-item' + (i === 0 ? ' on' : '');
+            const t = document.createElement('span');
+            t.className = 'fi-t';
+            t.textContent = it.label;
+            const p = document.createElement('span');
+            p.className = 'fi-p';
+            p.textContent = it.paneName;
+            row.appendChild(t);
+            row.appendChild(p);
+            row.dataset.i = String(i);
+            row.addEventListener('mousedown', (e) => {
+                e.preventDefault();   // 别让输入框先失焦导致列表先关
+                findPick(hits[i]);
+            });
+            list.appendChild(row);
+        });
+        findCursor = 0;
+        list.hidden = false;
+    };
+
+    const findPick = (it) => {
+        findClose();
+        input.blur();
+        input.value = '';
+        if (it.pane) gotoPane(it.pane);
+        /* 元素可能已经被重画过：按标题文字在那一页里重新找一遍。 */
+        let el = it.el;
+        if (!el || !el.isConnected) {
+            const paneEl = document.querySelector('.pane[data-pane="' + it.pane + '"]');
+            el = paneEl ? [...paneEl.querySelectorAll('.row, .tools-title')]
+                .find((x) => {
+                    const b = x.querySelector('.rt > b, .rt b');
+                    return String((b || x).textContent).replace(/\s+/g, ' ').trim() === it.label;
+                }) : null;
+        }
+        if (el) findReveal(el);
+    };
+
+    input.addEventListener('input', paint);
+    input.addEventListener('focus', () => { if (input.value) paint(); });
+    input.addEventListener('blur', () => setTimeout(findClose, 120));
+    input.addEventListener('keydown', (e) => {
+        const items = [...list.querySelectorAll('.find-item')];
+        if (e.key === 'Escape') {
+            input.value = '';
+            findClose();
+            input.blur();
+            return;
+        }
+        if (!items.length) return;
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const step = e.key === 'ArrowDown' ? 1 : -1;
+            findCursor = (findCursor + step + items.length) % items.length;
+            items.forEach((x, i) => x.classList.toggle('on', i === findCursor));
+            items[findCursor].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const idx = findIndex || findBuildIndex();
+            const q = String(input.value || '').replace(/\s+/g, '').toLowerCase();
+            const hits = idx.filter((it) => (it.label + ' ' + it.body).replace(/\s+/g, '').toLowerCase().includes(q));
+            const pick = hits[Math.max(0, findCursor)];
+            if (pick) findPick(pick);
+        }
+    });
+
+    /* 全局快捷键：Ctrl+F 直接聚焦搜索框（设置页里也符合直觉）。 */
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
+}
 function bindSwitches() {
     applyTheme();
     syncStyleUI();
@@ -12017,6 +12192,8 @@ document.addEventListener('keydown', (e) => {
      *    清单回来后 renderImgEngines / renderExportBox 自己会把内容填上。 */
     const imgListReady = loadImgEngines();
     bindDataTab();
+    /* v2.23.41：设置项搜索（顶栏输入框）。只绑一次；索引第一次用时才建。 */
+    bindSettingsSearch();
     const exportReady = loadExportGroups();
     // 本地 OCR 环境检测：设置窗一打开先跑一次（用户要求「进入页面 / 初始化 OCR
     // 时自动检测」）——缺组件时用户在 OCR 页第一眼就能看到，不用先点「测试」。

@@ -20831,6 +20831,23 @@ fn tray_menu(a: &AppHandle) -> crate::t::Result<crate::t::menu::Menu<crate::t::W
     let sync_item = MenuItemBuilder::with_id("sync", "立即同步到云端").build(a)?;
     let dir_item = MenuItemBuilder::with_id("dir", "打开配置目录").build(a)?;
     let quit_item = MenuItemBuilder::with_id("quit", "退出 Quick Achieve").build(a)?;
+    /* v2.23.41：**版本号 + 日志**。
+     *
+     * 加版本号：用户报问题时第一句往往就是"我用的是哪个版本"—— 而界面上
+     * 只有打开设置才能看到。托盘右键就能看见，省一次来回。
+     * 加「打开日志」：排查时让人去 `Quick Achieve data` 里翻 log.txt 成功率很低
+     * （便携目录常常不在显眼位置），直接把文件选中打开。
+     *
+     * 两个都是**禁用态**的纯信息项 / 一次性的打开动作，不会误触。 */
+    /* 版本号：菜单底部的一条**纯信息项**。
+     *
+     * 这个自建菜单层没有 `.enabled(false)`（`MenuItemBuilder` 只有 id/text），
+     * 所以给它一个不会被 `on_menu_event` 处理的 id —— 点了什么都不会发生，
+     * 但用户在托盘右键就能看见版本号（不用再打开设置去翻）。 */
+    let ver_text: &'static str =
+        Box::leak(format!("版本 {} · 已就绪", config::VERSION).into_boxed_str());
+    let ver_item = MenuItemBuilder::with_id("__version", ver_text).build(a)?;
+    let log_item = MenuItemBuilder::with_id("log", "打开日志文件").build(a)?;
     MenuBuilder::new(a)
         // 暂停项紧跟在「设置」后面：它是仅次于"打开设置"的高频操作
         .items(&[
@@ -20839,6 +20856,8 @@ fn tray_menu(a: &AppHandle) -> crate::t::Result<crate::t::menu::Menu<crate::t::W
             &ocr_item,
             &sync_item,
             &dir_item,
+            &log_item,
+            &ver_item,
             &quit_item,
         ])
         .build()
@@ -21024,6 +21043,23 @@ fn build_tray(a: &AppHandle) -> crate::t::Result<()> {
                 // ⚠ 托盘回调在主线程上，ShellExecute 不能在这里等
                 let _ = open::that_detached(config::data_dir());
             }
+            /* v2.23.41：「打开日志文件」——直接选中 log.txt。
+             * 日志不存在时退回打开数据目录（第一次启动、日志还没落盘时）。
+             * 同样脱开主线程，`explorer /select,` 要起进程。 */
+            "log" => {
+                let log = config::data_dir().join("log.txt");
+                std::thread::spawn(move || {
+                    if log.is_file() {
+                        let _ = std::process::Command::new("explorer")
+                            .arg(format!("/select,{}", log.display()))
+                            .spawn();
+                    } else {
+                        let _ = open::that_detached(config::data_dir());
+                    }
+                });
+            }
+            // 版本号那条是纯信息项：不绑任何行为（点了什么都不做）
+            "__version" => {}
             "quit" => quit_with_sync(0),
             _ => {}
         })
