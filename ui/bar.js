@@ -1085,20 +1085,16 @@ function ocrInBarList() {
 }
 
 function syncOcrBtn() {
-    if (ocrOnly) {
-        // OCR-only 形态：它已经变成中间那颗大按钮了，两处固定按钮都收掉
-        btnOcr.hidden = true;
-        return;
-    }
-    const enabled = !!(CONF && CONF.ocrEnable !== false);
-    // 固定那颗：只有「OCR 不在 bar_list 里」时才显示
-    btnOcr.hidden = !enabled || ocrInBarList();
-    // 图标跟着配置走：用户换了 OCR 图标，这颗固定按钮也要一起变
-    // （不然把 OCR 从 bar_list 里拿掉、退回固定位置时会突然变回老样子）。
-    if (!btnOcr.hidden) {
-        btnOcr.textContent = '';
-        btnOcr.appendChild(ocrIconNode());
-    }
+    /* v2.23.57：**不再有"固定 OCR 按钮"这回事**（用户口径：「我把 OCR 引擎
+     * 从横条移除了，横条里还有」）。
+     *
+     * 以前这里有一条兼容分支：`bar_list` 里没有 `@ocr` 就退回右侧那颗固定按钮 ——
+     * 于是"从横条移除"永远移除不干净，用户看到的还是两颗（或一颗固定）OCR。
+     * 现在 OCR **只认 bar_list**：
+     *   · 在列表里   → 由引擎区渲染那颗（位置可拖）；
+     *   · 不在列表里 → 横条上就没有 OCR，不再拿固定按钮顶替。
+     * 元素本身留着只是为了不破坏别处的引用，它永远不显示。 */
+    btnOcr.hidden = true;
 }
 
 /** 在横条的提示位上临时显示一句话（外部软件打不开时用）。

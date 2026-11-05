@@ -1588,9 +1588,15 @@ async function testBar() {
     show2({ payload: { text: '一段普通文字', isUrl: false, ocrOnly: false } });
     await flush();
     ok('OCR 关闭后横条上的 OCR 按钮隐藏', $('btnOcr').hidden === true);
+    /* v2.23.57：**固定 OCR 按钮永远不再出现**（用户口径：「把它从横条移除，
+     * 横条里还有」）。OCR 只认 bar_list：在列表里才有那颗可拖的，不在就没有。 */
     env.pushConfig(baseConf({ ocrEnable: true }));
     await flush();
-    ok('OCR 打开后 OCR 按钮重新出现', $('btnOcr').hidden === false);
+    ok('OCR 打开、但不在 bar_list 里 → 固定按钮仍然不显示（只认 bar_list）',
+        $('btnOcr').hidden === true);
+    ok('  引擎区里也没有 OCR 那一格（真的移除干净了）',
+        !$('engines').querySelector('[data-engine="@ocr"], [data-ocr]'),
+        $('engines').innerHTML.slice(0, 80));
 
     // ---- 网址按钮的显隐（这条逻辑要求「必须保留」）----
     const show3 = env.listeners.get('qs://show');
