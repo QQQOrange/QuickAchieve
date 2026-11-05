@@ -11,6 +11,8 @@ mod toast;
 mod diag;
 /* v2.23.46：收藏夹一步收的纯逻辑 */
 mod favquick;
+/* v2.23.48：备份差异预览 */
+mod backupdiff;
 /* v2.23.44：剪贴板历史（本机、默认关闭、不参与同步） */
 mod cliphist;
 /* v2.23.43：本地答案（算式 / 单位 / 日期 / 颜色 / 编解码） */
@@ -7768,63 +7770,8 @@ fn fav_quick_add(text: String) -> Result<String, String> {
 /// 不做逐字段 diff：字段级差异对用户没有意义，反而更长更看不懂。
 #[crate::t::command]
 fn backup_diff(name: String) -> Result<Value, String> {
-    if name.trim().is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name.contains("..")
-        || name.contains(':')
-    {
-        return Err("文件名不合法".into());
-    }
-    let dir = cfg_with(config::backup_dir_of);
-    let p = dir.join(&name);
-    if !p.is_file() {
-        return Err("这份备份已经不在了（可能被清理过）".into());
-    }
-    let pw = cfg_snapshot().backup_password;
-    let bak = config::read_backup_config(&p, &pw)
-        .ok_or_else(|| "这份备份打不开（密码不对或文件已损坏）".to_string())?;
-    let cur = cfg_snapshot();
-    let mut diffs: Vec<Value> = Vec::new();
-    let mut push = |label: &str, from: String, to: String| {
-        if from != to {
-            diffs.push(json!({ "label": label, "from": from, "to": to }));
-        }
-    };
-    push(
-        "横条内容",
-        format!("{} 项", cur.bar_list.len()),
-        format!("{} 项", bak.bar_list.len()),
-    );
-    push(
-        "自定义引擎",
-        format!("{} 个", cur.custom_engines.len()),
-        format!("{} 个", bak.custom_engines.len()),
-    );
-    push(
-        "收藏分组",
-        format!("{} 个", cur.favorites.len()),
-        format!("{} 个", bak.favorites.len()),
-    );
-    push(
-        "外部软件",
-        format!("{} 个", cur.apps.len()),
-        format!("{} 个", bak.apps.len()),
-    );
-    push("界面主题", cur.theme.clone(), bak.theme.clone());
-    push("界面语言", cur.ui_lang.clone(), bak.ui_lang.clone());
-    push("OCR 引擎", cur.ocr_engine.clone(), bak.ocr_engine.clone());
-    push(
-        "WebDAV 地址",
-        if cur.webdav_url.is_empty() { "未填".into() } else { "已填".into() },
-        if bak.webdav_url.is_empty() { "未填".into() } else { "已填".into() },
-    );
-    push(
-        "备份密码",
-        if cur.backup_password.is_empty() { "未设".into() } else { "已设".into() },
-        if bak.backup_password.is_empty() { "未设".into() } else { "已设".into() },
-    );
-    Ok(json!({ "count": diffs.len(), "items": diffs }))
+    // v2.23.48：逻辑在 `src/backupdiff.rs`，命令只留薄壳（注册表只认这里）
+    crate::backupdiff::diff(name)
 }
 fn toast_to_settings(msg: &str) {
     if let Some(a) = APP.get() {
