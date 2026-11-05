@@ -30,6 +30,8 @@ const WM_TRAY: u32 = WM_APP + 1;
 const TRAY_UID: u32 = 1;
 
 pub struct TrayDef {
+    /// 给调用方按名字区分多个托盘图标（本文件内部不读，故 allow）
+    #[allow(dead_code)]
     pub id: String,
     pub tip: String,
     /// (菜单 id, 文案, 是否勾选)。文案为 "-" 表示分隔线。
@@ -137,7 +139,7 @@ unsafe extern "system" fn wndproc(
         return LRESULT(0);
     }
     if msg == WM_COMMAND {
-        let cmd_id = (wparam.0 & 0xFFFF) as usize;
+        let cmd_id = wparam.0 & 0xFFFF;
         let picked = {
             let g = match SLOT.lock() {
                 Ok(g) => g,
@@ -478,12 +480,4 @@ pub fn set_menu(items: Vec<(String, String, bool)>) {
 }
 
 
-impl TrayDef {
-    fn clone_def(&self) -> TrayDef {
-        TrayDef {
-            id: self.id.clone(),
-            tip: self.tip.clone(),
-            items: self.items.clone(),
-        }
-    }
-}
+

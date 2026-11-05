@@ -7,6 +7,8 @@
 mod t;
 mod trayhost;
 mod toast;
+/* v2.23.43：本地答案（算式 / 单位 / 日期 / 颜色 / 编解码） */
+mod localanswer;
 
 /// 前端资源目录：exe 同级的 ui/，开发期回退到源码目录。
 /// 便携测试版的硬开关。
@@ -1487,7 +1489,7 @@ fn capture_selection(target_pid: u32) -> Option<String> {
      * 没有快照就没有还原的依据，做下去等于直接覆盖用户复制的内容 —— 不能接受。
      *
      * 注：这条通道目前只有 `QS_FORCE_COPY=1` 的自检分支在用，改动不影响主链路。 */
-    let Some(mut snap) = clip::snapshot() else {
+    let Some(snap) = clip::snapshot() else {
         win::log("capture: 剪贴板快照失败（被占用）—— 不发 Ctrl+C，保持用户剪贴板原样");
         return None;
     };
@@ -1833,7 +1835,7 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
      * 这时候如果照旧复制，用户原来的内容就**没有备份可还原**，直接被这次选区覆盖 ——
      * 那正是"复制完原来的内容没了"。宁可这次取不到字（横条保持空的），
      * 也不能动用户的剪贴板。 */
-    let Some(mut snap) = clip::snapshot() else {
+    let Some(snap) = clip::snapshot() else {
         win::log("capture(exact): 剪贴板快照失败（被占用）—— 不发 Ctrl+C，保持用户剪贴板原样");
         return None;
     };
@@ -7781,6 +7783,18 @@ fn set_setting(key: String, value: Value) {
 }
 
 /// 给设置页发一条 toast（页面没开就静默丢弃）。
+/// 划词内容能本地算出来吗（算式 / 单位 / 日期 / 颜色 / 编解码）。
+///
+/// 前端（横条）在拿到文字后问一次；返回 `null` 就是"算不了"，照常去搜。
+/// 为什么不在前端算：解析要考虑精度、跨类换算、时区，放 Rust 一份、能写单测。
+#[crate::t::command]
+fn local_answer(text: String) -> Value {
+    match crate::localanswer::answer(&text) {
+        Some(a) => json!({ "kind": a.kind, "value": a.value }),
+        None => Value::Null,
+    }
+}
+
 fn toast_to_settings(msg: &str) {
     if let Some(a) = APP.get() {
         let _ = a.emit_to("settings", "qs://toast", msg.to_string());
@@ -16420,7 +16434,7 @@ fn ocr_region(x: f64, y: f64, w: f64, h: f64, dpr: f64) {
         /* v2.13.3：单引擎也走同一套"运行中"反馈 —— 但只在**这家可能慢**时提前开窗：
          * 本地识别 200ms 就回来，为它先弹一个空窗口纯属闪烁；在线引擎要点网络，
          * 那几秒没有任何提示才是用户抱怨的那个"等了半天不知道在干嘛"。 */
-        ocr_run_begin(&[ocr_engine.clone()], &[]);
+        ocr_run_begin(std::slice::from_ref(&ocr_engine), &[]);
         if ocr_engine != "windows" {
             open_ocr_window(String::new());
         }
@@ -18094,7 +18108,7 @@ fn bar_tip_show(x1: f64, y1: f64, x2: f64, y2: f64, dpr: f64, dark: bool, text: 
 #[crate::t::command]
 fn bar_tip_hide() {
     let Some(a) = APP.get().cloned() else { return };
-    let _ = a.run_on_main_thread(|| win::tip::hide());
+    let _ = a.run_on_main_thread(win::tip::hide);
 }
 
 /// 当前提示窗状态 `vis=0/1 rect=x,y,w,h`。**只给自检用** —— 探针要靠它证明
@@ -18847,13 +18861,14 @@ fn remove_custom_engine(index: usize) {
 /* 移出即可（移出只删哨兵，不删软件本身，随时能加回来）。               */
 /* ================================================================== */
 
-/// 新增外部软件的业务本体：**校验 + 落库 + 钉进横条末尾**。
-///
-/// 抽成不碰 STATE、不广播的纯函数，是为了能单测 —— 命令里那句
-/// `broadcast()` 在测试环境会 panic（`APP` 只在真机启动时初始化）。
-///
-/// `kind`（#135）= `"search"` / `"open"`，空串按 url 有没有 `%s` 现推
-/// （见 config::clean_app）。
+// 新增外部软件的业务本体：**校验 + 落库 + 钉进横条末尾**。
+//
+// 抽成不碰 STATE、不广播的纯函数，是为了能单测 —— 命令里那句
+// `broadcast()` 在测试环境会 panic（`APP` 只在真机启动时初始化）。
+//
+// `kind`（#135）= `"search"` / `"open"`，空串按 url 有没有 `%s` 现推
+// （见 config::clean_app）。
+
 /* =====================================================================
  * 智能直达（横条哨兵 @go:<id>）
  *
@@ -19172,7 +19187,7 @@ fn go_fetch_title(url: &str) -> Option<String> {
     let mut seen: Vec<String> = Vec::new();
     let mut cur = url.to_string();
     for _ in 0..3 {
-        if seen.iter().any(|x| *x == cur) {
+        if seen.contains(&cur) {
             break;
         }
         seen.push(cur.clone());
@@ -19197,7 +19212,7 @@ fn go_fetch_title(url: &str) -> Option<String> {
         } else {
             break;
         };
-        if seen.iter().any(|x| *x == alt) {
+        if seen.contains(&alt) {
             break;
         }
         win::log(&format!("go: {cur} 没有标题，换协议试 {alt}"));
@@ -21404,13 +21419,15 @@ fn main() {
         init_state();
         println!("{}", diagnostics_text());
         std::process::exit(0);
-    }    if flag("--ctrlc-probe") {
+    }
+    if flag("--ctrlc-probe") {
         let mods = win::modifiers_down();
         let sent = if mods { false } else { win::send_ctrl_c() };
         println!("MODS={mods}");
         println!("SENT={sent}");
         std::process::exit(0);
-    }    if flag("--update-probe") {
+    }
+    if flag("--update-probe") {
         /* ⚠ v2.23.27：**两条更新探针都得先 `init_state()`**。
          *
          * `update::check` 会读配置里的 GitHub 令牌（`cfg_with`），而
@@ -21836,6 +21853,8 @@ fn main() {
             // v2.23.36：一键诊断（设置页「关于」里的「复制诊断信息」）
             diagnostics_text,
             copy_diagnostics,
+            // v2.23.43：本地答案
+            local_answer,
             set_setting,
             set_settings,
             // v2.6.8：右下角内置提示（toast.html 用）
@@ -22291,7 +22310,7 @@ fn main() {
                     match h2.get_webview_window("bar") {
                         Some(w) => {
                             win::log("TCD: eval 点击 @trans");
-                            let _ = w.eval(js);
+                            w.eval(js);
                             std::thread::sleep(Duration::from_millis(2500));
                             let t = h2.get_webview_window("trans");
                             let vis = t
@@ -22359,7 +22378,7 @@ fn main() {
                     match h3.get_webview_window("settings") {
                         Some(w) => {
                             win::log("TCD-UI: eval 设置页诊断");
-                            let _ = w.eval(js);
+                            w.eval(js);
                         }
                         None => win::log("TCD-UI: 没有 settings 窗口"),
                     }

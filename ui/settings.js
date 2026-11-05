@@ -1316,16 +1316,40 @@ function allColl() {
     }
     return ALL_COLL;
 }
-function allInitialOf(name) {
-    const s = String(name || '').trim();
-    const ch = s ? s[0] : '#';
+/** 单个字 → 拼音首字母（ASCII 字母/数字原样，其余给 '#'）。 */
+function pyLetterOf(ch) {
     if (/[A-Za-z]/.test(ch)) return ch.toUpperCase();
-    if (ch.codePointAt(0) < 128) return '#';        // 数字 / 标点
+    if (/[0-9]/.test(ch)) return ch;
+    if (ch.codePointAt(0) < 128) return '#';
     let ans = '#';
     for (let i = 0; i < PY_REF.length; i++) {
         if (allColl().compare(ch, PY_REF[i]) >= 0) ans = PY_LETTERS[i];
     }
     return ans;
+}
+
+function allInitialOf(name) {
+    const s = String(name || '').trim();
+    const ch = s ? s[0] : '#';
+    return ch === '#' ? '#' : pyLetterOf(ch);
+}
+
+/** 一整段文字 → 拼音首字母串（小写，只保留字母数字）。
+ *
+ *  设置页搜「zd」应该能搜到「自动收起」—— 这类"记得住首字母、记不住全名"的查找
+ *  很常见。做法是把每个字的拼音首字母拼起来，查询串当作它的**子序列**来匹配，
+ *  和"整段文字包含查询串"两条路并列。
+ *
+ *  ⚠ 代价：每个汉字都要和 23 个边界字比一次（见 PY_REF）。所以这个串**建索引时
+ *  算一次**就存下来，不在每次输入时重算。 */
+function pyInitialsOf(text) {
+    const s = String(text || '');
+    let out = '';
+    for (const ch of s) {
+        const L = pyLetterOf(ch);
+        if (L !== '#') out += L.toLowerCase();
+    }
+    return out;
 }
 
 /** 引擎库正文的滚动容器：从 #allList 往上找第一个「真的能滚」的祖先。 */
@@ -3871,7 +3895,10 @@ function findBuildIndex() {
             const label = norm(b ? b.textContent : el.textContent).split('\n')[0];
             if (!label || label.length > 60) return;
             const body = norm(el.textContent);
-            out.push({ pane, paneName, label, body, el });
+            /* 拼音首字母串：只在建索引时算一次（每个汉字都要和 23 个边界字比，
+             * 每次输入都重算会把搜索框拖卡）。 */
+            const py = pyInitialsOf(label);
+            out.push({ pane, paneName, label, body, py, el });
         });
     });
     findIndex = out;
@@ -3912,21 +3939,91 @@ function bindSettingsSearch() {
     const list = $('setSearchList');
     if (!input || !list) return;
 
+    /* 查询串是不是 initials 的**子序列**（"zd" ⊂ "zidongshouqi"）。
+     * 只对纯字母查询生效：中文查询走"包含"那条路。 */
+    const isSubseq = (q, s) => {
+        let i = 0;
+        for (let j = 0; j < s.length && i < q.length; j++) if (s[j] === q[i]) i++;
+        return i === q.length;
+    };
+    const matches = (it, q) => {
+        if ((it.label + ' ' + it.body).replace(/\s+/g, '').toLowerCase().includes(q)) return true;
+        return /^[a-z0-9]+$/.test(q) && q.length >= 2 && it.py && isSubseq(q, it.py);
+    };
+
+    /* 最近点过的 5 项：空着搜索框时直接列出来。
+     * 存 localStorage（不是配置）—— 它只是"这个窗口里的使用痕迹"，
+     * 不值得进备份、也不该跨机器同步。 */
+    const RECENT_KEY = 'qsFindRecent';
+    const readRecent = () => {
+        try {
+            const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+            return Array.isArray(a) ? a.slice(0, 5) : [];
+        } catch (_) { return []; }
+    };
+    const pushRecent = (it) => {
+        try {
+            const a = readRecent().filter((x) => !(x.pane === it.pane && x.label === it.label));
+            a.unshift({ pane: it.pane, paneName: it.paneName, label: it.label });
+            localStorage.setItem(RECENT_KEY, JSON.stringify(a.slice(0, 5)));
+        } catch (_) { }
+    };
+
+    /** 画一组"可以直接点"的条目（最近用过的）。 */
+    const paintRecent = () => {
+        const recent = readRecent();
+        list.textContent = '';
+        if (!recent.length) {
+            list.hidden = true;
+            return;
+        }
+        const head = document.createElement('div');
+        head.className = 'find-empty';
+        head.textContent = '最近改过的';
+        list.appendChild(head);
+        recent.forEach((it) => {
+            const row = document.createElement('div');
+            row.className = 'find-item';
+            const t = document.createElement('span');
+            t.className = 'fi-t';
+            t.textContent = it.label;
+            const p = document.createElement('span');
+            p.className = 'fi-p';
+            p.textContent = it.paneName || '';
+            row.appendChild(t);
+            row.appendChild(p);
+            row.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                findPick(it);
+            });
+            list.appendChild(row);
+        });
+        list.hidden = false;
+        findCursor = -1;
+    };
+
     const paint = () => {
         const q = String(input.value || '').replace(/\s+/g, '').toLowerCase();
         list.textContent = '';
         findCursor = -1;
         if (!q) {
-            list.hidden = true;
+            paintRecent();
             return;
         }
         const idx = findIndex || findBuildIndex();
+        /* 排序：标题里直接包含查询串的最相关，其次正文包含，最后才是拼音命中。
+         * 不排的话"zdsq"这种拼音查询会把一堆正文里恰好包含 z…d… 的行排在前面。 */
+        const score = (it) => {
+            if (it.label.replace(/\s+/g, '').toLowerCase().includes(q)) return 0;
+            if (it.body.replace(/\s+/g, '').toLowerCase().includes(q)) return 1;
+            return 2;
+        };
         const hits = idx
-            .filter((it) => {
-                const hay = (it.label + ' ' + it.body).replace(/\s+/g, '').toLowerCase();
-                return hay.includes(q);
-            })
-            .slice(0, 20);
+            .map((it, i) => ({ it, i }))
+            .filter(({ it }) => matches(it, q))
+            .sort((a, b) => score(a.it) - score(b.it) || a.i - b.i)
+            .slice(0, 20)
+            .map(({ it }) => it);
         if (!hits.length) {
             const d = document.createElement('div');
             d.className = 'find-empty';
@@ -3961,6 +4058,7 @@ function bindSettingsSearch() {
         findClose();
         input.blur();
         input.value = '';
+        pushRecent(it);
         if (it.pane) gotoPane(it.pane);
         /* 元素可能已经被重画过：按标题文字在那一页里重新找一遍。 */
         let el = it.el;
@@ -3976,7 +4074,7 @@ function bindSettingsSearch() {
     };
 
     input.addEventListener('input', paint);
-    input.addEventListener('focus', () => { if (input.value) paint(); });
+    input.addEventListener('focus', () => paint());
     input.addEventListener('blur', () => setTimeout(findClose, 120));
     input.addEventListener('keydown', (e) => {
         const items = [...list.querySelectorAll('.find-item')];
@@ -3997,7 +4095,7 @@ function bindSettingsSearch() {
             e.preventDefault();
             const idx = findIndex || findBuildIndex();
             const q = String(input.value || '').replace(/\s+/g, '').toLowerCase();
-            const hits = idx.filter((it) => (it.label + ' ' + it.body).replace(/\s+/g, '').toLowerCase().includes(q));
+            const hits = idx.filter((it) => matches(it, q));
             const pick = hits[Math.max(0, findCursor)];
             if (pick) findPick(pick);
         }

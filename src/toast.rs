@@ -55,7 +55,7 @@ pub fn show(app: &AppHandle, text: &str, ms: u64) {
         std::thread::sleep(std::time::Duration::from_millis(ms + 1500));
         if GENERATION.load(Ordering::SeqCst) == gen {
             let a = a_fallback;
-            let _ = a.run_on_main_thread(|| hide_inner());
+            let _ = a.run_on_main_thread(hide_inner);
         }
     });
     let a = app.clone();

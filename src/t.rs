@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+// 这一层是 tauri 的替身：泛型签名天生又长又嵌套（`Fn(&AppHandle) -> Result<Menu<Wry>>`
+// 这种），拆成 type 只会让每个调用点多跳一次定义、读起来更绕。故模块级放行。
+#![allow(clippy::type_complexity)]
 //! 本模块是 **Tauri 兼容层**：照 Tauri 的 API 面留壳，让按 Tauri 写的代码
 //! 能原样编译。其中一部分方法本项目当前没有调用（例如 App 的路径查询、
 //! 窗口管理里尚未用到的几个），但它们是**接口的一部分** —— 删掉会让以后
@@ -873,7 +876,7 @@ fn dispatch_emit<S: Serialize + Clone>(label: Option<String>, event: &str, paylo
         serde_json::to_string(event).unwrap_or_else(|_| "\"\"".into()),
         json
     );
-    let _ = global()
+    global()
         .proxy_send(HostEvent::Eval { label, js });
 }
 
@@ -1131,7 +1134,7 @@ impl WebviewWindowBuilder {
                     .and_then(|s| s.window.as_ref())
                     .and_then(|w| w.window_handle().ok())
                     .map(|h| match h.as_raw() {
-                        RawWindowHandle::Win32(x) => x.hwnd.get() as isize,
+                        RawWindowHandle::Win32(x) => x.hwnd.get(),
                         _ => 0,
                     })
                     .unwrap_or(0)
@@ -2168,7 +2171,7 @@ impl Serialize for ipc::Response {
 
 pub fn b64_encode(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = *chunk.get(1).unwrap_or(&0) as u32;

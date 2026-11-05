@@ -261,6 +261,21 @@ function makeEnv(htmlFile, conf, opts) {
                 calls.push({ cmd, args: args || {} });
                 if (rejectCmds.has(cmd)) return Promise.reject('模拟后端失败：' + cmd);
                 if (cmd === 'get_config') return Promise.resolve(CONF);
+        /* 本地答案（v2.23.43）：桩只回答"这个输入能不能算"，
+         * 判据和 Rust 侧保持一致的那一小部分（算式 / 颜色）够测 UI 了。 */
+        if (cmd === 'local_answer') {
+            const text = String((args && args.text) || '').trim();
+            if (/^[\d+\-*/().\s]+$/.test(text) && /[+\-*/]/.test(text)) {
+                // 只算纯数字四则，够验证"按钮出来且值对"
+                let v = null;
+                try { v = Function('"use strict";return (' + text + ')')(); } catch (_) { v = null; }
+                return Promise.resolve(v === null ? null : { kind: 'expr', value: String(v) });
+            }
+            if (/^#[0-9a-fA-F]{6}$/.test(text)) {
+                return Promise.resolve({ kind: 'color', value: 'rgb(59, 125, 255)' });
+            }
+            return Promise.resolve(null);
+        }
                 /* v1.5.14：「关闭启动密码」要先验当前密码（用户要求「要取消密码，
                  * 必须要再输一次解锁密码」）—— 桩按 STARTUP_PWD 判定，和真后端
                  * 一样"验不过就什么都不改"。 */
@@ -5169,6 +5184,39 @@ async function testSettingsSearch() {
     ok('子页的分页名是中文而不是英文 key（backup/help）',
         !/backup|help|data|about/i.test(subPane), subPane);
 
+    /* ---- v2.23.43：拼音首字母 + 最近改过 ---- */
+    input.value = 'zdsq';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    const pyItems = [...$('setSearchList').querySelectorAll('.find-item')];
+    ok('拼音首字母能搜到「自动收起」（zdsq）', pyItems.length > 0,
+        '实际 ' + pyItems.length + ' 条');
+    if (pyItems.length) {
+        ok('拼音命中的确实是自动收起那一行', /收起/.test(pyItems[0].textContent),
+            pyItems[0].textContent);
+    }
+
+    // 拼音不该把不相关的东西也吞进来
+    input.value = 'qqqqzzzz';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    ok('乱打的字母不会命中（子序列不是"随便什么都能过"）',
+        /没找到/.test($('setSearchList').textContent),
+        $('setSearchList').textContent.slice(0, 30));
+
+    // 最近改过：先挑一个，再清空查询 → 应该列出它
+    input.value = '自动收起';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    input.dispatchEvent(new env.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    input.value = '';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    ok('清空查询后列出了「最近改过的」',
+        /最近改过的/.test($('setSearchList').textContent),
+        $('setSearchList').textContent.slice(0, 40));
+
     // ② 跳进折叠的 <details>：必须把它打开，否则跳过去是一片空白
     //    （`<details class="help-item">` 全在帮助页里，见 settings.html）
     const det = env.w.document.querySelector('.pane[data-pane="help"] details.help-item');
@@ -5181,6 +5229,44 @@ async function testSettingsSearch() {
         await flush();
         ok('跳到折叠区时自动展开 details', det.open === true);
     }
+}
+/** 本地答案（v2.23.43）：算式 / 颜色这些"能算出来的东西"，横条要直接给结果。 */
+async function testLocalAnswer() {
+    console.log('');
+    console.log('=== 本地答案（横条那颗按钮）===');
+
+    const env = makeEnv('ui/index.html', baseConf());
+    runScripts(env, ['ui/shared.js', 'ui/bar.js']);
+    await flush();
+
+    const win = env.w;
+    const btn = win.document.getElementById('btnAnswer');
+    ok('横条里有答案按钮（默认隐藏）', !!btn && btn.hidden === true);
+
+    // 发一条"算式"文字进来 —— 按钮应该出现，并且直接显示结果
+    /* ⚠ `qs://text` 那条路只在横条**已可见**时才处理（它会先 `if (!barVisible) return`），
+     * 所以这里用 `qs://show` 走真唤起路径 —— 和用户划词时的入口一致。 */
+    const showCb = env.listeners.get('qs://show');
+    ok('横条监听了 qs://show', !!showCb);
+    showCb({ payload: { text: '12*(3+4)' } });
+    await flush();
+    await flush();
+    ok('算式进来后按钮出现了', btn.hidden === false);
+    ok('按钮上直接显示结果 84', String(btn.textContent).includes('84'),
+        JSON.stringify(btn.textContent));
+
+    // 换成普通句子 → 按钮收起
+    showCb({ payload: { text: '今天天气不错' } });
+    await flush();
+    await flush();
+    ok('普通句子不显示答案按钮', btn.hidden === true);
+
+    // 颜色也能算
+    showCb({ payload: { text: '#3B7DFF' } });
+    await flush();
+    await flush();
+    ok('颜色值也能给答案', btn.hidden === false && /rgb/.test(btn.title),
+        JSON.stringify(btn.title));
 }
 (async function main() {
     try {
@@ -5206,6 +5292,7 @@ async function testSettingsSearch() {
         await testBuiltinIcons();
     await testExtremeData();
     await testSettingsSearch();
+    await testLocalAnswer();
     } catch (e) {
         ok('测试过程中不应抛异常', false, e && (e.stack || String(e)));
     }

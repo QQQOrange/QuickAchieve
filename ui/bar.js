@@ -38,6 +38,10 @@ const tipEl = $('tip');
 // 注：原来的 #sepTail（引擎区右侧那条自动竖线）已按用户要求删除，
 // 这个 DOM 元素连同它的 id 一起没了，详见 index.html 里的注释。
 const btnLink = $('btnLink');
+
+/** 本地答案（v2.23.43）：算式 / 单位 / 日期 / 颜色 / 编解码。null = 这次算不了。 */
+const btnAnswer = document.getElementById('btnAnswer');
+let currentAnswer = null;
 const btnMore = $('btnMore');
 const btnOcr = $('btnOcr');
 // r54：识图搜索入口（与 btnLink 同一套显隐口径 —— 取到内容之后再决定）
@@ -3090,6 +3094,55 @@ function syncLinkBtn() {
     else if (n === 1) btnLink.title = '打开：' + currentUrls[0];
     else btnLink.title = has ? '打开：' + currentText : '';
 }
+/* ---------------- 本地答案（v2.23.43） ----------------
+ *
+ * 后端 `local_answer` 只做"能不能算"的判断（形态明确才算），前端只负责展示与复制。
+ * 为什么不在前端算：精度、跨类单位、时区这些东西放 Rust 一份、还能写单测 ——
+ * 前端再来一遍必然两边不一致。
+ */
+function syncAnswerBtn() {
+    if (!btnAnswer) return;
+    const a = currentAnswer;
+    if (!a || !a.value) {
+        btnAnswer.hidden = true;
+        btnAnswer.textContent = '';
+        return;
+    }
+    // 按钮上直接显示结果本身（最多 18 字），一眼就能读到答案，不必先点
+    const shown = String(a.value);
+    btnAnswer.textContent = shown.length <= 18 ? shown : shown.slice(0, 17) + '…';
+    btnAnswer.title = `点一下复制：${shown}`;
+    btnAnswer.hidden = false;
+}
+
+/** 拿到文字之后问一次后端；算不了就把按钮收起来。 */
+function refreshAnswer() {
+    const text = String(currentText || '').trim();
+    if (!text) {
+        currentAnswer = null;
+        syncAnswerBtn();
+        return;
+    }
+    invoke('local_answer', { text })
+        .then((a) => {
+            currentAnswer = a && a.value ? a : null;
+            syncAnswerBtn();
+        })
+        .catch(() => {
+            currentAnswer = null;
+            syncAnswerBtn();
+        });
+}
+
+if (btnAnswer) {
+    btnAnswer.addEventListener('click', () => {
+        if (!currentAnswer) return;
+        invoke('copy_text', { text: currentAnswer.value }).catch(() => { });
+        // 复制完就收起横条：这个动作本来就是"拿走结果"
+        invoke('hide_bar').catch(() => { });
+    });
+}
+
 btnLink.addEventListener('click', () => {
     /* 多条链接走 `open_links`（后端分别开标签页，带去重 + 12 条上限）——
      * 和 OCR 结果页那颗「打开链接」同一条命令，行为一致。
@@ -6421,6 +6474,7 @@ listen('qs://show', (ev) => {
         currentUrls = [];
         viaCopy = false;
         ocrOnly = false;
+        refreshAnswer();   // 本地答案：这次唤起的文字换了，重新问一次
         lastShowSig = null;
         if (!barVisible) {
             barVisible = true;
@@ -6498,6 +6552,7 @@ listen('qs://show', (ev) => {
     // 引擎区右侧那条自动竖线（#sepTail）已删除，不用再管它跟"这次选中的是不是
     // 网址"的关系了 —— 现在引擎区里有几根竖线，完全由用户加了几条分隔线决定。
     syncLinkBtn();
+    refreshAnswer();
     // r54：识图入口跟着配置开关走；文件管理器图标跟着「这段文字像不像路径」走
     syncImgBtn();
     syncPathBtn();
@@ -6565,6 +6620,7 @@ listen('qs://text', (ev) => {
     currentUrls = Array.isArray(p.urls) ? p.urls : [];
     viaCopy = !!p.viaCopy;
     syncLinkBtn();
+    refreshAnswer();
     syncWrapBtn();
     /* v2.23.22：**📁 / 📄 两颗也要跟着刷新**（和 `qs://show` 那条对齐）。
      *

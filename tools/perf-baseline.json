@@ -1,0 +1,10 @@
+﻿{
+    "startupToTrayMs":  827,
+    "idleCpuPct":  0.02,
+    "workingSetMB":  43.6,
+    "privateMB":  12.3,
+    "handles":  455,
+    "threads":  24,
+    "measuredAt":  "2026-11-05 08:52",
+    "version":  "2.23.42"
+}

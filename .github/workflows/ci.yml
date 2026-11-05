@@ -1,0 +1,50 @@
+name: CI
+
+# 为什么要有这个（v2.23.43 补的）：
+# 在这之前所有校验都只在开发者的机器上手动跑（tools/release.ps1 里），
+# 一旦某次改动把测试跑红了、或者 clippy 冒出新警告，只有到"发版那一步"才会发现。
+# 现在每次 push / PR 都自动过一遍：clippy（零警告门槛）+ 单测 + 三个前端自检。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # 不打onnx运行时下载（CI 里不需要，也不该联网下 11MB）
+  ORT_SKIP_DOWNLOAD: "1"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    # 本程序是 Windows 专用（Win32 / WebView2 / 全局钩子），只能在 windows 上跑
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: 缓存 cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # clippy 用 -D warnings 当门槛：现在已经是 0 警告，以后谁写出新警告就红。
+      - name: clippy（零警告门槛）
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 单元测试
+        run: cargo test
+
+      # 这三个脚本是前端唯一的自动化保障：
+      #   test-ui     —— jsdom 里跑真页面，钉住"哪些行为不能变"
+      #   test-pages  —— 每个页面能不能起来
+      #   check-all   —— 上面两个 + 命令表一致性 + 英文覆盖率
+      - name: 前端自检（UI / 页面 / 命令表 / 英文覆盖）
+        run: node tools/check-all.js

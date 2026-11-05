@@ -1357,7 +1357,9 @@ window.QS_I18N.add({
     "搜引擎 / 智能直达 / 收藏夹 / 附加功能…": "Search engines / smart jump / favourites / extras…",
     "搜设置项…（如：自动收起 / 剪贴板 / 主题）": "Search settings… (e.g. auto-hide / clipboard / theme)",
     "搜索设置项": "Search settings",
-    "没找到相关设置": "No matching setting"
+    "没找到相关设置": "No matching setting",
+    "复制结果": "Copy result",
+    "点一下复制：": "Click to copy: "
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

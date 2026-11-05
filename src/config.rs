@@ -418,6 +418,7 @@ pub struct ExternalApp {
 /// 横条上的哨兵是 `@go:<id>`（见 [`SHORTCUT_PREFIX`]），与 `@app:<id>` 同一套路。
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Shortcut {
     /// 唯一 id（随机串），横条哨兵与图标键都用它
     pub id: String,
@@ -435,18 +436,6 @@ pub struct Shortcut {
     pub icon: String,
 }
 
-impl Default for Shortcut {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            kind: String::new(),
-            target: String::new(),
-            name: String::new(),
-            note: String::new(),
-            icon: String::new(),
-        }
-    }
-}
 
 /// 横条上直达入口的哨兵前缀：`@go:<id>`。
 ///
@@ -743,22 +732,19 @@ fn is_bar_sentinel(n: &str) -> bool {
         || is_go_sentinel(n)
 }
 
-/// 这个应用该用哪一页（返回 `grid_pages` 的下标）。
-///
-/// # 优先级（用户问的"冲突怎么办"）
-///
-/// 1. **精确匹配**优先于通配匹配（`chrome.exe` 比 `*chrome*` 更具体）；
-/// 2. 同为通配时，**模式越长越优先**（`*chrome.exe` 比 `*chrome*` 具体）；
-/// 3. 完全并列时，**配置表里靠前的赢**（先配的说了算，行为可预测）；
-/// 4. 都没命中 / 命中的页已被删 → 回落到 `grid_default_page`，再不行用第一页。
-///
+// 这个应用该用哪一页（返回 `grid_pages` 的下标）。
+// # 优先级（用户问的"冲突怎么办"）
+//
+// 1. **精确匹配**优先于通配匹配（`chrome.exe` 比 `*chrome*` 更具体）；
+// 2. 同为通配时，**模式越长越优先**（`*chrome.exe` 比 `*chrome*` 具体）；
+// 3. 完全并列时，**配置表里靠前的赢**（先配的说了算，行为可预测）；
+// 4. 都没命中 / 命中的页已被删 → 回落到 `grid_default_page`，再不行用第一页。
 /* 这里原本还有一个 `pick_grid_page(cfg, app)`：只算"绑到哪一页"，不做
  * 「专项页为空 → 回退默认页」那层展示规则。它已经被 `resolve_grid_page`
  * 完全覆盖（后者把两件事分开做，还多返回 note 给设置页看），而且**一个调用点
  * 都没有** —— 两个函数算同一件事是隐患（改了一个忘另一个），直接删掉。 */
 
 /// 单项显示样式的合法值（`icon` 只图标 / `text` 只名称 / `both` 图标+名称）。
-///
 /// 不合法的一律当"没设置"——这类值只可能来自手改配置或旧备份，
 /// 与其猜用户想干什么，不如老老实实回落到网格级默认。
 pub fn grid_item_style_valid(v: &str) -> Option<&'static str> {
@@ -792,11 +778,11 @@ pub fn normalize_grid_pages(c: &mut Config) -> usize {
     let mut seen: Vec<String> = Vec::new();
     let mut next_no = 1usize;
     for p in c.grid_pages.iter_mut() {
-        if p.id.trim().is_empty() || seen.iter().any(|x| *x == p.id) {
+        if p.id.trim().is_empty() || seen.contains(&p.id) {
             loop {
                 let cand = format!("p{next_no}");
                 next_no += 1;
-                if !seen.iter().any(|x| *x == cand) {
+                if !seen.contains(&cand) {
                     p.id = cand;
                     break;
                 }
