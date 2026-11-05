@@ -3447,20 +3447,28 @@ if (btnOpenFile) {
     });
 }
 
+/* v2.23.50：**「更多引擎」页的两个入口**。
+ *
+ * 按钮本身默认隐藏（见 bar.css 的 `.ico.qs-more`），实际入口是**右键横条空白处**
+ * （用户口径：右键横条就出这个页面）。两者共用同一个函数，保证
+ * "面板宽度 / 西向缩放 / 收藏模式互斥 / 待机淡度"这些副作用只写一遍 ——
+ * 以前这种"两个入口各抄一遍"的代码，改一处漏一处就是布局错乱的根源。 */
+function openEnginesPanel() {
+    /* 已经开着（且就是引擎面板）就**别再 render 一遍**：
+     * togglePanel(true) 会重建面板 DOM，用户的滚动位置、筛选状态都会被重置 ——
+     * 右键连点两下就像"面板自己跳回顶部"。开着就什么都不做。 */
+    if (!panelEl.hidden && !panelFav) return;
+    // 收藏面板开着时先摘掉收藏模式（否则引擎面板会顶着 fav-mode 的样式被撑满）
+    panelFav = null;
+    favFromEngines = false;
+    togglePanel(true);
+}
+
 btnMore.addEventListener('click', (e) => {
     e.stopPropagation();
-    // 「⋯ 更多引擎」的语义 = 引擎面板的开关，和收藏夹面板互斥：
-    //   · 收藏面板开着 → 点它 = 收起收藏、展开引擎面板（不是整个收起！
-    //     以前直接 togglePanel()，收藏开着时把面板连锅端、panelFav 也清了，
-    //     用户看到的就是「点更多引擎，收藏夹收了但更多引擎没出来」）；
-    //   · 引擎面板开着 → 点它 = 收起；
-    //   · 全收着 → 点它 = 展开引擎面板。
+    // 语义仍是开关：开着 → 收起；收着 → 展开。
     if (!panelEl.hidden && !panelFav) togglePanel(false);
-    else {
-        panelFav = null;
-        favFromEngines = false;
-        togglePanel(true);
-    }
+    else openEnginesPanel();
 });
 
 /* 横条上没有关闭按钮：点是点别处由主程序收掉，ESC 也能关 */
@@ -7053,7 +7061,23 @@ listen('qs://rclick', (ev) => {
     const btn = el && el.closest ? el.closest('button') : null;
     const name = btn && btn.classList.contains('engine') ? btn.dataset.engine : null;
     invoke('log_msg', { msg: `rclick-hook at ${Math.round(x)},${Math.round(y)} engine=${name}` }).catch(() => {});
-    openMenu(x, y, name);
+
+    /* v2.23.50：**右键横条 = 打开「更多引擎」页**（用户口径）。
+     *
+     * 三种落点要分开处理，否则会互相打架：
+     *   ① 落在引擎按钮上 → 还是原来那个引擎菜单（换图标 / 固定到横条），
+     *      这是右键**那颗引擎**，不是"右键横条空白处"；
+     *   ② 落在已经展开的面板 / 菜单里 → 什么也不做（只把菜单收掉），
+     *      否则在面板里点右键会把面板重开一遍、滚动位置也跳回去；
+     *   ③ 其余（横条本体空白处）→ 展开引擎面板。
+     * 注意这里**不 toggle**：右键的语义是"我要看"，不是"开关"。
+     * 面板已经开着就保持原样，免得右键两下看着像没反应。 */
+    if (name) {
+        openMenu(x, y, name);
+        return;
+    }
+    if (el && el.closest && (el.closest('#panel') || el.closest('#menu'))) return;
+    openEnginesPanel();
 });
 
 listen('qs://hidden', () => {

@@ -26,7 +26,10 @@
     <canvas id="qsGlass" aria-hidden="true"></canvas>
 
     <!-- ---------------- 横条本体 ---------------- -->
-    <div class="bar" id="bar">
+    <!-- v2.23.50：横条上不再有「⋯ 更多引擎」按钮（见 bar.css 的 .ico.qs-more），
+     入口改成**右键横条**。这里刻意**不加 title 提示**：横条是每次划词都弹的，
+     鼠标停一下就冒一个原生 tooltip 会挡住下面的面板。 -->
+<div class="bar" id="bar">
         <span class="tip" id="tip" hidden>没有可用的引擎</span>
         <!-- 引擎区。用户自己加的分隔线也由 bar.js 渲染在这里 -->
         <div class="engines" id="engines"></div>

@@ -1379,7 +1379,8 @@ window.QS_I18N.add({
     "剪贴板历史已关闭（已清空内存里的记录）": "Clipboard history is off (in-memory entries cleared)",
     "剪贴板历史已清空": "Clipboard history cleared",
     "清空失败：": "Clear failed: ",
-    "收藏这段文字": "Save this text to favourites"
+    "收藏这段文字": "Save this text to favourites",
+    "右键查看更多引擎": "Right-click for more engines"
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

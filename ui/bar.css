@@ -930,7 +930,11 @@ button.fav-grp-head:focus-visible {
    那条规则一次都没命中过，是上一次改选择器时留下的僵尸副本。已删。 */
 
 /* 功能按钮用字符画，调一下字号 */
-.ico.qs-more   { font-size: 17px; font-weight: 700; letter-spacing: 0; }
+/* v2.23.50：**「更多引擎」按钮默认不显示**（用户口径：横条上不要那个 ⋯，
+ * 右键横条时才出「更多引擎」页）。
+ * 用 `display:none !important` 而不是 `hidden` 属性：`.ico` 自己有一套
+ * display 规则，属性选择器的优先级压不住它，会偶尔"闪出来一下"。 */
+.ico.qs-more   { display: none !important; font-size: 17px; font-weight: 700; letter-spacing: 0; }
 .ico.qs-link   { font-size: 15px; }
 .ico.qs-more:hover   { color: var(--qs-accent); }
 

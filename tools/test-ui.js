@@ -1785,9 +1785,24 @@ async function testBar() {
             ok('  第三项说「从横条移除」', items().pop() === '从横条移除', items().join('/'));
         }
 
-        // ③ 非引擎区右键 → 不弹空壳
+        // ③ 落在面板里右键 → 只收菜单，不重开面板（否则滚动位置会跳回去）
         await fireRclick($('panelBody'));
-        ok('非引擎区右键不弹菜单（没有可做的动作，不弹空壳）', $('menu').hidden === true);
+        ok('面板内右键不弹菜单（没有可做的动作，不弹空壳）', $('menu').hidden === true);
+
+        /* ③b v2.23.50：右键**横条空白处** → 打开「更多引擎」页（用户口径） */
+        ok('「更多引擎」按钮在 DOM 里（但 CSS 默认隐藏，见下一条）', !!$('btnMore'));
+        const barCss = fs.readFileSync('ui/bar.css', 'utf8');
+        ok('bar.css 把「更多引擎」按钮默认藏起来了',
+            /\.ico\.qs-more\s*\{[^}]*display:\s*none\s*!important/.test(barCss),
+            '找不到 .ico.qs-more 的 display:none 规则');
+        $('panel').hidden = true;   // 先收起来，验证"右键能把它叫出来"
+        await fireRclick($('bar'));
+        ok('右键横条空白处 → 更多引擎页出现了', $('panel').hidden === false);
+        ok('  面板不是收藏模式（不会被 fav-mode 撑满）', !$('panel').classList.contains('fav-mode'));
+
+        // ③c 面板开着时再右键横条：保持开着（右键是"我要看"，不是开关）
+        await fireRclick($('bar'));
+        ok('再右键一次仍然开着（不是 toggle）', $('panel').hidden === false);
 
         // ④ 补了 engine 类不能把左键带偏：面板格子点击仍走 open_search
         env.calls.length = 0;
