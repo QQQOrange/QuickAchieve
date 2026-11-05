@@ -1777,6 +1777,16 @@ pub struct Config {
     /// 拖动到处都是，Ctrl+C 只有真的按了才有。
     #[serde(default = "default_true")]
     pub bar_need_text: bool,
+    /// 复制通道拿不到文字时，**允许拿屏幕识别兜底**（v2.23.56，默认开）。
+    ///
+    /// 为什么要有：微信 4.x 是 Electron 自绘，划词复制时剪贴板里什么都读不到；
+    /// 不允许兜底的话，「没取到文字就不弹」会把整条路掐死 —— 用户看到的就是
+    /// 「在微信里选字不弹条」。
+    ///
+    /// 只在**拖选矩形像个文本选区**（宽高都 ≥ 8px）时才兜底，避免拖滚动条 /
+    /// 画布时误弹；屏幕识别也一个字都没认出来时仍然不弹（那才是"没选中"）。
+    #[serde(default = "default_true")]
+    pub bar_ocr_fallback: bool,
     /// **横条的触发方式**（v2.14.0）：`always` / `ctrl`，两者互斥。
     ///
     /// · `always`（默认，等于老行为）：正常选中文字就弹；
@@ -2341,6 +2351,7 @@ impl Default for Config {
              * 统一成 **true**：和帮助文字（「没取到文字就不弹（默认开）」）、
              * 和前端开关的初值、和 serde 默认都对得上。 */
             bar_need_text: true,
+        bar_ocr_fallback: true,
             bar_trigger_mode: default_bar_trigger_mode(),
             // 框选后是否停下给调整/换用途 —— 默认关：框完立刻执行打开的那个功能
             region_adjust: false,

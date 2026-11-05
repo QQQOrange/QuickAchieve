@@ -4358,6 +4358,28 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
         return Some(t);
     }
     if need_text {
+        /* v2.23.56：**微信这类自绘界面，屏幕识别是唯一证据**。
+         *
+         * 微信 4.x 是 Electron 自绘：划词复制时剪贴板里读不到任何文本，
+         * UIA 也拿不到 —— 而「没取到文字就不弹」直接把这条路掐死了，
+         * 用户看到的就是「在微信里选字不弹条」。
+         *
+         * 兜底条件（防误弹）：
+         *   · 开关开着（`bar_ocr_fallback`，默认开）；
+         *   · 拖选矩形**像个文本选区**：宽高都 ≥ 8 CSS px。
+         *     拖滚动条 / 画布时矩形要么很窄、要么是随手一划，这里挡掉大半；
+         *   · 屏幕识别真的认出了非空文字（认不出 = 没选中，仍然不弹）。 */
+        let w = (drag.2 - drag.0).abs();
+        let h = (drag.3 - drag.1).abs();
+        if cfg_with(|c| c.bar_ocr_fallback) && w >= 8 && h >= 8 {
+            if let Some(t) = ocr_region_text(drag).filter(|t| !t.trim().is_empty()) {
+                win::log(&format!(
+                    "confirm: 复制通道没拿到 —— 选区像文本（{w}×{h}），屏幕识别兜底拿到 {} 字",
+                    t.chars().count()
+                ));
+                return Some(t);
+            }
+        }
         win::log("confirm: 复制通道没拿到文字，且「没取到文字就不弹」开着 —— 不拿屏幕识别顶替，不弹");
         /* v2.23.39：这种窗口（Qt / WPF 自绘）划词会**毫无反应**，
          * 给一次"改用截图识别"的提示，别让用户以为软件坏了。 */
@@ -6427,6 +6449,8 @@ fn config_view() -> Value {
         "barAwayPx": cfg.bar_away_px,
         // 没取到文字就不弹（默认开）—— 误触乱弹的主要来源。
         "barNeedText": cfg.bar_need_text,
+        // v2.23.56：复制不通时用屏幕识别兜底（微信这类自绘界面要靠它）
+        "barOcrFallback": cfg.bar_ocr_fallback,
         // v2.16.0：框选之后先停一下（可拖角微调 + 换用途）。关掉 = 松手立即执行。
         "regionAdjust": cfg.region_adjust,
         // v2.18.1：上次在动作条上点的动作 —— 页面拿它当"双击执行"的默认项
@@ -7229,6 +7253,8 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
             cfg.bar_away_px = value.as_i64().unwrap_or(400).clamp(0, 4000) as i32
         }
         "barNeedText" => cfg.bar_need_text = value.as_bool().unwrap_or(true),
+        // v2.23.56：复制不通时允许屏幕识别兜底（微信这类自绘界面要靠它）
+        "barOcrFallback" => cfg.bar_ocr_fallback = value.as_bool().unwrap_or(true),
         /* v2.23.3：框选后是否停下给调整/换用途。**默认关** ——
          * 框完立刻执行你打开的那个功能（识别 / 识图 / 二维码），不再弹动作条。
          * 开着才有手柄 + 动作条（也才有"复制图片"那条路）。 */
