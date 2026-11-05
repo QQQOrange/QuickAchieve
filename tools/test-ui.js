@@ -1821,6 +1821,27 @@ async function testBar() {
             ok('面板开着时右键引擎图标 → 出换图标菜单', $('menu').hidden === false);
         }
 
+        /* ③e v2.23.52：★「收藏这段文字」也能换图标（用户点名）。 */
+        const favBtn = $('btnFav');
+        ok('横条上有收藏 ★ 按钮', !!favBtn);
+        if (favBtn) {
+            $('menu').hidden = true;
+            await fireRclick(favBtn);
+            ok('面板开着时右键 ★ → 弹菜单', $('menu').hidden === false);
+            eq('  ★ 的菜单项：换图标 / 恢复默认',
+                items(), ['更换这个图标…', '恢复默认图标（★）']);
+            env.calls.length = 0;
+            [...$('menu').querySelectorAll('.menu-item')][0]
+                .dispatchEvent(new w.Event('click', { bubbles: true }));
+            await flush();
+            const pick = env.lastCmd('pick_icon');
+            ok('点「更换这个图标…」调用 pick_icon', !!pick,
+                JSON.stringify(env.calls.map((c) => c.cmd)));
+            eq('  用的是伪引擎名 @favquick', pick && pick.args, { engine: '@favquick' });
+        }
+
+        /* ③f 放最后：pushConfig 会让面板重画，前面那些 cells 引用会失效 */
+
         // ④ 补了 engine 类不能把左键带偏：面板格子点击仍走 open_search
         env.calls.length = 0;
         cells[0].dispatchEvent(new w.Event('click', { bubbles: true }));
@@ -1829,6 +1850,26 @@ async function testBar() {
         ok('左键点面板格子仍然走 open_search', !!os,
             JSON.stringify(env.calls.map((c) => c.cmd)));
         eq('  带的是这颗格子的引擎名', os && os.args.engine, cells[0].dataset.engine);
+
+        /* ③f 换过图标之后，按钮里应该是 <img> 而不是 ★
+         * （放最后：pushConfig 会重画面板，前面的 cells 引用会失效） */
+        env.pushConfig(baseConf({ overrideIcons: { '@favquick': 'data:image/png;base64,AAAA' } }));
+        await flush();
+        ok('换过图标后 ★ 位置渲染的是图片',
+            !!$('btnFav').querySelector('img'),
+            $('btnFav').innerHTML.slice(0, 60));
+
+        /* ③g v2.23.52：**窗口被后端收掉、但没发 qs://hidden** 的情况下，
+         * 下一次 show 必须把面板状态复位，否则右键会被误判成"面板已开"→ 没反应。 */
+        await fireRclick($('bar'));                  // 面板打开
+        ok('（准备）面板现在是开的', $('panel').hidden === false);
+        const showAgain = env.listeners.get('qs://show');
+        showAgain({ payload: { text: '新的一段文字' } });
+        await flush();
+        ok('新一轮 show 后：状态复位（面板关着）', $('panel').hidden === true);
+        $('menu').hidden = true;
+        await fireRclick($('bar'));
+        ok('紧接着右键仍然能打开面板（不会"没反应"）', $('panel').hidden === false);
 
         delete w.document.elementFromPoint;
     }

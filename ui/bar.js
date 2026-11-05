@@ -33,6 +33,12 @@ const stage = $('stage');
 const barEl = $('bar');
 const enginesEl = $('engines');
 const panelEl = $('panel');
+/** 引擎面板此刻是不是**真的**展示着（v2.23.52）。
+ *
+ *  不再只看 `panelEl.hidden`：那只是个属性，窗口被 Rust 收掉时不一定有人把它
+ *  翻回 true。用它判"面板开没开"，就会出现"右键没反应"——代码以为面板开着，
+ *  于是走了"什么都不做"那条分支。 */
+let panelShown = false;
 const panelBody = $('panelBody');
 const tipEl = $('tip');
 // 注：原来的 #sepTail（引擎区右侧那条自动竖线）已按用户要求删除，
@@ -42,6 +48,8 @@ const btnLink = $('btnLink');
 /** 本地答案（v2.23.43）：算式 / 单位 / 日期 / 颜色 / 编解码。null = 这次算不了。 */
 const btnAnswer = document.getElementById('btnAnswer');
 const btnFav = document.getElementById('btnFav');
+/** 收藏 ★ 的伪引擎名（v2.23.52）：复用 `overrideIcons` 存图标，不另造一套。 */
+const FAV_QUICK = '@favquick';
 let currentAnswer = null;
 const btnMore = $('btnMore');
 const btnOcr = $('btnOcr');
@@ -3101,13 +3109,31 @@ function syncLinkBtn() {
  * 为什么不在前端算：精度、跨类单位、时区这些东西放 Rust 一份、还能写单测 ——
  * 前端再来一遍必然两边不一致。
  */
+/** 画「收藏这段文字」那颗按钮的图标（v2.23.52）。
+ *
+ *  默认是 ★；用户换过图标就用 `overrideIcons['@favquick']`（dataURL）。
+ *  和引擎图标同一套优先级：**有自定义就只显示自定义**，不叠在 ★ 上面。 */
+function applyFavQuickIcon() {
+    if (!btnFav) return;
+    const custom = CONF && CONF.overrideIcons ? CONF.overrideIcons[FAV_QUICK] : null;
+    btnFav.textContent = '';
+    if (custom) {
+        const img = document.createElement('img');
+        img.src = custom;
+        img.alt = '';
+        btnFav.appendChild(img);
+    } else {
+        btnFav.textContent = '★';
+    }
+}
+
 function syncAnswerBtn() {
     /* 收藏按钮（v2.23.45）：只要有一段文字就能收藏 —— 这条比"能算"宽得多，
      * 任何一句话都值得存进收藏夹，所以不看 currentAnswer。 */
     if (btnFav) {
         const hasText = String(currentText || '').trim().length > 0 && !ocrOnly;
         btnFav.hidden = !hasText;
-        btnFav.textContent = '★';
+        applyFavQuickIcon();
     }
     if (!btnAnswer) return;
     const a = currentAnswer;
@@ -3457,7 +3483,7 @@ function openEnginesPanel() {
     /* 已经开着（且就是引擎面板）就**别再 render 一遍**：
      * togglePanel(true) 会重建面板 DOM，用户的滚动位置、筛选状态都会被重置 ——
      * 右键连点两下就像"面板自己跳回顶部"。开着就什么都不做。 */
-    if (!panelEl.hidden && !panelFav) return;
+    if (panelShown && !panelEl.hidden && !panelFav) return;
     // 收藏面板开着时先摘掉收藏模式（否则引擎面板会顶着 fav-mode 的样式被撑满）
     panelFav = null;
     favFromEngines = false;
@@ -3485,6 +3511,7 @@ barEl.addEventListener('mouseleave', () => { barHovered = false; syncDim(); });
 function togglePanel(force) {
     const want = force === undefined ? panelEl.hidden : force;
     panelEl.hidden = !want;
+    panelShown = want;   // v2.23.52：唯一的状态源，右键判据只看它
     btnMore.classList.toggle('qs-active', want);
     // ⚠ fav-mode 只在**确实渲染了收藏面板**时才挂。以前在这里就挂，
     //   万一收藏树读不到（qsFavGroups 返回空 → renderFavPanel 退回引擎面板），
@@ -6356,6 +6383,20 @@ function openMenu(x, y, engineName) {
         menuEl.appendChild(d);
     };
 
+    /* v2.23.52：**「收藏这段文字」那颗 ★ 也能换图标**（用户点名要的）。
+     *
+     * 复用引擎那套图标机制：用伪引擎名 `@favquick` 存进 `overrideIcons`，
+     * 走 `pick_icon` / `reset_icon` 同一条落库与广播链路 —— 不另造一套。
+     * 菜单只给两项：换 / 恢复默认，它毕竟不是引擎，没有"固定到横条"可言。 */
+    if (engineName === FAV_QUICK) {
+        add('更换这个图标…', () => invoke('pick_icon', { engine: FAV_QUICK }).catch(() => {}));
+        add('恢复默认图标（★）', () => invoke('reset_icon', { engine: FAV_QUICK }).catch(() => {}));
+        menuEl.hidden = false;
+        menuEl.style.left = Math.max(0, x) + 'px';
+        menuEl.style.top = Math.max(0, y) + 'px';
+        return;
+    }
+
     // ⚠ 菜单项只留「针对这颗图标」的动作。
     //   · 去掉「打开设置…」：面板底栏已经有「设置…」，重复（用户点名）。
     //   · 去掉「关闭横条」：不该靠右键图标来关横条（用户点名）。
@@ -6493,6 +6534,11 @@ listen('qs://show', (ev) => {
      * 这里在每轮 show 的口子上统一复位，和"重启之后还是收藏"彻底绝缘。 */
     panelFav = null;
     favFromEngines = false;
+    /* v2.23.52：**每轮 show 都把面板状态复位**。
+     * 窗口可能被后端直接收掉（Esc / 点别处 / 鼠标移远），那条路不一定发
+     * qs://hidden；`panelShown` 留在 true 的话，下一次右键就会以为"面板已开"
+     * 而什么都不做 —— 也就是用户报的"右键没反应"。 */
+    if (panelShown || !panelEl.hidden) togglePanel(false);
     const p = ev.payload || {};
     /* ── 网格页（Ctrl+C / 自定义快捷键） ────────────────────────────
      * 后端每次唤起都会带 `grid`：非 null 表示"这次画网格"，null 表示普通文字横条。
@@ -6699,6 +6745,9 @@ listen('qs://config', (ev) => {
     syncImgBtn();
     syncPathBtn();
     renderBar(true);
+    /* v2.23.52：配置广播里可能带着新的 `overrideIcons['@favquick']` ——
+     * 用户刚在图标编辑器里点了保存，横条上的 ★ 要立刻换过来，而不是等下次划词。 */
+    applyFavQuickIcon();
     // ⚠ 面板开着时也要跟着重渲染，但**必须按当前模式渲染**：
     //   在收藏面板（panelFav 非空）开着时，如果无脑 renderPanel() 去画引擎九宫格，
     //   就会把收藏面板顶掉、跳回「⋯」那一页 —— 用户点开收藏夹没几秒就被弹回引擎页，
@@ -7072,9 +7121,18 @@ listen('qs://rclick', (ev) => {
      *
      * 面板开着时的另外两种落点：空白处 → 什么都不做（不重开、不跳滚动位置）；
      * 面板/菜单内部 → 同上。 */
-    const panelOpen = !panelEl.hidden;
+    /* v2.23.52：判据改成 `panelShown`（togglePanel 维护的真实状态）。
+     * `panelEl.hidden` 只在有代码去翻它时才变，窗口被 Rust 收掉时没人翻 ——
+     * 用它判"开没开"会误判成"开着"，然后什么都不做，看起来就是右键没反应。 */
+    const panelOpen = panelShown && !panelEl.hidden;
     if (!panelOpen) {
         openEnginesPanel();
+        return;
+    }
+    /* 面板开着时：右键「收藏这段文字」那颗 ★ → 换图标菜单（v2.23.52）。
+     * 它没有 engine 类，得单独认一下，否则会落到"空白处什么都不做"。 */
+    if (btn && btn.id === 'btnFav') {
+        openMenu(x, y, FAV_QUICK);
         return;
     }
     if (name) {
