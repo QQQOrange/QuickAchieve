@@ -30,10 +30,14 @@ jobs:
       - name: 缓存 cargo
         uses: Swatinem/rust-cache@v2
 
+      # v2.23.55：**必须 Node 22+**。
+      # `jsdom@30` 依赖的 `undici` 在 Node 20 上加载就崩（`undici/index.js` 用了
+      # 新版本才有的 API），前端自检三项全部报"脚本本身非零退出"。
+      # 本机跑的是 24.x，这里对齐到 24。
       - name: 安装 Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       # v2.23.55：**必须装 jsdom**。
       # 三个前端自检脚本都 `require('jsdom')`，CI 里从来没装过 —— 于是
