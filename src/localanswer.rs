@@ -153,14 +153,28 @@ fn weekday_index(y: i64, m: u32, d: u32) -> i64 {
     (days_from_civil(y, m, d) + 3).rem_euclid(7)
 }
 
-/// 今天（本地时区）距离 1970-01-01 的天数。
+/// 今天（**本地时区**）距离 1970-01-01 的天数。
+///
+/// ⚠ v2.23.47 修：原来直接用 `UNIX 秒 / 86400`，那是 **UTC 的"今天"**。
+/// 在 UTC+8，每天 00:00–08:00 之间算出来的"今天"还是昨天 —— 于是
+/// 「2026-11-05 → 还有 1 天」会在凌晨错报成「还有 2 天」。
+/// 这里改成问系统要本地日期（`GetLocalTime`），再算天数差。
 fn today_offset_days() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    secs / 86_400
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::SystemInformation::GetLocalTime;
+        let st = unsafe { GetLocalTime() };
+        days_from_civil(st.wYear as i64, st.wMonth as u32, st.wDay as u32)
+    }
+    #[cfg(not(windows))]
+    {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        secs / 86_400
+    }
 }
 
 // ───────────────────────────── 时间戳 ─────────────────────────────

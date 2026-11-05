@@ -3,6 +3,18 @@
 //! 不碰 STATE、不广播、不写盘 —— 所以能直接单测；命令层只负责加锁、存盘、广播。
 
 use crate::config;
+/// 生成一个**本进程内唯一**的 id。
+///
+/// 为什么不能只用毫秒时间戳：连点两次（或脚本连续调用）很容易落在同一毫秒里，
+/// 两条收藏就会拿到同一个 id —— 之后按 id 找条目（`find_fav_item` 取第一条）
+/// 会出现"点第二条却动了第一条"。加一个自增序号兜住这种情况。
+fn next_id(prefix: &str, now_ms: i64) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}{now_ms}_{n}")
+}
+
 pub(crate) fn quick_add_into(groups: &mut Vec<config::FavGroup>, text: &str, now_ms: i64) -> Result<String, String> {
     let body = text.trim();
     if body.is_empty() {
@@ -16,7 +28,7 @@ pub(crate) fn quick_add_into(groups: &mut Vec<config::FavGroup>, text: &str, now
         Some(i) => i,
         None => {
             groups.push(config::FavGroup {
-                id: format!("g{now_ms}"),
+                id: next_id("g", now_ms),
                 name: GROUP.to_string(),
                 icon: String::new(),
                 items: Vec::new(),
@@ -29,7 +41,7 @@ pub(crate) fn quick_add_into(groups: &mut Vec<config::FavGroup>, text: &str, now
         return Ok(format!("已经在「{GROUP}」里了"));
     }
     groups[gi].items.push(config::FavItem {
-        id: format!("q{now_ms}"),
+        id: next_id("q", now_ms),
         kind: "text".to_string(),
         text: body.to_string(),
         html: String::new(),
@@ -63,6 +75,16 @@ mod fav_quick_tests {
         assert_eq!(g[0].items.len(), 2);
     }
 
+    /// 同一毫秒连点两次：两条收藏的 id 必须不同（否则按 id 操作会串到第一条上）。
+    #[test]
+    fn 同一毫秒连续收藏不会出现重复id() {
+        let mut g: Vec<config::FavGroup> = Vec::new();
+        quick_add_into(&mut g, "第一条", 1234).unwrap();
+        quick_add_into(&mut g, "第二条", 1234).unwrap();
+        let ids: Vec<&str> = g[0].items.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids.len(), 2);
+        assert_ne!(ids[0], ids[1], "同一毫秒的两条收藏不许同 id");
+    }
     #[test]
     fn 空内容与超长内容都要拒绝() {
         let mut g: Vec<config::FavGroup> = Vec::new();

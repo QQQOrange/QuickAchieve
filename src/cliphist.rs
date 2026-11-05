@@ -101,14 +101,26 @@ pub fn set_cfg(c: HistCfg) -> Result<(), String> {
         if let Ok(mut b) = buf().lock() {
             b.clear();
         }
-        if c.persist {
-            let _ = std::fs::remove_file(hist_path());
-        }
+    }
+    /* v2.23.47：**只要不该留盘就删掉**。
+     *
+     * 原来这里写的是 `if c.persist { remove_file }` —— 关掉历史时如果用户
+     * 同时也把"写入磁盘"关了（persist=false），那条件不成立，**旧文件就留在
+     * 磁盘上永远不删**。用户以为"我关了、什么都没有"，实际上历史还躺在那儿。
+     * 这是隐私问题，不是小事。 */
+    if removes_disk_copy(&c) {
+        let _ = std::fs::remove_file(hist_path());
     }
     trim(c.max);
     Ok(())
 }
 
+/// 这份设置下，磁盘上**不该**留历史文件吗？
+///
+/// 两种情况都不该留：① 功能关着；② 明确选了"不落盘"。
+fn removes_disk_copy(c: &HistCfg) -> bool {
+    !c.enabled || !c.persist
+}
 pub fn list() -> Vec<Entry> {
     buf().lock().map(|b| b.iter().cloned().collect()).unwrap_or_default()
 }
@@ -231,6 +243,21 @@ mod tests {
         assert_eq!(c.max, 30);
     }
 
+    /// 关掉功能、或关掉"写入磁盘"，都必须删掉磁盘上的历史文件。
+    #[test]
+    fn 关掉或改成不落盘都要删掉磁盘副本() {
+        let mut c = HistCfg::default();
+        c.enabled = true;
+        c.persist = true;
+        assert!(!removes_disk_copy(&c), "开着且落盘：文件该留");
+
+        c.persist = false;
+        assert!(removes_disk_copy(&c), "改成不落盘：文件必须删");
+
+        c.persist = true;
+        c.enabled = false;
+        assert!(removes_disk_copy(&c), "关掉功能：文件必须删");
+    }
     #[test]
     fn 条数上限会被夹在合理区间() {
         let mut c = HistCfg::default();
