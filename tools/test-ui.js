@@ -1598,6 +1598,21 @@ async function testBar() {
         !$('engines').querySelector('[data-engine="@ocr"], [data-ocr]'),
         $('engines').innerHTML.slice(0, 80));
 
+    /* v2.23.58：**把横条清空 = 真的空**。
+     * 以前 `barList()` 遇到空数组会退回"全部引擎"，于是用户点掉 OCR 之后
+     * 横条上又冒出一整套（含 OCR）——「我明明点掉了，怎么还有」。 */
+    const prevConf = env.getConf();
+    env.pushConfig(baseConf({ barList: [] }));
+    show2({ payload: { text: '清空横条测试', isUrl: false, ocrOnly: false } });
+    await flush();
+    ok('横条清空后引擎区一个都不剩（不退回"全部引擎"）',
+        $('engines').querySelectorAll('.engine').length === 0,
+        $('engines').innerHTML.slice(0, 80));
+    ok('  固定 OCR 按钮也仍然藏着', $('btnOcr').hidden === true);
+    // 还原配置：后面的用例还要用带引擎的横条
+    env.pushConfig(prevConf);
+    await flush();
+
     // ---- 网址按钮的显隐（这条逻辑要求「必须保留」）----
     const show3 = env.listeners.get('qs://show');
     show3({ payload: { text: 'https://github.com/foo', isUrl: true, ocrOnly: false } });

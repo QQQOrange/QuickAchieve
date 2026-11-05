@@ -845,13 +845,21 @@ function isBoundKind(n, kind) {
 
 function barList() {
     const all = CATALOG.toolbar.map((e) => e.name);
-    /* 按应用专项优先（整份取代默认横条）。没命中时走原来的 `CONF.barList` ——
-     * 于是"没配 / 配了被清空 / 校验失败回退"三条路在这里看起来**完全一样**。 */
+    /* 按应用专项优先（整份取代默认横条）。没命中时走 `CONF.barList`。
+     *
+     * ⚠ v2.23.58：**空数组就是空**，不再退回"全部引擎"。
+     *
+     * 以前这里写的是 `CONF.barList.length ? CONF.barList : all` —— 于是用户把
+     * 横条清空（或把 OCR 这类唯一剩下的项移除）之后，`barList()` 直接返回整个
+     * 目录：用户看到的就是「我明明点掉了，横条里怎么还有」，而且清空的横条会
+     * 突然变成"什么都有"。
+     *
+     * 后端 `Config::default()` 里 `bar_list` 是有默认值的（DEFAULT_BAR），
+     * 老配置缺字段走 serde 的容器默认，也不会是空数组 —— 所以"空"只可能是
+     * 用户真的清空了，前端必须尊重它。 */
     const raw = (barOverride && barOverride.length)
         ? barOverride
-        : (CONF && Array.isArray(CONF.barList) && CONF.barList.length
-            ? CONF.barList
-            : all);
+        : (CONF && Array.isArray(CONF.barList) ? CONF.barList : all);
     // 注意别把分隔线一起过滤掉：它不是引擎，但确实是横条上的一员。
     // OCR 哨兵同理 —— 它是"横条上的 OCR 按钮"，用户能拖到任意位置。
     // 收藏夹目录（@fav:<id>，一级二级都行）也是一员；目录被删掉时对应哨兵自动消失。
