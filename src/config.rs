@@ -2603,7 +2603,7 @@ pub fn data_dir() -> PathBuf {
     // ② 测试二进制绝不落到真实目录
     #[cfg(test)]
     {
-        return test_scratch_dir();
+        test_scratch_dir()
     }
     // ③ 生产：便携目录优先，只读位置兜底 %APPDATA%（结果缓存，含探测）
     #[cfg(not(test))]
@@ -3198,7 +3198,7 @@ pub fn default_backup_dir() -> PathBuf {
     #[cfg(test)]
     {
         // 测试里绝不往 exe 旁边写（理由见 `test_scratch_dir`）
-        return data_dir();
+        data_dir()
     }
     #[cfg(not(test))]
     {

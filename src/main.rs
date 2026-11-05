@@ -3,6 +3,10 @@
 // `json!` 是递归展开的宏，字段一多就会顶到默认的 128 层递归上限
 // （config_view 里那个大对象就是）。调高一点，免得每加一个配置项就编译不过。
 #![recursion_limit = "512"]
+/* 测试代码里大量 `let mut c = Config::default(); c.foo = ...;` —— 对 Config 这种
+ * 几十个字段的结构体，这比写一个 40 行的结构体字面量清楚得多。这个 lint 在
+ * 测试里只是噪声，正式代码里仍然生效（`cargo clippy` 不带 --all-targets 时照查）。 */
+#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
 
 mod t;
 mod trayhost;
@@ -23604,7 +23608,7 @@ mod tests {
         cfg.img_engines = vec!["saucenao".into(), "doubao".into(), "yandex".into()];
         let ids: Vec<&str> = img_plan(&cfg).iter().map(|e| e.id).collect();
         assert_eq!(ids.first().copied(), Some("doubao"), "AI 家要排到最前");
-        let rest: Vec<&str> = ids[1..].iter().copied().collect();
+        let rest: Vec<&str> = ids[1..].to_vec();
         assert_eq!(rest, vec!["yandex", "saucenao"], "其余必须保持注册表顺序");
         // 关掉开关 = 退回 r75 及以前的行为：纯注册表顺序
         cfg.img_ai_first = false;
@@ -23616,6 +23620,7 @@ mod tests {
     /// **多个 AI** 才关；「默认=百度 + 勾了豆包」这种**一家 AI + 一家非 AI**
     /// 必须照常按键 —— 那正是用户报的那个 bug。
     #[test]
+    #[allow(non_snake_case)] // 测试名带 AI 缩写，读起来比 snake_case 清楚
     fn 多家AI时默认关掉自动按键() {
         let mut cfg = empty_cfg();
         cfg.img_ai_auto_off_on_multi = true;
@@ -23637,6 +23642,7 @@ mod tests {
     /// 根因：老判据数的是**总共勾了几家**（2 家 → 关），可真正会抢输入框的
     /// 只有"多个 AI"；非 AI 的百度自己 POST 上传，压根不需要粘贴。
     #[test]
+    #[allow(non_snake_case)] // 同上：测试名里带 AI 缩写
     fn 一家AI加一家非AI仍然按键() {
         let mut cfg = empty_cfg();
         cfg.img_ai_auto_off_on_multi = true;
@@ -23662,6 +23668,7 @@ mod tests {
     ///      `img_plan` 的口径是"只勾 ≤1 家时听默认引擎的"（r62 起的设计）——
     ///      不清空的话这里返回的是 yandex，压根走不到被测分支。
     #[test]
+    #[allow(non_snake_case)] // 同上：测试名里带 AI 缩写
     fn 只勾AI一家时正常按键() {
         let mut cfg = empty_cfg();
         cfg.img_ai_auto_off_on_multi = true;
@@ -23674,6 +23681,7 @@ mod tests {
 
     /// 没 AI / 没粘成功 → 都不该按键。
     #[test]
+    #[allow(non_snake_case)] // 同上：测试名里带 AI 缩写
     fn 没有AI或没粘成就不按键() {
         let mut cfg = empty_cfg();
         cfg.img_default_engine = String::new();
@@ -25727,14 +25735,15 @@ mod tests {
         //   只能拿到 `Config::default()`（= 百度一家），配不出多引擎场景。
         //   所以这里直接测**纯函数版** `combined_from`，名单由测试自己给 ——
         //   顺带把 r47 的核心不变式钉在这里：只拼名单里的那几家。
-        let mut cache: Vec<(u64, String, String, String, String)> = Vec::new();
-        cache.push((gen, "windows".into(), String::new(),
-                    "hello world 你好".into(), "本地识别".into()));
-        cache.push((gen, "baidu".into(), String::new(),
-                    "foo bar 世界".into(), "标准版".into()));
-        // 再来一条别的代次的：验证它绝不会串到这一代的展示里
-        cache.push((gen + 999, "windows".into(), String::new(),
-                    "别张图的字".into(), "本地识别".into()));
+        let cache: Vec<(u64, String, String, String, String)> = vec![
+            (gen, "windows".into(), String::new(),
+             "hello world 你好".into(), "本地识别".into()),
+            (gen, "baidu".into(), String::new(),
+             "foo bar 世界".into(), "标准版".into()),
+            // 再来一条别的代次的：验证它绝不会串到这一代的展示里
+            (gen + 999, "windows".into(), String::new(),
+             "别张图的字".into(), "本地识别".into()),
+        ];
 
         let plan: Vec<String> = vec!["windows".into(), "baidu".into()];
         let combined = super::combined_from(&plan, gen, &cache).expect("两条结果应该拼得出来");

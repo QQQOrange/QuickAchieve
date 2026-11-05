@@ -1413,14 +1413,14 @@ mod tests {
         i.asset_api_url = "https://api.github.com/repos/o/r/releases/assets/42".into();
         let s = sources(&i);
         assert_eq!(s.len(), 2, "两条路都要留着");
-        assert_eq!(s[0].1, false, "主源走 browser_download_url，不需要 Accept 头");
-        assert_eq!(s[1].1, true, "备源必须带 Accept: application/octet-stream");
+        assert!(!s[0].1, "主源走 browser_download_url，不需要 Accept 头");
+        assert!(s[1].1, "备源必须带 Accept: application/octet-stream");
         assert!(s[0].0.contains("releases/download"));
 
         // 老响应 / 假服务可能没有 asset id → 只有一条路，仍能下
         i.asset_api_url = String::new();
         assert_eq!(sources(&i).len(), 1);
-        assert_eq!(sources(&i)[0].1, false);
+        assert!(!sources(&i)[0].1);
 
         // 连主源都没有 → 空；download() 据此报"没有可用下载地址"
         i.url = String::new();

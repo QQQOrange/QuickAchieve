@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn 时间戳转日期() {
         // 0 秒 = 1970-01-01 00:00:00
-        assert_eq!(val("0".repeat(1).as_str()), None); // 1 位不算
+        assert_eq!(val("0".to_string().as_str()), None); // 1 位不算
         assert_eq!(val("0000000000").as_deref(), Some("1970-01-01 00:00:00 UTC"));
     }
 

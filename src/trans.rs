@@ -594,7 +594,7 @@ mod tests {
                         Ok(n) => buf.extend_from_slice(&tmp[..n]),
                     }
                 }
-                check(&String::from_utf8_lossy(&buf).to_string());
+                check(String::from_utf8_lossy(&buf).as_ref());
                 let body = reply.as_bytes();
                 let head = format!(
                     "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",

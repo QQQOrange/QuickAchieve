@@ -35,6 +35,14 @@ jobs:
         with:
           node-version: "20"
 
+      # v2.23.55：**必须装 jsdom**。
+      # 三个前端自检脚本都 `require('jsdom')`，CI 里从来没装过 —— 于是
+      # 「前端自检」这一步一直是 `Cannot find module 'jsdom'`。
+      # package.json / package-lock.json 都在 tools/ 下（早就提交了），
+      # 用 `npm ci` 按锁文件装，版本可复现。
+      - name: 安装前端自检依赖（jsdom）
+        run: npm ci --prefix tools
+
       # clippy 用 -D warnings 当门槛：现在已经是 0 警告，以后谁写出新警告就红。
       - name: clippy（零警告门槛）
         run: cargo clippy --all-targets -- -D warnings
