@@ -7,6 +7,10 @@
 mod t;
 mod trayhost;
 mod toast;
+/* v2.23.46：诊断文本（从 main.rs 拆出的第一块） */
+mod diag;
+/* v2.23.46：收藏夹一步收的纯逻辑 */
+mod favquick;
 /* v2.23.44：剪贴板历史（本机、默认关闭、不参与同步） */
 mod cliphist;
 /* v2.23.43：本地答案（算式 / 单位 / 日期 / 颜色 / 编解码） */
@@ -7183,134 +7187,14 @@ fn broadcast() {
 /// 而 `clip::set_text` 是我们自己维护的成熟路径（写失败会返回 false）。
 #[crate::t::command]
 fn copy_diagnostics() -> Result<String, String> {
-    let text = diagnostics_text();
-    if !clip::set_text(&text) {
-        return Err("复制失败（剪贴板被别的程序占用，稍后再试）".into());
-    }
-    win::log(&format!("diag: 已复制诊断信息（{} 字）", text.chars().count()));
-    Ok(text)
+    // v2.23.46：实体也搬到 `src/diag.rs`（命令只留薄壳）
+    crate::diag::copy()
 }
 
 #[crate::t::command]
 fn diagnostics_text() -> String {
-    let cfg = cfg_snapshot();
-    let mut s = String::new();
-    let push = |s: &mut String, k: &str, v: &str| {
-        s.push_str(&format!("{k}: {v}\n"));
-    };
-
-    push(&mut s, "Quick Achieve", config::VERSION);
-    let exe = std::env::current_exe().unwrap_or_default();
-    let exe_ver = win::exe_file_version(&exe)
-        .map(|(a, b, c)| format!("{a}.{b}.{c}"))
-        .unwrap_or_else(|| "?".into());
-    push(&mut s, "exe 文件版本", &exe_ver);
-    push(&mut s, "exe 路径", &exe.display().to_string());
-
-    push(&mut s, "Windows", &win::os_version_string());
-    push(&mut s, "架构", std::env::consts::ARCH);
-    push(
-        &mut s,
-        "WebView2",
-        &win::webview2_version().unwrap_or_else(|| "未检测到".into()),
-    );
-    push(&mut s, "管理员权限", if win::is_admin() { "是" } else { "否" });
-    push(
-        &mut s,
-        "提权偏好",
-        &match crate::read_local_elevate_pref() {
-            Some(true) => "总是以管理员运行".to_string(),
-            Some(false) => "从不提权".to_string(),
-            None => "未表态（按构建默认）".to_string(),
-        },
-    );
-
-    let dir = config::data_dir();
-    push(&mut s, "数据目录", &dir.display().to_string());
-    let cfg_path = config::config_path();
-    push(
-        &mut s,
-        "config.json",
-        &format!(
-            "{:.1} KB",
-            std::fs::metadata(&cfg_path).map(|m| m.len() as f64 / 1024.0).unwrap_or(0.0)
-        ),
-    );
-    let log_path = dir.join("log.txt");
-    push(
-        &mut s,
-        "log.txt",
-        &format!(
-            "{:.0} KB",
-            std::fs::metadata(&log_path).map(|m| m.len() as f64 / 1024.0).unwrap_or(0.0)
-        ),
-    );
-    let bdir = config::backup_dir_of(&cfg);
-    let backups = std::fs::read_dir(&bdir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .filter(|e| e.path().is_file())
-                .count()
-        })
-        .unwrap_or(0);
-    push(&mut s, "备份目录", &bdir.display().to_string());
-    push(&mut s, "备份份数", &backups.to_string());
-
-    push(&mut s, "界面语言", if cfg.ui_lang.is_empty() { "zh" } else { &cfg.ui_lang });
-    push(&mut s, "主题", &cfg.theme);
-    push(&mut s, "触发方式", if cfg.trigger_select { "划词" } else { "按住Ctrl" });
-    push(&mut s, "Ctrl+C 触发", if cfg.trigger_copy { "开" } else { "关" });
-    push(&mut s, "横条格数", &cfg.bar_list.len().to_string());
-    push(&mut s, "自定义引擎", &cfg.custom_engines.len().to_string());
-    push(&mut s, "外部软件", &cfg.apps.len().to_string());
-    push(&mut s, "OCR 引擎", &cfg.ocr_engine);
-    push(
-        &mut s,
-        "网格页",
-        &format!(
-            "{}（{}）",
-            if cfg.grid_enable { "开" } else { "关" },
-            cfg.grid_hotkey
-        ),
-    );
-    push(&mut s, "收藏夹热键", &cfg.fav_hotkey);
-    push(
-        &mut s,
-        "WebDAV",
-        &format!(
-            "{}（启动同步 {}）",
-            if cfg.webdav_on_start || cfg.webdav_on_exit { "开" } else { "关" },
-            if cfg.webdav_on_start { "是" } else { "否" }
-        ),
-    );
-
-    /* 日志尾部：只挑"看起来是异常"的行，且**去掉时间戳里的噪声格式**。
-     * 最多 12 行 —— 再长用户粘着也费劲。 */
-    let tail = std::fs::read_to_string(&log_path).unwrap_or_default();
-    let marks = ["失败", "错误", "panic", "PANIC", "异常", "超时", "拒绝", "ERR="];
-    let hits: Vec<&str> = tail
-        .lines()
-        .filter(|l| marks.iter().any(|m| l.contains(m)))
-        .rev()
-        .take(40)
-        .collect();
-    if !hits.is_empty() {
-        s.push_str("\n-- 日志里最近 40 条异常 --\n");
-        for l in hits.iter().rev() {
-            s.push_str(l);
-            s.push('\n');
-        }
-    }
-    // v2.23.44：**配置能不能写**（放在最后，且**不在上面那个 if 里面**）——
-    // 「设置保存不了」是用户报得最多的一类问题，诊断里必须有这一行；
-    // 没失败时写"正常"，失败时写具体原因（磁盘满 / 目录只读 / 被占用）。
-    let save_err = config::last_save_error();
-    push(
-        &mut s,
-        "配置能否写入",
-        if save_err.is_empty() { "正常" } else { save_err.as_str() },
-    );
-    s
+    // v2.23.46：实体搬到 `src/diag.rs`（逻辑出模块、命令留薄壳）
+    crate::diag::text()
 }
 #[crate::t::command]
 fn get_config() -> Value {
@@ -7847,41 +7731,6 @@ fn clip_hist_clear() {
 /// * 统一收进名为「快速收藏」的分组，没有就建一个 —— 用户不用先想"放哪个目录"；
 /// * 同组里已有**完全相同**的文字就不重复添加（返回"已在收藏夹里"）；
 /// * 单条上限 2 万字（和剪贴板历史同一口径），超了明确拒绝而不是静默截断。
-fn fav_quick_add_into(groups: &mut Vec<config::FavGroup>, text: &str, now_ms: i64) -> Result<String, String> {
-    let body = text.trim();
-    if body.is_empty() {
-        return Err("没有可收藏的文字".into());
-    }
-    if body.chars().count() > 20_000 {
-        return Err("内容太长（超过 2 万字），没有收藏".into());
-    }
-    const GROUP: &str = "快速收藏";
-    let gi = match groups.iter().position(|g| g.name == GROUP) {
-        Some(i) => i,
-        None => {
-            groups.push(config::FavGroup {
-                id: format!("g{now_ms}"),
-                name: GROUP.to_string(),
-                icon: String::new(),
-                items: Vec::new(),
-                children: Vec::new(),
-            });
-            groups.len() - 1
-        }
-    };
-    if groups[gi].items.iter().any(|it| it.kind == "text" && it.text == body) {
-        return Ok(format!("已经在「{GROUP}」里了"));
-    }
-    groups[gi].items.push(config::FavItem {
-        id: format!("q{now_ms}"),
-        kind: "text".to_string(),
-        text: body.to_string(),
-        html: String::new(),
-        image: String::new(),
-        remark: String::new(),
-    });
-    Ok(format!("已收藏到「{GROUP}」"))
-}
 
 #[crate::t::command]
 fn fav_quick_add(text: String) -> Result<String, String> {
@@ -7894,7 +7743,7 @@ fn fav_quick_add(text: String) -> Result<String, String> {
             Ok(c) => c,
             Err(_) => return Err("配置读不了".into()),
         };
-        let msg = fav_quick_add_into(&mut cfg.favorites, &text, now)?;
+        let msg = crate::favquick::quick_add_into(&mut cfg.favorites, &text, now)?;
         if msg.starts_with("已经") {
             return Ok(msg); // 没改配置，不用存盘 / 广播
         }
@@ -22718,56 +22567,6 @@ fn main() {
 /* ================================================================== */
 
 #[cfg(test)]
-mod fav_quick_tests {
-    use super::*;
-
-    fn groups() -> Vec<config::FavGroup> {
-        Vec::new()
-    }
-
-    #[test]
-    fn 一步收藏会建分组并去重() {
-        let mut g = groups();
-        let m1 = fav_quick_add_into(&mut g, "  第一段  ", 1000).unwrap();
-        assert!(m1.contains("快速收藏"), "{m1}");
-        assert_eq!(g.len(), 1);
-        assert_eq!(g[0].items.len(), 1);
-        assert_eq!(g[0].items[0].text, "第一段", "两头空白要去掉");
-
-        // 同一条再收藏一次：不新增，给出"已在"提示
-        let m2 = fav_quick_add_into(&mut g, "第一段", 2000).unwrap();
-        assert!(m2.contains("已经"), "{m2}");
-        assert_eq!(g[0].items.len(), 1, "不许重复添加");
-
-        // 换一条内容：进同一个分组
-        fav_quick_add_into(&mut g, "第二段", 3000).unwrap();
-        assert_eq!(g.len(), 1, "不该再建第二个分组");
-        assert_eq!(g[0].items.len(), 2);
-    }
-
-    #[test]
-    fn 空内容与超长内容都要拒绝() {
-        let mut g = groups();
-        assert!(fav_quick_add_into(&mut g, "   ", 1).is_err());
-        let long = "字".repeat(20_001);
-        assert!(fav_quick_add_into(&mut g, &long, 2).is_err());
-        assert!(g.is_empty(), "被拒绝时不能留下空分组");
-    }
-
-    #[test]
-    fn 已有同名分组时直接复用() {
-        let mut g = vec![config::FavGroup {
-            id: "g0".into(),
-            name: "快速收藏".into(),
-            icon: String::new(),
-            items: Vec::new(),
-            children: Vec::new(),
-        }];
-        fav_quick_add_into(&mut g, "x", 10).unwrap();
-        assert_eq!(g.len(), 1);
-        assert_eq!(g[0].items.len(), 1);
-    }
-}
 #[cfg(test)]
 mod tests {
 
