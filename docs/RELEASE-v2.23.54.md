@@ -48,6 +48,6 @@ if !ours && ctrl && !alt && vk == VK_C && cfg_with(|c| c.trigger_copy) {
 
 ---
 
-**SHA256: 0000000000000000000000000000000000000000000000000000000000000000**
+**SHA256: 4AE3EE1FFD6FB3536FC8E6ACD40DC2D447C550192CA8CAE9F3B365820F63CA70**
 
 （`QuickAchieve.exe`，构建后由 `tools/release.ps1` 自动回填）
