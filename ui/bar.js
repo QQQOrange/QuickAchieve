@@ -7062,22 +7062,27 @@ listen('qs://rclick', (ev) => {
     const name = btn && btn.classList.contains('engine') ? btn.dataset.engine : null;
     invoke('log_msg', { msg: `rclick-hook at ${Math.round(x)},${Math.round(y)} engine=${name}` }).catch(() => {});
 
-    /* v2.23.50：**右键横条 = 打开「更多引擎」页**（用户口径）。
+    /* v2.23.51：**右键的语义分两种状态，按"面板开没开"决定**（用户口径改定）。
      *
-     * 三种落点要分开处理，否则会互相打架：
-     *   ① 落在引擎按钮上 → 还是原来那个引擎菜单（换图标 / 固定到横条），
-     *      这是右键**那颗引擎**，不是"右键横条空白处"；
-     *   ② 落在已经展开的面板 / 菜单里 → 什么也不做（只把菜单收掉），
-     *      否则在面板里点右键会把面板重开一遍、滚动位置也跳回去；
-     *   ③ 其余（横条本体空白处）→ 展开引擎面板。
-     * 注意这里**不 toggle**：右键的语义是"我要看"，不是"开关"。
-     * 面板已经开着就保持原样，免得右键两下看着像没反应。 */
+     *   · 面板**没开** → 右键横条上**任何**地方（包括引擎图标）都出「更多引擎」页。
+     *     以前这里先判 `name`，右键落在图标上就弹「更换这个图标…」—— 用户想开
+     *     更多引擎页，却得到一个改图标的菜单，完全不是他要的。
+     *   · 面板**已经开着** → 右键引擎图标才出引擎菜单（换图标 / 固定到横条）。
+     *     这时候用户已经在看引擎列表了，"针对某一颗引擎"的动作才是他要的。
+     *
+     * 面板开着时的另外两种落点：空白处 → 什么都不做（不重开、不跳滚动位置）；
+     * 面板/菜单内部 → 同上。 */
+    const panelOpen = !panelEl.hidden;
+    if (!panelOpen) {
+        openEnginesPanel();
+        return;
+    }
     if (name) {
         openMenu(x, y, name);
         return;
     }
     if (el && el.closest && (el.closest('#panel') || el.closest('#menu'))) return;
-    openEnginesPanel();
+    // 面板开着 + 右键横条空白处：保持原样
 });
 
 listen('qs://hidden', () => {

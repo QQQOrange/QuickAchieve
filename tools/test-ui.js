@@ -1804,6 +1804,23 @@ async function testBar() {
         await fireRclick($('bar'));
         ok('再右键一次仍然开着（不是 toggle）', $('panel').hidden === false);
 
+        /* ③d v2.23.51：**面板没开时，右键引擎图标也要出更多引擎页**（不是换图标菜单）。
+         * 这是用户报的那个 bug：想开更多引擎，右键盘落在图标上却弹了「更换这个图标…」。 */
+        const barEngine = $('engines').querySelector('.engine');
+        ok('横条上有引擎按钮（用来验证右键落点）', !!barEngine);
+        if (barEngine) {
+            $('panel').hidden = true;
+            $('menu').hidden = true;
+            await fireRclick(barEngine);
+            ok('面板没开时右键引擎图标 → 出的是更多引擎页',
+                $('panel').hidden === false, '面板没开');
+            ok('  而且**没有**弹换图标菜单', $('menu').hidden === true);
+
+            // 面板开着时，右键同一颗图标 → 才出引擎菜单
+            await fireRclick(barEngine);
+            ok('面板开着时右键引擎图标 → 出换图标菜单', $('menu').hidden === false);
+        }
+
         // ④ 补了 engine 类不能把左键带偏：面板格子点击仍走 open_search
         env.calls.length = 0;
         cells[0].dispatchEvent(new w.Event('click', { bubbles: true }));
