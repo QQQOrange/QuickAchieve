@@ -4708,7 +4708,25 @@ async function refreshBackupInfo() {
         }));
         row.addEventListener('click', async () => {
             if (!nm) return;
-            if (!confirm('用这份备份覆盖当前配置？\n\n' + nm
+            /* v2.23.45：**先给差异，再让确认**。
+             * 以前只有一句"覆盖当前配置？"，用户不知道自己同意了些什么
+             * （可能把调好的引擎 / 收藏全换掉）。现在把会变的项列进确认框。 */
+            let diffText = '';
+            try {
+                const d = await invoke('backup_diff', { name: nm });
+                if (d && Array.isArray(d.items) && d.items.length) {
+                    diffText = '\n\n会发生变化：\n' + d.items
+                        .slice(0, 8)
+                        .map((x) => `· ${x.label}：${x.from} → ${x.to}`)
+                        .join('\n');
+                    if (d.items.length > 8) diffText += `\n…还有 ${d.items.length - 8} 项`;
+                } else if (d && d.count === 0) {
+                    diffText = '\n\n（这份备份和当前配置一致，恢复不会改变任何设置）';
+                }
+            } catch (_) {
+                // 差异算不出来（备份损坏 / 密码不对）就让后端在恢复时报错，不在这里拦
+            }
+            if (!confirm('用这份备份覆盖当前配置？\n\n' + nm + diffText
                 + '\n\n当前配置会先自动留一份（恢复前快照），挑错了还能退回来。')) return;
             try {
                 /* 后端返回的是"凭据怎么样了"的补充说明（可能为空）：

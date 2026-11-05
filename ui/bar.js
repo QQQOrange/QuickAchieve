@@ -41,6 +41,7 @@ const btnLink = $('btnLink');
 
 /** 本地答案（v2.23.43）：算式 / 单位 / 日期 / 颜色 / 编解码。null = 这次算不了。 */
 const btnAnswer = document.getElementById('btnAnswer');
+const btnFav = document.getElementById('btnFav');
 let currentAnswer = null;
 const btnMore = $('btnMore');
 const btnOcr = $('btnOcr');
@@ -3101,6 +3102,13 @@ function syncLinkBtn() {
  * 前端再来一遍必然两边不一致。
  */
 function syncAnswerBtn() {
+    /* 收藏按钮（v2.23.45）：只要有一段文字就能收藏 —— 这条比"能算"宽得多，
+     * 任何一句话都值得存进收藏夹，所以不看 currentAnswer。 */
+    if (btnFav) {
+        const hasText = String(currentText || '').trim().length > 0 && !ocrOnly;
+        btnFav.hidden = !hasText;
+        btnFav.textContent = '★';
+    }
     if (!btnAnswer) return;
     const a = currentAnswer;
     if (!a || !a.value) {
@@ -3132,6 +3140,24 @@ function refreshAnswer() {
             currentAnswer = null;
             syncAnswerBtn();
         });
+}
+
+if (btnFav) {
+    btnFav.addEventListener('click', () => {
+        const text = String(currentText || '').trim();
+        if (!text) return;
+        invoke('fav_quick_add', { text })
+            .then((msg) => {
+                // 先给个"收藏成功"的即时反馈（按钮变 ✓），再收起横条
+                btnFav.textContent = '✓';
+                btnFav.title = String(msg || '已收藏');
+                setTimeout(() => { invoke('hide_bar').catch(() => { }); }, 550);
+            })
+            .catch((e) => {
+                btnFav.textContent = '✕';
+                btnFav.title = String((e && e.message) || e || '收藏失败');
+            });
+    });
 }
 
 if (btnAnswer) {

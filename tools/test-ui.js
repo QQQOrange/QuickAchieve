@@ -5284,6 +5284,19 @@ async function testLocalAnswer() {
     await flush();
     ok('普通句子不显示答案按钮', btn.hidden === true);
 
+    /* 一步收藏（v2.23.45）：有文字就该出现 ★，点它调 fav_quick_add */
+    const favBtn = win.document.getElementById('btnFav');
+    ok('横条里有收藏按钮', !!favBtn);
+    if (favBtn) {
+        ok('有文字时收藏按钮可见', favBtn.hidden === false);
+        env.calls.length = 0;
+        favBtn.click();
+        await flush();
+        const call = env.calls.find((c) => c.cmd === 'fav_quick_add');
+        ok('点收藏调用 fav_quick_add 并带上文字', !!call && String(call.args.text).includes('今天天气'),
+            JSON.stringify(env.calls.map((c) => c.cmd)));
+    }
+
     // 颜色也能算
     showCb({ payload: { text: '#3B7DFF' } });
     await flush();

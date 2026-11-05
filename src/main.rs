@@ -7837,6 +7837,146 @@ fn clip_hist_list() -> Value {
 fn clip_hist_clear() {
     crate::cliphist::clear();
 }
+/* ---------------- 收藏夹「一步收」（v2.23.45） ---------------- */
+
+/// 把一段文字**直接**收进收藏夹（横条上那颗 ★）。
+///
+/// 抽成不碰 STATE、不广播的纯函数，为了能单测（同 `fav_send` 的那套理由）。
+///
+/// 规则：
+/// * 统一收进名为「快速收藏」的分组，没有就建一个 —— 用户不用先想"放哪个目录"；
+/// * 同组里已有**完全相同**的文字就不重复添加（返回"已在收藏夹里"）；
+/// * 单条上限 2 万字（和剪贴板历史同一口径），超了明确拒绝而不是静默截断。
+fn fav_quick_add_into(groups: &mut Vec<config::FavGroup>, text: &str, now_ms: i64) -> Result<String, String> {
+    let body = text.trim();
+    if body.is_empty() {
+        return Err("没有可收藏的文字".into());
+    }
+    if body.chars().count() > 20_000 {
+        return Err("内容太长（超过 2 万字），没有收藏".into());
+    }
+    const GROUP: &str = "快速收藏";
+    let gi = match groups.iter().position(|g| g.name == GROUP) {
+        Some(i) => i,
+        None => {
+            groups.push(config::FavGroup {
+                id: format!("g{now_ms}"),
+                name: GROUP.to_string(),
+                icon: String::new(),
+                items: Vec::new(),
+                children: Vec::new(),
+            });
+            groups.len() - 1
+        }
+    };
+    if groups[gi].items.iter().any(|it| it.kind == "text" && it.text == body) {
+        return Ok(format!("已经在「{GROUP}」里了"));
+    }
+    groups[gi].items.push(config::FavItem {
+        id: format!("q{now_ms}"),
+        kind: "text".to_string(),
+        text: body.to_string(),
+        html: String::new(),
+        image: String::new(),
+        remark: String::new(),
+    });
+    Ok(format!("已收藏到「{GROUP}」"))
+}
+
+#[crate::t::command]
+fn fav_quick_add(text: String) -> Result<String, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let msg = {
+        let mut cfg = match st().cfg.lock() {
+            Ok(c) => c,
+            Err(_) => return Err("配置读不了".into()),
+        };
+        let msg = fav_quick_add_into(&mut cfg.favorites, &text, now)?;
+        if msg.starts_with("已经") {
+            return Ok(msg); // 没改配置，不用存盘 / 广播
+        }
+        if !config::save(&cfg) {
+            return Err("没能保存到磁盘（重启后会回滚）".into());
+        }
+        msg
+    };
+    win::log(&format!("fav_quick_add: {msg}"));
+    broadcast();
+    Ok(msg)
+}
+/* ---------------- 备份差异预览（v2.23.45） ---------------- */
+
+/// 恢复之前先看**会发生什么变化**。
+///
+/// 以前点「恢复」只有一个"用这份备份覆盖当前配置？"的确认框 —— 用户其实不知道
+/// 自己同意了些什么（可能把当前调好的引擎/收藏全换掉）。这里把"会变的项"列出来，
+/// 前端拼进确认框。
+///
+/// 只比**用户能感知的几项**（引擎/收藏/软件/主题/语言/OCR/WebDAV/密码），
+/// 不做逐字段 diff：字段级差异对用户没有意义，反而更长更看不懂。
+#[crate::t::command]
+fn backup_diff(name: String) -> Result<Value, String> {
+    if name.trim().is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || name.contains(':')
+    {
+        return Err("文件名不合法".into());
+    }
+    let dir = cfg_with(config::backup_dir_of);
+    let p = dir.join(&name);
+    if !p.is_file() {
+        return Err("这份备份已经不在了（可能被清理过）".into());
+    }
+    let pw = cfg_snapshot().backup_password;
+    let bak = config::read_backup_config(&p, &pw)
+        .ok_or_else(|| "这份备份打不开（密码不对或文件已损坏）".to_string())?;
+    let cur = cfg_snapshot();
+    let mut diffs: Vec<Value> = Vec::new();
+    let mut push = |label: &str, from: String, to: String| {
+        if from != to {
+            diffs.push(json!({ "label": label, "from": from, "to": to }));
+        }
+    };
+    push(
+        "横条内容",
+        format!("{} 项", cur.bar_list.len()),
+        format!("{} 项", bak.bar_list.len()),
+    );
+    push(
+        "自定义引擎",
+        format!("{} 个", cur.custom_engines.len()),
+        format!("{} 个", bak.custom_engines.len()),
+    );
+    push(
+        "收藏分组",
+        format!("{} 个", cur.favorites.len()),
+        format!("{} 个", bak.favorites.len()),
+    );
+    push(
+        "外部软件",
+        format!("{} 个", cur.apps.len()),
+        format!("{} 个", bak.apps.len()),
+    );
+    push("界面主题", cur.theme.clone(), bak.theme.clone());
+    push("界面语言", cur.ui_lang.clone(), bak.ui_lang.clone());
+    push("OCR 引擎", cur.ocr_engine.clone(), bak.ocr_engine.clone());
+    push(
+        "WebDAV 地址",
+        if cur.webdav_url.is_empty() { "未填".into() } else { "已填".into() },
+        if bak.webdav_url.is_empty() { "未填".into() } else { "已填".into() },
+    );
+    push(
+        "备份密码",
+        if cur.backup_password.is_empty() { "未设".into() } else { "已设".into() },
+        if bak.backup_password.is_empty() { "未设".into() } else { "已设".into() },
+    );
+    Ok(json!({ "count": diffs.len(), "items": diffs }))
+}
 fn toast_to_settings(msg: &str) {
     if let Some(a) = APP.get() {
         let _ = a.emit_to("settings", "qs://toast", msg.to_string());
@@ -21895,6 +22035,10 @@ fn main() {
             // v2.23.36：一键诊断（设置页「关于」里的「复制诊断信息」）
             diagnostics_text,
             copy_diagnostics,
+            // v2.23.45：恢复前差异预览
+            backup_diff,
+            // v2.23.45：收藏夹一步收
+            fav_quick_add,
             // v2.23.44：剪贴板历史
             clip_hist_cfg,
             clip_hist_set,
@@ -22573,6 +22717,57 @@ fn main() {
 /*  跑法：cargo test --release                                     */
 /* ================================================================== */
 
+#[cfg(test)]
+mod fav_quick_tests {
+    use super::*;
+
+    fn groups() -> Vec<config::FavGroup> {
+        Vec::new()
+    }
+
+    #[test]
+    fn 一步收藏会建分组并去重() {
+        let mut g = groups();
+        let m1 = fav_quick_add_into(&mut g, "  第一段  ", 1000).unwrap();
+        assert!(m1.contains("快速收藏"), "{m1}");
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0].items.len(), 1);
+        assert_eq!(g[0].items[0].text, "第一段", "两头空白要去掉");
+
+        // 同一条再收藏一次：不新增，给出"已在"提示
+        let m2 = fav_quick_add_into(&mut g, "第一段", 2000).unwrap();
+        assert!(m2.contains("已经"), "{m2}");
+        assert_eq!(g[0].items.len(), 1, "不许重复添加");
+
+        // 换一条内容：进同一个分组
+        fav_quick_add_into(&mut g, "第二段", 3000).unwrap();
+        assert_eq!(g.len(), 1, "不该再建第二个分组");
+        assert_eq!(g[0].items.len(), 2);
+    }
+
+    #[test]
+    fn 空内容与超长内容都要拒绝() {
+        let mut g = groups();
+        assert!(fav_quick_add_into(&mut g, "   ", 1).is_err());
+        let long = "字".repeat(20_001);
+        assert!(fav_quick_add_into(&mut g, &long, 2).is_err());
+        assert!(g.is_empty(), "被拒绝时不能留下空分组");
+    }
+
+    #[test]
+    fn 已有同名分组时直接复用() {
+        let mut g = vec![config::FavGroup {
+            id: "g0".into(),
+            name: "快速收藏".into(),
+            icon: String::new(),
+            items: Vec::new(),
+            children: Vec::new(),
+        }];
+        fav_quick_add_into(&mut g, "x", 10).unwrap();
+        assert_eq!(g.len(), 1);
+        assert_eq!(g[0].items.len(), 1);
+    }
+}
 #[cfg(test)]
 mod tests {
 
