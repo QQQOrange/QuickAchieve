@@ -1,0 +1,22 @@
+{
+  "剪贴板历史": "Clipboard history",
+  "记录你复制过的**文本**，方便回头再拿一次。默认关闭；": "Keeps the text you copy so you can grab it again. Off by default;",
+  "只存在本机": "stored on this machine only",
+  "， 不参与备份 / WebDAV 同步；不记图片、不记文件列表；随时可以一键清空。": ", never included in backups / WebDAV sync; no images, no file lists; clear it any time.",
+  "启用剪贴板历史": "Enable clipboard history",
+  "打开后每 0.8 秒看一次剪贴板，内容变了才记一条": "Checks the clipboard every 0.8 s and records only when the content changes",
+  "保留条数": "Entries to keep",
+  "5 ~ 200 条，超出的自动丢掉最旧的": "5 to 200; the oldest ones are dropped first",
+  "写入磁盘": "Save to disk",
+  "关掉就只在内存里，退出即清（更安全）；打开则重启后还在": "Off: memory only, wiped on exit (safer). On: survives a restart",
+  "已记录": "Recorded",
+  "点任意一条即可复制回剪贴板": "Click any entry to copy it back",
+  "清空历史": "Clear history",
+  "还没有记录（打开上面的开关后，复制文字就会出现在这里）": "Nothing yet (turn the switch above on, then copy some text)",
+  "已复制回剪贴板": "Copied back to the clipboard",
+  "剪贴板历史已开启": "Clipboard history is on",
+  "剪贴板历史已关闭（已清空内存里的记录）": "Clipboard history is off (in-memory entries cleared)",
+  "剪贴板历史已清空": "Clipboard history cleared",
+  "清空失败：": "Clear failed: ",
+  "复制失败": "Copy failed"
+}

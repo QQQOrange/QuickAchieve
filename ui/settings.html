@@ -30,6 +30,10 @@
     <div class="ver" id="ver"></div>
 </header>
 
+<!-- v2.23.44：**配置写盘失败**的红条。以前只有托盘气泡，错过就不知道了 ——
+     而"改了设置、重启回滚"是最容易让人以为软件有毛病的一类问题。 -->
+<div class="save-err" id="saveErrBanner" hidden></div>
+
 <div class="shell">
 <nav class="tabs" id="tabs">
     <!-- r55：每颗 tab 前加一个 emoji 图标。十个 tab 全是汉字时横向扫一遍要找半天，
@@ -835,7 +839,32 @@
                 <button type="button" class="chip" data-sub="qr"><span class="ci" aria-hidden="true"></span><span class="cl">二维码</span></button>
             </div>
         </section>
+<!-- v2.23.44：剪贴板历史。默认关闭、只存本机、可一键清空 —— 隐私三原则写在界面上了。 -->
+<section class="card">
+    <h2>剪贴板历史</h2>
+    <div class="hint">记录你复制过的**文本**，方便回头再拿一次。默认关闭；<b>只存在本机</b>，
+        不参与备份 / WebDAV 同步；不记图片、不记文件列表；随时可以一键清空。</div>
+
+    <div class="row">
+        <div class="rt"><b>启用剪贴板历史</b><small>打开后每 0.8 秒看一次剪贴板，内容变了才记一条</small></div>
+        <label class="sw"><input type="checkbox" id="s-clipHistEnabled"><i></i></label>
     </div>
+    <div class="row">
+        <div class="rt"><b>保留条数</b><small>5 ~ 200 条，超出的自动丢掉最旧的</small></div>
+        <input class="txt" type="number" id="s-clipHistMax" min="5" max="200" step="5">
+    </div>
+    <div class="row">
+        <div class="rt"><b>写入磁盘</b><small>关掉就只在内存里，退出即清（更安全）；打开则重启后还在</small></div>
+        <label class="sw"><input type="checkbox" id="s-clipHistPersist"><i></i></label>
+    </div>
+    <div class="row">
+        <div class="rt"><b>已记录</b><small>点任意一条即可复制回剪贴板</small></div>
+        <button type="button" class="btn ghost" id="btnClipHistClear">清空历史</button>
+    </div>
+    <div class="clip-hist" id="clipHistList"></div>
+</section>
+    </div>
+
 
 <div class="pane" data-pane="matte" hidden>
     <!-- ==================== r80：AI 抠图（图标编辑器） ====================

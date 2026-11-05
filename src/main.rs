@@ -7,6 +7,8 @@
 mod t;
 mod trayhost;
 mod toast;
+/* v2.23.44：剪贴板历史（本机、默认关闭、不参与同步） */
+mod cliphist;
 /* v2.23.43：本地答案（算式 / 单位 / 日期 / 颜色 / 编解码） */
 mod localanswer;
 
@@ -5765,6 +5767,9 @@ fn spawn_detector() {
     // 否则开机的头几百毫秒里热键撞车还是两家一起响应。
     refresh_steal_hotkeys();
     hook::spawn(tx);
+    /* v2.23.44：剪贴板历史（默认关闭，只在本机；轮询线程自己的节奏是 800ms） */
+    crate::cliphist::init();
+    crate::cliphist::spawn();
 
         std::thread::Builder::new()
             .name("qs-detect".into())
@@ -6457,6 +6462,9 @@ fn config_view() -> Value {
         // WebDAV、排序，这些都在；窗口大小属于「别的」，只在本机 config.json
         // 里持久化。哪天真要跟着备份走，先给 ocr_window_size 加屏幕边界钳制。
         "barList": cfg.bar_list,
+        // v2.23.44：这次运行里配置写盘失败的原因（空 = 正常）。
+        // 设置页在顶部显示一条红提示 —— 以前只有托盘气泡，错过就不知道了。
+        "saveError": config::last_save_error(),
         "favorites": cfg.favorites,
         "favHotkey": cfg.fav_hotkey,
         "backupPassword": cfg.backup_password,
@@ -7284,15 +7292,24 @@ fn diagnostics_text() -> String {
         .lines()
         .filter(|l| marks.iter().any(|m| l.contains(m)))
         .rev()
-        .take(12)
+        .take(40)
         .collect();
     if !hits.is_empty() {
-        s.push_str("\n-- 日志里最近 12 条异常 --\n");
+        s.push_str("\n-- 日志里最近 40 条异常 --\n");
         for l in hits.iter().rev() {
             s.push_str(l);
             s.push('\n');
         }
     }
+    // v2.23.44：**配置能不能写**（放在最后，且**不在上面那个 if 里面**）——
+    // 「设置保存不了」是用户报得最多的一类问题，诊断里必须有这一行；
+    // 没失败时写"正常"，失败时写具体原因（磁盘满 / 目录只读 / 被占用）。
+    let save_err = config::last_save_error();
+    push(
+        &mut s,
+        "配置能否写入",
+        if save_err.is_empty() { "正常" } else { save_err.as_str() },
+    );
     s
 }
 #[crate::t::command]
@@ -7795,6 +7812,31 @@ fn local_answer(text: String) -> Value {
     }
 }
 
+/* ---------------- 剪贴板历史（v2.23.44） ---------------- */
+
+#[crate::t::command]
+fn clip_hist_cfg() -> Value {
+    serde_json::to_value(crate::cliphist::cfg()).unwrap_or(Value::Null)
+}
+
+#[crate::t::command]
+fn clip_hist_set(v: Value) -> Result<(), String> {
+    let c: crate::cliphist::HistCfg =
+        serde_json::from_value(v).map_err(|e| format!("历史设置不合法：{e}"))?;
+    crate::cliphist::set_cfg(c)?;
+    broadcast();
+    Ok(())
+}
+
+#[crate::t::command]
+fn clip_hist_list() -> Value {
+    serde_json::to_value(crate::cliphist::list()).unwrap_or(Value::Array(Vec::new()))
+}
+
+#[crate::t::command]
+fn clip_hist_clear() {
+    crate::cliphist::clear();
+}
 fn toast_to_settings(msg: &str) {
     if let Some(a) = APP.get() {
         let _ = a.emit_to("settings", "qs://toast", msg.to_string());
@@ -21853,6 +21895,11 @@ fn main() {
             // v2.23.36：一键诊断（设置页「关于」里的「复制诊断信息」）
             diagnostics_text,
             copy_diagnostics,
+            // v2.23.44：剪贴板历史
+            clip_hist_cfg,
+            clip_hist_set,
+            clip_hist_list,
+            clip_hist_clear,
             // v2.23.43：本地答案
             local_answer,
             set_setting,

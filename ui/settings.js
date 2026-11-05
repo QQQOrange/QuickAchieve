@@ -3883,6 +3883,32 @@ function findPaneName(pane) {
     return label || pane;
 }
 
+/** 搜索里可以直接执行的**动作**（v2.23.44）。
+ *
+ * 这就是"命令面板"的轻量版：不用另开窗口，搜索框里打「导出」就能直接跑。
+ * 每条给：标题、所属分页（借它的名字做分组）、要点的那颗按钮（优先）或 invoke 命令。
+ * 为什么不直接 invoke：这些动作里有一半会弹确认框 / 选路径（导入、恢复默认），
+ * 走原有按钮的点击处理才是**同一条路径**，不会出现两套行为。 */
+const FIND_ACTIONS = [
+    { label: '导出配置备份（明文）', pane: 'data', click: 'btnExport' },
+    { label: '载入配置备份（导入）', pane: 'data', click: 'btnImport' },
+    { label: '恢复全部默认设置', pane: 'data', click: 'btnReset' },
+    { label: '复制诊断信息', pane: 'about', click: 'btnDiag' },
+    { label: '打开配置目录', pane: 'data', invoke: 'open_data_dir' },
+];
+
+/** 把动作也塞进搜索索引（搜到设置项的同时，动作也能被搜到）。 */
+function findActionEntries() {
+    return FIND_ACTIONS.map((a) => ({
+        pane: a.pane,
+        paneName: '动作',
+        label: a.label,
+        body: a.label + ' 动作',
+        py: pyInitialsOf(a.label),
+        action: a,
+        el: null,
+    }));
+}
 function findBuildIndex() {
     const out = [];
     const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
@@ -3901,6 +3927,8 @@ function findBuildIndex() {
             out.push({ pane, paneName, label, body, py, el });
         });
     });
+    // 动作排在设置项之后：搜「导出」时先看到设置项、再看到「导出配置备份」
+    out.push(...findActionEntries());
     findIndex = out;
     return out;
 }
@@ -3934,6 +3962,115 @@ function findReveal(el) {
     setTimeout(() => el.classList.remove('find-hit'), 1400);
 }
 
+/** 配置写盘失败的红条（v2.23.44）。
+ *
+ * 后端每次保存失败都会记下**具体原因**（磁盘满 / 目录只读 / 被占用），
+ * 随 config_view 一起广播过来；这里只在非空时显示一条红条。
+ * 以前只有托盘气泡，用户没看到就以为"设置生效了"，重启才发现回滚了。 */
+function syncSaveErrorBanner() {
+    const b = $('saveErrBanner');
+    if (!b) return;
+    const e = String((CONF && CONF.saveError) || '').trim();
+    b.hidden = !e;
+    b.textContent = e
+        ? '⚠ 设置没能保存到磁盘：' + e + ' —— 这次改动重启后会回滚。请检查磁盘空间 / 目录权限。'
+        : '';
+}
+/* ==================== 剪贴板历史（v2.23.44） ====================
+ *
+ * 隐私三原则：只存本机、不参与同步、随时可清空。
+ * 数据在 `cliphist-data.json`（数据目录），设置独立存 `cliphist.json` ——
+ * 都不进 config.json，所以不会被备份 / WebDAV 带出去。
+ */
+let clipHistCfg = null;
+
+function clipHistTimeText(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+async function paintClipHist() {
+    const box = $('clipHistList');
+    if (!box) return;
+    let items = [];
+    try { items = await invoke('clip_hist_list'); } catch (_) { items = []; }
+    box.textContent = '';
+    if (!Array.isArray(items) || !items.length) {
+        const d = document.createElement('div');
+        d.className = 'ci-empty';
+        d.textContent = '还没有记录（打开上面的开关后，复制文字就会出现在这里）';
+        box.appendChild(d);
+        return;
+    }
+    items.forEach((it) => {
+        const row = document.createElement('div');
+        row.className = 'ci-item';
+        row.title = '点一下复制：' + String(it.text || '').slice(0, 200);
+        const t = document.createElement('span');
+        t.className = 'ci-t';
+        const one = String(it.text || '').replace(/\s+/g, ' ').trim();
+        t.textContent = one.length > 80 ? one.slice(0, 79) + '…' : one;
+        const m = document.createElement('span');
+        m.className = 'ci-m';
+        m.textContent = [it.app || '', clipHistTimeText(it.at)].filter(Boolean).join(' · ');
+        row.appendChild(t);
+        row.appendChild(m);
+        row.addEventListener('click', () => {
+            invoke('copy_text', { text: it.text || '' })
+                .then(() => toast('已复制回剪贴板'))
+                .catch(() => toast('复制失败'));
+        });
+        box.appendChild(row);
+    });
+}
+
+async function loadClipHist() {
+    try { clipHistCfg = await invoke('clip_hist_cfg'); } catch (_) { clipHistCfg = null; }
+    const c = clipHistCfg || {};
+    const set = (id, v) => { const el = $(id); if (el) { if (el.type === 'checkbox') el.checked = !!v; else el.value = v; } };
+    set('s-clipHistEnabled', c.enabled);
+    set('s-clipHistMax', c.max || 30);
+    set('s-clipHistPersist', c.persist);
+    paintClipHist();
+}
+
+async function saveClipHist() {
+    const c = {
+        enabled: !!($('s-clipHistEnabled') && $('s-clipHistEnabled').checked),
+        max: Number(($('s-clipHistMax') && $('s-clipHistMax').value) || 30),
+        persist: !!($('s-clipHistPersist') && $('s-clipHistPersist').checked),
+    };
+    try {
+        await invoke('clip_hist_set', { v: c });
+        toast(c.enabled ? '剪贴板历史已开启' : '剪贴板历史已关闭（已清空内存里的记录）');
+        loadClipHist();
+    } catch (e) {
+        toast('保存失败：' + ((e && e.message) || e));
+    }
+}
+
+function bindClipHist() {
+    if (!$('clipHistList')) return;
+    ['s-clipHistEnabled', 's-clipHistMax', 's-clipHistPersist'].forEach((id) => {
+        const el = $(id);
+        if (el) el.addEventListener('change', saveClipHist);
+    });
+    const clear = $('btnClipHistClear');
+    if (clear) {
+        clear.addEventListener('click', async () => {
+            try {
+                await invoke('clip_hist_clear');
+                toast('剪贴板历史已清空');
+                paintClipHist();
+            } catch (e) {
+                toast('清空失败：' + ((e && e.message) || e));
+            }
+        });
+    }
+    loadClipHist();
+}
 function bindSettingsSearch() {
     const input = $('setSearch');
     const list = $('setSearchList');
@@ -4059,6 +4196,14 @@ function bindSettingsSearch() {
         input.blur();
         input.value = '';
         pushRecent(it);
+        // 动作：走原有按钮的点击路径（同一条代码路径，不会出现两套行为）
+        if (it.action) {
+            if (it.action.click) {
+                const b = $(it.action.click);
+                if (b) { b.click(); return; }
+            }
+            if (it.action.invoke) { invoke(it.action.invoke).catch(() => { }); return; }
+        }
         if (it.pane) gotoPane(it.pane);
         /* 元素可能已经被重画过：按标题文字在那一页里重新找一遍。 */
         let el = it.el;
@@ -4918,6 +5063,7 @@ async function gridRecCommit(combo) {
     try {
         await invoke('set_grid_hotkey', { hotkey: combo });
         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
         gridRecSyncUI();
         gridMsg('gridHotkeyMsg', '已生效：' + gridHotkeyLabel((CONF && CONF.gridHotkey) || combo));
         toast('网格页快捷键已改为 ' + gridHotkeyLabel(combo));
@@ -5144,6 +5290,7 @@ async function saveGridLook(silent) {
             gap: d.gap, radius: d.radius,
         });
         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
         gridFill();
         renderGridItems();
         pushGridPreview();
@@ -5164,6 +5311,7 @@ async function saveGridBehavior() {
     try {
         await invoke('set_grid_behavior', { enable, click, allowAdd });
         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
         gridFill();
         pushGridPreview();
         gridMsg('gridBehMsg', enable
@@ -5253,6 +5401,7 @@ async function gridSaveItems(items, msg) {
         const pg = gridEditPage();
         await invoke('set_grid_items', { items, page: pg ? pg.id : null });
         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
         renderGridItems();
         renderGridPages();
         pushGridPreview();
@@ -5267,6 +5416,7 @@ async function gridSaveItemStyle(map) {
     try {
         await invoke('set_setting', { key: 'gridItemStyle', value: map });
         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
         renderGridItems();
         pushGridPreview();
     } catch (e) {
@@ -5541,6 +5691,7 @@ function renderGridPages() {
                 try {
                     await invoke('grid_page_rename', { id: pg.id, name: v });
                     CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                     renderGridPages();
                     pushGridPreview();
                     gridMsg('gridPageMsg', '已改名');
@@ -5580,6 +5731,7 @@ function renderGridPages() {
                     try {
                         await invoke('grid_page_set_default', { id: pg.id });
                         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                         renderGridPages();
                         gridMsg('gridPageMsg', '默认页已切换');
                     } catch (e) { gridMsg('gridPageMsg', String(e || '设置失败'), true); }
@@ -5596,6 +5748,7 @@ function renderGridPages() {
                     try {
                         await invoke('grid_page_delete', { id: pg.id });
                         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                         gridEditPageId = '';
                         renderGridPages();
                         renderGridItems();
@@ -5682,6 +5835,7 @@ function renderGridApps() {
             try {
                 await invoke('grid_app_page_remove', { app: b.app });
                 CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                 renderGridApps();
                 gridMsg('gridAppMsg', '已解除绑定');
             } catch (e) { gridMsg('gridAppMsg', String(e || '移除失败'), true); }
@@ -5701,6 +5855,7 @@ function bindGridPages() {
             try {
                 const id = await invoke('grid_page_add', { name });
                 CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                 gridEditPageId = String(id || '');
                 if (inp) inp.value = '';
                 renderGridPages();
@@ -5731,6 +5886,7 @@ function bindGridPages() {
             try {
                 await invoke('grid_app_page_set', { app, page });
                 CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                 // 多条绑定时，输入框留着方便连着配下一个；单条就清掉
                 if ($('gridAppName')) $('gridAppName').value = '';
                 renderGridApps();
@@ -5756,6 +5912,7 @@ function bindGrid() {
             try {
                 await invoke('set_setting', { key: 'gridShowLabel', value: on });
                 CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                 pushGridPreview();
                 gridMsg('gridSizeMsg', on ? '格子已显示名称' : '格子只显示图标');
             } catch (e) {
@@ -5834,6 +5991,7 @@ function bindGrid() {
                 const _pg = gridEditPage();
                 const n = await invoke('grid_import_bar', { page: _pg ? _pg.id : null });
                 CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                 renderGridItems();
                 gridMsg('gridItemsMsg', `已从横条导入 ${n} 项`);
             } catch (e) {
@@ -6035,6 +6193,7 @@ function renderGoPreview() {
             goMsg('图标已更新');
             renderGoPreview();
             CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
             renderGoList();
         } catch (e) { goMsg(String(e || '设置图标失败'), true); }
     }));
@@ -6045,6 +6204,7 @@ function renderGoPreview() {
             try {
                 await invoke('shortcut_update', { id: goDraft.id, name: null, note: null, icon: '', target: null });
                 CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
                 renderGoList();
             } catch (_) { /* 忽略：下次保存会带上 */ }
         }
@@ -6249,6 +6409,7 @@ async function goSave() {
         goDraft = null;
         renderGoPreview();
         CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
         renderGoList();
     } catch (e) {
         // 重复添加 / 路径失效 / 超量都会走到这里，错误话术由后端给
@@ -12247,6 +12408,7 @@ document.addEventListener('keydown', (e) => {
      * 只有 renderAllList 一条路（见上面 r73 那段）。 */
 
     CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
     // 网格页表单（快捷键 / 行列 / 单元格 / 内容项）在配置到手之后再绑，
     // 不然 gridFill() 读到的是空配置，输入框会显示默认值而不是用户的值
     bindGrid();
@@ -12301,6 +12463,8 @@ document.addEventListener('keydown', (e) => {
     bindDataTab();
     /* v2.23.41：设置项搜索（顶栏输入框）。只绑一次；索引第一次用时才建。 */
     bindSettingsSearch();
+    /* v2.23.44：剪贴板历史 */
+    bindClipHist();
     const exportReady = loadExportGroups();
     // 本地 OCR 环境检测：设置窗一打开先跑一次（用户要求「进入页面 / 初始化 OCR
     // 时自动检测」）——缺组件时用户在 OCR 页第一眼就能看到，不用先点「测试」。
@@ -12348,6 +12512,7 @@ document.addEventListener('keydown', (e) => {
 
 async function refreshConf() {
     CONF = window.CONF = await invoke('get_config');
+    syncSaveErrorBanner();
 }
 function barHas(name) { return ((CONF && CONF.barList) || []).includes(name); }
 /** 当前编辑页里有没有这一项（"添加内容"选择窗口的「已添加」标记用它）。 */
@@ -13370,3 +13535,4 @@ if ($('pickModal')) {
         if (e.target === $('pickModal')) closePickModal();
     });
 }
+

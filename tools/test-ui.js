@@ -261,6 +261,14 @@ function makeEnv(htmlFile, conf, opts) {
                 calls.push({ cmd, args: args || {} });
                 if (rejectCmds.has(cmd)) return Promise.reject('模拟后端失败：' + cmd);
                 if (cmd === 'get_config') return Promise.resolve(CONF);
+        /* 剪贴板历史（v2.23.44）：给一条现成记录，好验证列表渲染与清空。 */
+        if (cmd === 'clip_hist_cfg') {
+            return Promise.resolve({ enabled: true, max: 30, persist: false });
+        }
+        if (cmd === 'clip_hist_list') {
+            return Promise.resolve([{ text: 'hello 剪贴板', at: 1730000000000, app: 'chrome.exe' }]);
+        }
+        if (cmd === 'clip_hist_clear') return Promise.resolve(null);
         /* 本地答案（v2.23.43）：桩只回答"这个输入能不能算"，
          * 判据和 Rust 侧保持一致的那一小部分（算式 / 颜色）够测 UI 了。 */
         if (cmd === 'local_answer') {
@@ -5217,6 +5225,21 @@ async function testSettingsSearch() {
         /最近改过的/.test($('setSearchList').textContent),
         $('setSearchList').textContent.slice(0, 40));
 
+    /* ---- 动作（命令面板 lite，v2.23.44）---- */
+    input.value = '导出';
+    input.dispatchEvent(new env.w.Event('input', { bubbles: true }));
+    await flush();
+    const actItems = [...$('setSearchList').querySelectorAll('.find-item')];
+    const actRow = actItems.find((x) => /动作/.test(x.textContent));
+    ok('搜索能搜到"动作"（导出配置备份）', !!actRow,
+        actItems.map((x) => x.textContent).join(' | ').slice(0, 80));
+    if (actRow) {
+        env.calls.length = 0;
+        actRow.dispatchEvent(new env.w.MouseEvent('mousedown', { bubbles: true }));
+        await flush();
+        ok('点动作不会抛异常（走原有按钮路径）', true);
+    }
+
     // ② 跳进折叠的 <details>：必须把它打开，否则跳过去是一片空白
     //    （`<details class="help-item">` 全在帮助页里，见 settings.html）
     const det = env.w.document.querySelector('.pane[data-pane="help"] details.help-item');
@@ -5268,6 +5291,31 @@ async function testLocalAnswer() {
     ok('颜色值也能给答案', btn.hidden === false && /rgb/.test(btn.title),
         JSON.stringify(btn.title));
 }
+/** 剪贴板历史（v2.23.44）：开关读出来 + 列表渲染 + 清空按钮真的调用后端。 */
+async function testClipHist() {
+    console.log('');
+    console.log('=== 剪贴板历史（设置页）===');
+    const env = makeEnv('ui/settings.html', baseConf());
+    runScripts(env, ['ui/shared.js', 'ui/settings.js']);
+    await flush();
+    await flush();
+    const $ = (id) => env.w.document.getElementById(id);
+    ok('有剪贴板历史卡片', !!$('clipHistList'));
+    ok('开关读出来了（开）', $('s-clipHistEnabled').checked === true);
+    ok('条数读出来了', Number($('s-clipHistMax').value) === 30);
+    const rows = [...$('clipHistList').querySelectorAll('.ci-item')];
+    ok('列表渲染出一条记录', rows.length === 1, '实际 ' + rows.length);
+    if (rows.length) {
+        ok('记录内容显示出来了', /hello/.test(rows[0].textContent), rows[0].textContent.slice(0, 40));
+        ok('记录了来源程序', /chrome/.test(rows[0].textContent));
+    }
+    env.calls.length = 0;
+    $('btnClipHistClear').click();
+    await flush();
+    ok('点清空会调用 clip_hist_clear',
+        env.calls.some((c) => c.cmd === 'clip_hist_clear'),
+        JSON.stringify(env.calls.map((c) => c.cmd)));
+}
 (async function main() {
     try {
         await testSettings();
@@ -5292,6 +5340,7 @@ async function testLocalAnswer() {
         await testBuiltinIcons();
     await testExtremeData();
     await testSettingsSearch();
+    await testClipHist();
     await testLocalAnswer();
     } catch (e) {
         ok('测试过程中不应抛异常', false, e && (e.stack || String(e)));

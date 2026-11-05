@@ -4591,7 +4591,12 @@ fn preserve_broken(path: &std::path::Path, text: &str) {
 /// 另外每次成功保存都顺手留一份滚动备份（`config(时间).QuickAchieve`），
 /// 供上面 `load()` 的兜底路径使用。
 pub fn save(cfg: &Config) -> bool {
-    save_to(&config_path(), cfg)
+    let ok = save_to(&config_path(), cfg);
+    if ok {
+        // 这次写成功了就把"上次失败"的标记清掉 —— 界面上的红条不能一直挂着。
+        clear_save_error();
+    }
+    ok
 }
 
 /// `save` 的可注入版本（测试专用，理由同 `load_from`）。
@@ -4604,6 +4609,23 @@ pub fn save(cfg: &Config) -> bool {
 /// 现在第一次失败就弹一个托盘气泡说明原因（不弹第二次，免得每敲一个设置
 /// 就弹一次），同时照旧写日志。
 static SAVE_ERR: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// 这次运行里"保存失败"的原因（空 = 没失败）。
+///
+/// 界面（设置页 / 诊断）要能读到**具体原因**，而不是只知道"失败了"。
+pub fn last_save_error() -> String {
+    SAVE_ERR
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_else(|e| e.into_inner().clone())
+}
+
+/// 清掉"保存失败"的标记（用户把磁盘腾出来、修好权限之后调一次）。
+pub fn clear_save_error() {
+    if let Ok(mut g) = SAVE_ERR.lock() {
+        g.clear();
+    }
+}
 
 fn note_save_error(where_: &str) {
     let mut g = match SAVE_ERR.lock() {
