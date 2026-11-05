@@ -47,8 +47,14 @@ jobs:
       - name: clippy（零警告门槛）
         run: cargo clippy --all-targets -- -D warnings
 
+      # v2.23.55：**串行跑**。
+      # `crypto::tests::salt_is_reused_but_nonce_is_fresh` 断言"同一密码两次加密
+      # 复用一个盐"，它依赖进程内的 KEY_CACHE。并行时别的用例（不同密码）会在
+      # 两次调用之间把缓存换掉 —— 这条断言本身就写着"对全局缓存被换掉极其敏感"。
+      # 单独跑 6/6 通过、整跑在 2 核 runner 上必挂，就是并发时序问题，不是产品 bug。
+      # 串行之后这条断言重新变成确定性的；总耗时多十几秒，值得。
       - name: 单元测试
-        run: cargo test
+        run: cargo test -- --test-threads=1
 
       # 这三个脚本是前端唯一的自动化保障：
       #   test-ui     —— jsdom 里跑真页面，钉住"哪些行为不能变"
