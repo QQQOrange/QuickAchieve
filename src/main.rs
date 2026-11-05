@@ -10321,7 +10321,9 @@ fn quit_with_sync(code: i32) {
         std::thread::spawn(|| {
             std::thread::sleep(Duration::from_secs(8));
             win::log("quit: 同步超时，强制退出");
-            app().exit(0);
+            // v2.23.53：这里**必须硬退**。以前写的是 app().exit(0)，而主循环
+            // 可能还阻塞在 GetMessageW 里 —— 那等于"点了退出永远退不掉"。
+            std::process::exit(0);
         });
         std::thread::spawn(move || {
             exit_sync_if_needed();
@@ -10330,6 +10332,20 @@ fn quit_with_sync(code: i32) {
         return;
     }
     app().exit(code);
+    /* v2.23.53：**硬兜底**。
+     *
+     * 用户右键托盘点「退出」，结果图标没了、进程还挂在任务管理器里 ——
+     * 根因是主循环收到 Exit 后还阻塞在 `GetMessageW`（详见 t.rs 的
+     * `wake_main_loop`）。那边已经补了唤醒；这里再兜一层：1.2 秒还没退
+     * 就直接结束进程。退出是用户主动点的，不能"点了没反应"。
+     *
+     * ⚠ 只加在这条**不跑退出同步**的分支上：走 WebDAV 同步那条自己带 8 秒
+     *   上限，不能被这 1.2 秒提前砍断。 */
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1200));
+        win::log("quit: 主循环未在 1.2s 内退出，强制结束进程");
+        std::process::exit(code);
+    });
 }
 
 /// 载入之前导出的配置备份。
@@ -21404,6 +21420,19 @@ fn main() {
         println!("MODS={mods}");
         println!("SENT={sent}");
         std::process::exit(0);
+    }
+    /* --quit-probe（v2.23.53）：进主循环，2 秒后走**和托盘「退出」完全同一条**
+     * `quit_with_sync(0)`，外部脚本看进程有没有真的消失。
+     *
+     * 为什么非要有它：这个 bug（图标没了、进程还在）只在"主循环阻塞在
+     * GetMessageW"时出现 —— 单测和 jsdom 都摸不到，只能真起一个进程验证。 */
+    if flag("--quit-probe") {
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(2000));
+            win::log("quit-probe: 触发 quit_with_sync(0)");
+            println!("QUIT-PROBE: calling quit_with_sync(0)");
+            quit_with_sync(0);
+        });
     }
     if flag("--update-probe") {
         /* ⚠ v2.23.27：**两条更新探针都得先 `init_state()`**。

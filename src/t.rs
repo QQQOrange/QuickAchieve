@@ -292,6 +292,11 @@ impl AppHandle {
 
     pub fn exit(&self, code: i32) {
         send_event(HostEvent::Exit(code));
+        /* v2.23.53：**必须叫醒主循环**。
+         * tao 在事件回调里收到 Exit 不会当场 break，要等下一轮 GetMessage；
+         * 托盘图标摘掉后没有新消息，主循环就永远阻塞 —— 现象是
+         * 「图标没了、进程还在」。这一句就是那个"下一轮"的敲门砖。 */
+        wake_main_loop();
     }
 }
 
@@ -890,11 +895,49 @@ impl Global {
 /// 用 Mutex 包一层。取用时克隆一份即可（克隆很便宜）。
 pub static PROXY: Mutex<Option<EventLoopProxy<HostEvent>>> = Mutex::new(None);
 
+/// 主线程的线程 id（v2.23.53）。
+///
+/// 只为一件事存在：**把主循环从 `GetMessageW` 里叫醒**。
+/// 见 `wake_main_loop` 的注释 —— 不叫醒它，`Exit` 事件会永远等不到下一轮。
+static MAIN_OS_TID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 pub fn set_proxy(p: EventLoopProxy<HostEvent>) {
+    // 这个函数一定在主线程上被调（EventLoop::new 的时候），顺手记下线程 id
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Threading::GetCurrentThreadId;
+        MAIN_OS_TID.store(unsafe { GetCurrentThreadId() }, std::sync::atomic::Ordering::SeqCst);
+    }
     if let Ok(mut g) = PROXY.lock() {
         *g = Some(p);
     }
 }
+
+/// 给主线程投一个空消息，让阻塞中的 `GetMessageW` 立刻返回。
+///
+/// # 为什么非要有这个
+///
+/// tao 的 Windows 事件循环在**事件回调内部**收到 `ControlFlow::ExitWithCode` 时
+/// **不会当场 break** —— 它要等下一轮循环再检查一次（见 tao 的
+/// `event_loop.rs`：`if !runner.handling_events() { break 'main }`）。
+/// 而下一轮循环开头就是 `GetMessageW`：托盘图标已经摘掉、没人再发消息，
+/// 它就**永远阻塞**在那里。
+///
+/// 用户看到的现象：右键托盘 →「退出」→ 图标消失了、进程还在任务管理器里。
+/// 这里补一条 `WM_NULL`，把那一次检查叫醒，循环就会正常 break。
+#[cfg(windows)]
+pub fn wake_main_loop() {
+    use windows::Win32::UI::WindowsAndMessaging::{PostThreadMessageW, WM_NULL};
+    let tid = MAIN_OS_TID.load(std::sync::atomic::Ordering::SeqCst);
+    if tid != 0 {
+        unsafe {
+            let _ = PostThreadMessageW(tid, WM_NULL, windows::Win32::Foundation::WPARAM(0), windows::Win32::Foundation::LPARAM(0));
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn wake_main_loop() {}
 
 pub fn send_event(e: HostEvent) {
     if let Ok(g) = PROXY.lock() {
