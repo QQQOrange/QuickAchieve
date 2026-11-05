@@ -6021,7 +6021,7 @@ fn spawn_detector() {
                             continue;
                         }
                     }
-                    Ev::KeyDown(vk, seq0, ctrl, alt, shift, win, ours) => {
+                    Ev::KeyDown(vk, _seq0, ctrl, alt, shift, win, ours) => {
                         // v1.5.22：取词期间按 Esc = 用户主动取消这次划选
                         if vk == VK_ESCAPE.0 as u32 {
                             INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
@@ -6040,7 +6040,7 @@ fn spawn_detector() {
                          *
                          * 为什么只挂 Ctrl+A、不挂 Shift+方向键：后者是逐字扩选，
                          * 每按一下都取一次词会把横条刷成幻灯片；用户真要逐字选，
-                         * 松手后按 Ctrl+C 那条路仍在（trigger_copy）。 */
+                         * 松手后的 Ctrl+C 不再唤起（v2.23.54 已删除那条路）。 */
                         if !ours && ctrl && !alt && vk == 0x41 {
                             /* v2.14.0：与鼠标划选同一条总开关。
                              * Ctrl+A 是"键盘选全选"，也属于"选中文字"这一类；
@@ -6215,19 +6215,14 @@ fn spawn_detector() {
                          * 判据按现代码的约定重新对齐（钩子回调里 ctrl/alt 是按下那一刻
                          * 的快照，所以直接信它；不再要 `last_ctrl_seen` 那种宽松兜底，
                          * 那是 v2.12.6 已经删掉的东西，会误伤 Ctrl+C 的正常复制）。 */
-                        if !ours
-                            && ctrl
-                            && !alt
-                            && vk == VK_C.0 as u32
-                            && cfg_with(|c| c.trigger_copy)
-                        {
-                            if !trigger_allowed(None) {
-                                continue;
-                            }
-                            win::log("copy path: 收到 Ctrl+C（无论有没复制到东西都要弹）");
-                            copy_trigger(seq0);
-                            continue;
-                        }
+                        /* v2.23.54：**Ctrl+C 不再唤起横条**（用户口径：「现在应该没有这样的逻辑了」）。
+                         *
+                         * 这里原来是一条 `if vk == VK_C && trigger_copy { copy_trigger(seq0) }`
+                         * 的分支：只要按 Ctrl+C 就弹条取词。用户不需要它，而且它会让
+                         * "普通复制"也弹出横条，属于打扰。整段删掉；`trigger_copy`
+                         * 配置项只为兼容老配置保留（默认已改 false，没有任何代码再读它唤起）。
+                         *
+                         * 取词仍有两条路：鼠标拖选（钩子）、以及自定义快捷键 / 托盘 / 收藏夹。 */
                     }
                 }
             }

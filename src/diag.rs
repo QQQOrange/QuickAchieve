@@ -78,7 +78,7 @@ pub(crate) fn text() -> String {    let cfg = cfg_snapshot();
     push(&mut s, "界面语言", if cfg.ui_lang.is_empty() { "zh" } else { &cfg.ui_lang });
     push(&mut s, "主题", &cfg.theme);
     push(&mut s, "触发方式", if cfg.trigger_select { "划词" } else { "按住Ctrl" });
-    push(&mut s, "Ctrl+C 触发", if cfg.trigger_copy { "开" } else { "关" });
+    // v2.23.54：Ctrl+C 唤起已移除，诊断里不再有这一项（见 main.rs 键盘分支的注释）
     push(&mut s, "横条格数", &cfg.bar_list.len().to_string());
     push(&mut s, "自定义引擎", &cfg.custom_engines.len().to_string());
     push(&mut s, "外部软件", &cfg.apps.len().to_string());

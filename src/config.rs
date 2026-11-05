@@ -1465,7 +1465,10 @@ pub struct Config {
     /// 系统通知的时长是操作系统说了算的，用户当时抱怨的正是"弹得频繁、还关不掉"。
     #[serde(default = "default_notify_seconds")]
     pub notify_seconds: u32,
-    /// Ctrl+C 也弹
+    /// **已废弃**（v2.23.54）：Ctrl+C 不再唤起横条。
+    ///
+    /// 保留字段只为兼容老配置（反序列化不报错、备份能来回倒）。
+    /// 现在**没有任何代码**读它来决定要不要唤起；默认值也改成了 false。
     pub trigger_copy: bool,
     /// 开机自启
     pub auto_start: bool,
@@ -2268,7 +2271,7 @@ impl Default for Config {
             trigger_select: true,
             notify_feature: true,
             notify_seconds: 3,
-            trigger_copy: true,
+            trigger_copy: false,
             auto_start: false,
             icon_size: 30,
             alpha: 100,
