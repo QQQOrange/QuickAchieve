@@ -22567,7 +22567,37 @@ fn main() {
 /*  跑法：cargo test --release                                     */
 /* ================================================================== */
 
+/// 静态护栏：**低级钩子的回调里绝不允许碰剪贴板**（v2.23.59）。
+///
+/// 教训：`capture_precopy()` 曾在 Ctrl+C 的键盘钩子里开剪贴板 —— 那是跨进程
+/// 同步操作，别的程序正握着剪贴板时会等；低级钩子跑在系统输入关键路径上，
+/// 等久了轻则这次复制变卡，重则撞 300ms 的 LowLevelHooksTimeout、钩子被系统
+/// 摘掉，用户看到的就是「按 Ctrl+C 复制不上」。
+///
+/// 这条护栏读源码、去掉注释后断言不出现剪贴板调用 —— 以后谁再往钩子里加，
+/// 测试当场红，不用等用户报。
 #[cfg(test)]
+mod hook_clipboard_guard {
+    #[test]
+    fn 钩子回调里不许碰剪贴板() {
+        let src = include_str!("hook.rs");
+        let code: String = src
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !(t.starts_with("//") || t.starts_with("/*") || t.starts_with('*'))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        for bad in ["capture_precopy(", "OpenClipboard", "clip::set_text"] {
+            assert!(
+                !code.contains(bad),
+                "hook.rs 里出现了 `{bad}` —— 低级钩子回调绝不能碰剪贴板，会卡住用户的复制"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

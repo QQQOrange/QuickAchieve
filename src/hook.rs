@@ -96,11 +96,24 @@ fn should_swallow_down(info: &windows::Win32::UI::WindowsAndMessaging::KBDLLHOOK
     if info.dwExtraInfo == win::SELF_INJECT_TAG {
         return false;
     }
-    // Ctrl+C 留给"复制取词"这条路，永远不抢
-    if info.vkCode == 0x43 && win::ctrl_down() && !win::alt_down() && !win::shift_down() && !win::win_down() {
+    /* v2.23.59：**凡是"复制"这一类组合键，一律不抢**（用户口径：
+     * 「不能拦截复制命令」）。
+     *
+     * 覆盖三种常见复制：
+     *   · Ctrl+C        —— 通用复制；
+     *   · Ctrl+Shift+C  —— 终端里的复制（Windows Terminal / cmd / PowerShell）；
+     *   · Ctrl+Insert   —— 老式复制，很多编辑器仍支持。
+     * 以前只挡了第一种，而且条件里还要求"没按 Shift" —— 于是用户如果
+     * 把 ctrl+shift+c 配成了自己的热键，终端里按复制就会被吞掉。 */
+    let ctrl_now = win::ctrl_down();
+    let alt_now = win::alt_down();
+    let win_now = win::win_down();
+    let is_copy_key = (info.vkCode == 0x43 && !alt_now && !win_now)
+        || (info.vkCode == 0x2D && !alt_now && !win_now); // 0x2D = Insert
+    if ctrl_now && is_copy_key {
         return false;
     }
-    let (c, a, s, w) = (win::ctrl_down(), win::alt_down(), win::shift_down(), win::win_down());
+    let (c, a, s, w) = (ctrl_now, alt_now, win::shift_down(), win_now);
     let hit = match STEAL.lock() {
         Ok(g) => g.iter().any(|h| h.matches(info.vkCode, c, a, s, w)),
         Err(_) => false,
@@ -354,15 +367,22 @@ unsafe extern "system" fn keyboard_proc(code: i32, w: WPARAM, l: LPARAM) -> LRES
                 // 放在钩子回调里完全安全（不会撞 LowLevelHooksTimeout）。
                 // GetAsyncKeyState 同样是极轻的查询，且**此刻**读到的修饰键状态
                 // 才是"用户按下这个键时"的状态（见 Ev::KeyDown 的注释）。
-                /* v2.11.1：Ctrl+C 是"把剪贴板借出去"的那一下 —— 在它**进入目标
-                 * 程序之前**（本回调早于键进目标线程队列）抢一份原内容。
-                 * 不抢的话，网格/包裹里那次 snapshot 抓到的是复制**之后**的值，
-                 * 还原等于把选区又放回去，用户看到的就是"剪贴板没回退"。
-                 * 只读文本、单次开剪贴板，失败就放弃（见 clip::capture_precopy）。 */
-                if info.vkCode == 0x43 && win::ctrl_down() && info.dwExtraInfo != win::SELF_INJECT_TAG
-                {
-                    clip::capture_precopy();
-                }
+                /* v2.23.59：**钩子里不再碰剪贴板**（用户口径：「它会拦截复制命令」）。
+                 *
+                 * 这里原来在 Ctrl+C 按下时调 `clip::capture_precopy()` —— 在按键
+                 * 进入目标程序**之前**打开剪贴板抢一份旧内容。问题是：
+                 *   · `OpenClipboard` 是**跨进程同步**操作。别的程序正握着剪贴板
+                 *     （微信、Office、各种剪贴板工具都在干这事）时，它要等；
+                 *   · 低级钩子跑在**系统输入的关键路径**上，等久了轻则这次 Ctrl+C
+                 *     变卡，重则撞 300ms 的 LowLevelHooksTimeout —— 钩子被系统摘掉，
+                 *     而且目标程序那次"复制"也可能没写成功。
+                 * 用户看到的正是「按 Ctrl+C 复制不上」。
+                 *
+                 * 现在这条抢跑删掉了：钩子只做纯读的 `GetAsyncKeyState` 查询，
+                 * 剪贴板一律不碰。代价只有一处 —— 由 Ctrl+C 唤起的那些流程，
+                 * "复制前内容"拿不到，会退回"复制后快照"（`clip::snapshot()`），
+                 * 还原效果略差；但 Ctrl+C 唤起横条的功能在 v2.23.54 已经删了，
+                 * 现在所有唤起路径的剪贴板里本来就还是用户自己的内容，够用。 */
                 send(Ev::KeyDown(
                     info.vkCode,
                     clip::seq(),
