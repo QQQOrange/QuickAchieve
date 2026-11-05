@@ -837,32 +837,9 @@
                 <!-- v2.12.0：二维码解析。交互与「文字识别」一致（冻屏 → 框选 → 结果窗），
                      入口也一视同仁：能放横条、能放网格。 -->
                 <button type="button" class="chip" data-sub="qr"><span class="ci" aria-hidden="true"></span><span class="cl">二维码</span></button>
+<button type="button" class="chip" data-sub="cliphist"><span class="ci" aria-hidden="true"></span><span class="cl">剪贴板历史</span></button>
             </div>
         </section>
-<!-- v2.23.44：剪贴板历史。默认关闭、只存本机、可一键清空 —— 隐私三原则写在界面上了。 -->
-<section class="card">
-    <h2>剪贴板历史</h2>
-    <div class="hint">记录你复制过的**文本**，方便回头再拿一次。默认关闭；<b>只存在本机</b>，
-        不参与备份 / WebDAV 同步；不记图片、不记文件列表；随时可以一键清空。</div>
-
-    <div class="row">
-        <div class="rt"><b>启用剪贴板历史</b><small>打开后每 0.8 秒看一次剪贴板，内容变了才记一条</small></div>
-        <label class="sw"><input type="checkbox" id="s-clipHistEnabled"><i></i></label>
-    </div>
-    <div class="row">
-        <div class="rt"><b>保留条数</b><small>5 ~ 200 条，超出的自动丢掉最旧的</small></div>
-        <input class="txt" type="number" id="s-clipHistMax" min="5" max="200" step="5">
-    </div>
-    <div class="row">
-        <div class="rt"><b>写入磁盘</b><small>关掉就只在内存里，退出即清（更安全）；打开则重启后还在</small></div>
-        <label class="sw"><input type="checkbox" id="s-clipHistPersist"><i></i></label>
-    </div>
-    <div class="row">
-        <div class="rt"><b>已记录</b><small>点任意一条即可复制回剪贴板</small></div>
-        <button type="button" class="btn ghost" id="btnClipHistClear">清空历史</button>
-    </div>
-    <div class="clip-hist" id="clipHistList"></div>
-</section>
     </div>
 
 
@@ -1334,6 +1311,34 @@
     </div>
 
     <!-- v2.12.0：二维码解析（交互与文字识别同一套） -->
+<!-- v2.23.49：剪贴板历史改成**附加功能里的子项**（点开才显示），不再常驻在附加功能页首。 -->
+<div class="pane" data-pane="cliphist" hidden>
+<!-- v2.23.44：剪贴板历史。默认关闭、只存本机、可一键清空 —— 隐私三原则写在界面上了。 -->
+<section class="card">
+    <h2>剪贴板历史</h2>
+    <div class="hint">记录你复制过的**文本**，方便回头再拿一次。默认关闭；<b>只存在本机</b>，
+        不参与备份 / WebDAV 同步；不记图片、不记文件列表；随时可以一键清空。</div>
+
+    <div class="row">
+        <div class="rt"><b>启用剪贴板历史</b><small>打开后每 0.8 秒看一次剪贴板，内容变了才记一条</small></div>
+        <label class="sw"><input type="checkbox" id="s-clipHistEnabled"><i></i></label>
+    </div>
+    <div class="row">
+        <div class="rt"><b>保留条数</b><small>5 ~ 200 条，超出的自动丢掉最旧的</small></div>
+        <input class="txt" type="number" id="s-clipHistMax" min="5" max="200" step="5">
+    </div>
+    <div class="row">
+        <div class="rt"><b>写入磁盘</b><small>关掉就只在内存里，退出即清（更安全）；打开则重启后还在</small></div>
+        <label class="sw"><input type="checkbox" id="s-clipHistPersist"><i></i></label>
+    </div>
+    <div class="row">
+        <div class="rt"><b>已记录</b><small>点任意一条即可复制回剪贴板</small></div>
+        <button type="button" class="btn ghost" id="btnClipHistClear">清空历史</button>
+    </div>
+    <div class="clip-hist" id="clipHistList"></div>
+</section>
+</div>
+
     <div class="pane" data-pane="qr" hidden>
     <!-- v2.12.2：入口统一叫「二维码」，页内分成**解析 / 生成**两个子功能。
          两个子功能用同一套 `.seg` 分段控件（和 OCR / 翻译页里那种一模一样），

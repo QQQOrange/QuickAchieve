@@ -5313,6 +5313,16 @@ async function testClipHist() {
     await flush();
     await flush();
     const $ = (id) => env.w.document.getElementById(id);
+    const pane = env.w.document.querySelector('.pane[data-pane="cliphist"]');
+    const chip = env.w.document.querySelector('.subnav .chip[data-sub="cliphist"]');
+    ok('剪贴板历史是**独立子页**（不是附加功能页里常驻的卡片）', !!pane);
+    ok('默认**不显示**（点开才出来）', !!pane && pane.hidden === true);
+    ok('附加功能里有「剪贴板历史」子项', !!chip);
+    if (chip && pane) {
+        chip.click();
+        await flush();
+        ok('点这个子项才显示出来', pane.hidden === false);
+    }
     ok('有剪贴板历史卡片', !!$('clipHistList'));
     ok('开关读出来了（开）', $('s-clipHistEnabled').checked === true);
     ok('条数读出来了', Number($('s-clipHistMax').value) === 30);

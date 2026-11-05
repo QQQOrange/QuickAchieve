@@ -307,7 +307,7 @@ function matteNavIconNode() {
  *
  *  幂等：每次进附加功能都重画一遍，用户换过图标后回来就能看到新的。 */
 function renderSubnavIcons() {
-    const EMOJI = { ai: '🤖', go: '🎯', fav: '⭐' };
+    const EMOJI = { ai: '🤖', go: '🎯', fav: '⭐', cliphist: '📋' };
     for (const chip of document.querySelectorAll('.subnav .chip[data-sub]')) {
         const sub = chip.dataset.sub;
         const box = chip.querySelector('.ci');
@@ -349,7 +349,7 @@ function bindTabs() {
 const TAB_GROUPS = {
     extras: {
         nav: 'extras',
-        subs: ['ai', 'go', 'matte', 'ocr', 'trans', 'imgsearch', 'fav', 'wrap', 'txt', 'qr'],
+        subs: ['ai', 'go', 'matte', 'ocr', 'trans', 'imgsearch', 'fav', 'wrap', 'txt', 'qr', 'cliphist'],
         def: 'ai',
     },
     data: { nav: 'datanav', subs: ['data', 'backup'], def: 'data' },
