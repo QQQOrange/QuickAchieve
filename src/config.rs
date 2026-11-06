@@ -1457,8 +1457,16 @@ pub struct Config {
     ///
     /// 默认开：这是用户点名要的"用了什么、有没有生效"的即时反馈；
     /// 嫌吵可以在 设置 → 通用 里关掉（关掉之后不再产生任何通知）。
-    #[serde(default = "default_true")]
+    /// **默认关**（v2.23.64：用户口径「提示好烦人」）。
+    ///
+    /// 这个开关控制右下角「已使用：xxx」的小提示条。以前默认开 —— 用户每用一项
+    /// 功能就冒一条，很快就被当成噪音。想要的人可以在设置里打开。
+    #[serde(default)]
     pub notify_feature: bool,
+    /// 一次性迁移标记（v2.23.64）：老配置里 `notify_feature` 是 true，
+    /// 光改默认值救不了他们 —— 这里记一笔"已经按新口径关过一次"。
+    #[serde(default)]
+    pub notify_quiet_migrated: bool,
     /// 右下角提示**显示几秒**（1~15，默认 3）。
     ///
     /// v2.6.8：提示从"系统通知"换成应用自己画的小窗，时长终于能自己定 ——
@@ -2270,7 +2278,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             trigger_select: true,
-            notify_feature: true,
+            notify_feature: false,
+        notify_quiet_migrated: true,
             notify_seconds: 3,
             trigger_copy: false,
             auto_start: false,
@@ -3258,7 +3267,18 @@ pub fn ensure_dirs() {
 ///     同时写日志。用户至少还能手工捞回一部分内容，而不是"什么都没了"。
 pub fn load() -> Config {
     let p = config_path();
-    let c = load_from(&p);
+    let mut c = load_from(&p);
+    /* v2.23.64：**老配置也要把「已使用」提示关掉**（用户口径「提示好烦人」）。
+     * 只改 serde 默认值只能影响"新装用户"，已经存过 `notify_feature: true` 的
+     * 配置读进来还是 true。这里做一次性迁移：关掉、打标记、写回。 */
+    if !c.notify_quiet_migrated {
+        c.notify_quiet_migrated = true;
+        if c.notify_feature {
+            c.notify_feature = false;
+            crate::win::log("config: 迁移 —— 关闭「已使用」提示（v2.23.64 默认不再弹）");
+        }
+        save_to(&p, &c);
+    }
     // 走到这里说明主文件**坏了**。必须把恢复出来的配置立刻写回去，
     // 否则磁盘上那份坏文件会一直躺着 —— 用户看到的仍然是「配置没回来」，
     // 而且下一次启动还要再走一遍同样的兜底。

@@ -1781,73 +1781,25 @@ fn exact_clear_deaf(pid: u32) {
 /// 微信 4.x（Qt）、部分 WPF 程序**没有 UIA 文本模式**，而它们又会忽略我们
 /// 模拟的 Ctrl+C。用户在那种窗口里划词的结果是：**什么都不发生**——
 /// 按用户 2026-10-30 的口径（常规划词不调 OCR，因为慢且不稳），这是
-/// 设计内的取舍，但"毫无反馈"会让人以为软件坏了。
+/// 设计内的取舍。
 ///
-/// 所以第一次遇到这种窗口时给一条**可操作**的提示：
-/// 「这个窗口读不到选区，要用截图识别就按 Ctrl+Alt+O」。
-static NO_UIA_HINTED: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> = std::sync::OnceLock::new();
-
+/// v2.23.64 起**只记日志、不弹任何提示**（用户口径：「提示好烦人」）。
 fn hint_no_uia_once(pid: u32) {
+    /* v2.23.64：**只写日志，不弹任何提示**（用户口径：「提示好烦人」）。
+     *
+     * 这里以前会发一条小提示条 + 一次托盘气泡，告诉用户"这个软件不支持
+     * 划词弹条"。听上去有用，实际是噪音：微信里每划一次词就说明一遍，
+     * 用户只想安静地用。
+     *
+     * 现在把结论留在 log.txt 里就够了 —— 真要排查的时候翻日志能看到
+     * "这个 pid/exe 读不到选区"，不需要打扰正在用电脑的人。
+     * 函数名保留（调用点不用改），语义变成"记一笔"。 */
     if pid == 0 {
         return;
     }
-    /* v2.23.63：**提示只发一次**（用户口径：「通知太频繁了」）。
-     *
-     * v2.23.60 时是"小提示条每 4 秒一条 + 托盘气泡每程序一次" —— 在微信里
-     * 每划一次词就冒一条提示，等于噪音。现在两者都改成**每个程序每会话只发一次**：
-     * 第一次遇到划词取不到字的程序时说明清楚，之后安静，别反复打扰。
-     *
-     * 想再看一次提示：重启本程序（不落盘——这是"用过就知道"的一次性说明，
-     * 不值得为它写配置）。 */
-    /* ⚠ 去重键是**可执行文件名**，不是 pid。
-     *
-     * 微信 4.x 是"主进程 + 一堆 WeChatAppEx 子进程"，每次划词落在哪个 pid 上
-     * 不固定 —— 按 pid 去重等于每个子进程各提示一次，用户看到的就是
-     * 「通知太频繁」。按 exe 去重才真的是"每个软件只提示一次"。 */
-    let exe = win::process_exe(pid).unwrap_or_default().to_ascii_lowercase();
-    let key = if exe.is_empty() {
-        format!("pid:{pid}")
-    } else {
-        exe.clone()
-    };
-    let first_time = {
-        let m = NO_UIA_HINTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
-        match m.lock() {
-            Ok(mut g) => {
-                if g.contains(&key) {
-                    false
-                } else {
-                    g.push(key.clone());
-                    true
-                }
-            }
-            Err(_) => false,
-        }
-    };
-    if !first_time {
-        return;
-    }
     let exe = win::process_exe(pid).unwrap_or_default();
-    let name = std::path::Path::new(&exe)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let short = if name.is_empty() {
-        "这个软件不支持划词弹条 —— 用 Ctrl+Alt+O 截图识别".to_string()
-    } else {
-        format!("「{name}」不支持划词弹条 —— 用 Ctrl+Alt+O 截图识别")
-    };
-    crate::toast::show(crate::app(), &short, 2600);
-    let body = if name.is_empty() {
-        "它不响应系统的选区接口（无障碍与复制都拿不到文字）。想取它的文字：按 Ctrl+Alt+O 截图识别。".to_string()
-    } else {
-        format!(
-            "「{name}」不响应系统的选区接口（无障碍与复制都拿不到文字）。想取它的文字：按 Ctrl+Alt+O 截图识别。"
-        )
-    };
-    crate::trayhost::balloon("这个软件不支持划词弹条", &body);
     win::log(&format!(
-        "hint: pid={pid} exe={exe} 读不到选区 —— 已提示（每个程序每会话只提示一次）"
+        "hint: pid={pid} exe={exe} 读不到选区 —— 该软件不支持划词取词（静默，不提示）"
     ));
 }
 /// 这个 pid 是不是微信（Weixin.exe / WeChat.exe，含它的一堆子进程）。
