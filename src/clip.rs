@@ -270,6 +270,33 @@ pub fn restore_if_still_holds(s: &Snapshot, expected: Option<&str>) {
     }
     restore(s);
 }
+
+/* ---------------- 延迟还原（v2.23.61，微信专用） ---------------- */
+
+/// 横条收起时才还原的那一份快照。
+///
+/// 为什么需要：微信这类自绘界面里，"选中 → 复制"是我们**替用户按的** Ctrl+C。
+/// 用户的原话是「选择文本就是复制，横条消失后恢复剪贴板」—— 也就是说横条开着
+/// 这段时间，剪贴板里就该是这段选中文字（他随时能 Ctrl+V），收起时再还回去。
+/// 其他程序仍然是"读完立刻还原"（变化窗口越短越好）。
+static DEFERRED: std::sync::Mutex<Option<(Snapshot, Option<String>)>> =
+    std::sync::Mutex::new(None);
+
+/// 把这次快照留到横条收起时再还。
+pub fn defer_restore(snap: Snapshot, expected: Option<String>) {
+    if let Ok(mut g) = DEFERRED.lock() {
+        *g = Some((snap, expected));
+    }
+}
+
+/// 横条收起时调用：把上次延迟的那份还回去（内容被别人改过就不动）。
+pub fn restore_deferred() {
+    let taken = DEFERRED.lock().ok().and_then(|mut g| g.take());
+    if let Some((snap, expected)) = taken {
+        restore_if_still_holds(&snap, expected.as_deref());
+        crate::win::log("clip: 横条已收起，延迟还原的剪贴板内容已还回去");
+    }
+}
 pub fn restore_if_unchanged(s: &Snapshot) {
     let now = seq();
     if now != s.seq {

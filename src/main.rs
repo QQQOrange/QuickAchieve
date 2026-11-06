@@ -556,6 +556,10 @@ static DISMISS_PENDING: std::sync::atomic::AtomicBool =
 /// 收起横条。所有调用点都用这一个；网格页的"等目标显示出来再收"靠
 /// [DISMISS_HOLD] 在这里拦截，不必改每一处命令。
 fn dismiss_bar() {
+    /* v2.23.61：横条收起 = 把"微信那次替用户按的复制"还原回去。
+     * 用户口径：「选择文本就是复制，横条消失后恢复剪贴板」。
+     * 放在最前面：即使这次被挂起（`dismiss_held`），只要最终收起也会走到这里。 */
+    clip::restore_deferred();
     if dismiss_held() {
         // 有人要收，但现在不许：记一笔，等 bar_hold(false) 时补上。
         DISMISS_PENDING.store(true, Ordering::SeqCst);
@@ -1867,6 +1871,18 @@ fn hint_no_uia_once(pid: u32) {
         "hint: pid={pid} exe={exe} 读不到选区 —— 小提示={toast_due} 气泡={first_time}"
     ));
 }
+/// 这个 pid 是不是微信（Weixin.exe / WeChat.exe，含它的一堆子进程）。
+///
+/// v2.23.61：微信 4.x 是 MMUI（Qt 5.15 自绘），UIA/MSAA 都拿不到选区，
+/// 唯一可行的路是"替用户按一次 Ctrl+C 再读剪贴板"。这条只对微信开。
+fn is_wechat_pid(pid: u32) -> bool {
+    win::process_exe(pid)
+        .map(|p| {
+            let n = p.to_ascii_lowercase();
+            n.ends_with("\\weixin.exe") || n.ends_with("\\wechat.exe")
+        })
+        .unwrap_or(false)
+}
 fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
     /* ⚠ 先确认「前台还是它」再塞 Ctrl+C。
      *
@@ -1930,13 +1946,20 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
     }
     /* v2.23.39：这个窗口 5 秒内刚证明过"对合成 Ctrl+C 没反应"就直接认输，
      * 不再陪着空等一整轮（实测同一目标会被复核两遍）。 */
-    if exact_recently_deaf(target_pid) {
+    /* v2.23.61：**微信不吃"刚证明不响应"这套缓存**。它的失败多半是那一轮
+     * 时序问题（窗口没抢到前台 / 菜单遮挡），不是真的不支持复制；直接跳过
+     * 会让用户"第一次失败之后再也试不出来"。 */
+    let wechat = is_wechat_pid(target_pid);
+    if !wechat && exact_recently_deaf(target_pid) {
         win::log(&format!(
             "capture(exact): 目标 pid={target_pid} 刚证明不响应合成复制，跳过这一轮（不再空等）"
         ));
         clip::restore_if_still_holds(&snap, None);
         return None;
     }
+    /* 微信给更长的窗口：它要先做一次内部复制（Qt 事件循环 + MMUI 排版），
+     * 700ms 实测不够；1.5 秒能覆盖绝大多数情况，用户也不会觉得慢。 */
+    let budget_ms = if wechat { budget_ms.max(1500) } else { budget_ms };
     let t0 = std::time::Instant::now();
     let mut got: Option<String> = None;
     let mut left_target = false;
@@ -1979,8 +2002,17 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
         /* v2.23.31：**同样不能只信序号**（和 capture_selection 一个道理）。
          * 用户在这一小段时间里自己 Ctrl+C 的话，序号同样会变，而"变"既可能
          * 是我们那次合成复制、也可能是他这次手动复制 —— 用内容判断才安全：
-         * 剪贴板里还是我们取到的那段文字才还原，否则说明他复制了新东西。 */
-        clip::restore_if_still_holds(&snap, got.as_deref());
+         * 剪贴板里还是我们取到的那段文字才还原，否则说明他复制了新东西。
+         *
+         * v2.23.61（用户口径）：**微信延迟到横条收起时再还** ——
+         * 「选择文本就是复制，横条消失后恢复剪贴板」。这段时间里剪贴板就是
+         * 那段选中文字，用户随时可以 Ctrl+V；其他程序仍然立刻还原。 */
+        if wechat && got.is_some() {
+            clip::defer_restore(snap, got.clone());
+            win::log("capture(exact): 微信 —— 剪贴板先留着选中文字，横条收起时再还原");
+        } else {
+            clip::restore_if_still_holds(&snap, got.as_deref());
+        }
     }
     if got.is_none() {
         win::log(&format!(
