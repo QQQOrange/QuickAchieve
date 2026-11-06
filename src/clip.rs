@@ -257,15 +257,28 @@ pub fn snapshot() -> Option<Snapshot> {
 ///
 /// `expected` = 我们这轮读到的文字（`None` 表示这一轮什么都没取到，
 /// 此时退回"和快照内容一致才还原"，同样不会覆盖新内容）。
+/// 比"内容是否还是我们复制的那段"时用的**归一化**。
+///
+/// v2.23.62：以前是逐字节比较，结果微信这类程序复制出来的文本常带行尾
+/// `\r\n`（我们 `got` 是 trim 过的），一比就判成"用户又复制了别的东西"，
+/// 于是**永远不还原** —— 用户看到的就是"剪切板没有还原"。
+fn norm_text(s: &str) -> String {
+    s.replace("\r\n", "\n").trim().to_string()
+}
+
 pub fn restore_if_still_holds(s: &Snapshot, expected: Option<&str>) {
     let now_text = read_text_any_within(2);
     let same = match expected {
-        Some(t) => now_text.as_deref() == Some(t),
+        Some(t) => now_text.as_deref().map(norm_text).as_deref() == Some(norm_text(t).as_str()),
         // 没取到词：只有"内容还是备份时那一份"才算没人动过
-        None => now_text == s.text(),
+        None => now_text.as_deref().map(norm_text) == s.text().as_deref().map(norm_text),
     };
     if !same {
-        crate::win::log("clip: 期间剪贴板里出现了新内容（多半是用户自己又复制了一次）—— 跳过还原，不覆盖它");
+        crate::win::log(&format!(
+            "clip: 期间剪贴板里出现了新内容（现在 {:?} 字，期望 {:?} 字）—— 跳过还原，不覆盖它",
+            now_text.as_deref().map(|t| t.chars().count()),
+            expected.map(|t| t.chars().count())
+        ));
         return;
     }
     restore(s);
@@ -290,12 +303,36 @@ pub fn defer_restore(snap: Snapshot, expected: Option<String>) {
 }
 
 /// 横条收起时调用：把上次延迟的那份还回去（内容被别人改过就不动）。
+///
+/// v2.23.62：**重试**。收起那一刻剪贴板可能还被目标程序占着（微信复制完会握着
+/// 几百毫秒），一次 `OpenClipboard` 失败就放弃的话，用户看到的就是"没还原"。
 pub fn restore_deferred() {
     let taken = DEFERRED.lock().ok().and_then(|mut g| g.take());
-    if let Some((snap, expected)) = taken {
-        restore_if_still_holds(&snap, expected.as_deref());
-        crate::win::log("clip: 横条已收起，延迟还原的剪贴板内容已还回去");
+    let Some((snap, expected)) = taken else {
+        return;
+    };
+    for attempt in 0..6 {
+        if let Some(now) = read_text_any_within(2) {
+            let same = match expected.as_deref() {
+                Some(t) => norm_text(&now) == norm_text(t),
+                None => Some(norm_text(&now)) == snap.text().as_deref().map(norm_text),
+            };
+            if same {
+                restore(&snap);
+                crate::win::log(&format!(
+                    "clip: 横条已收起，延迟还原完成（第 {} 次尝试）",
+                    attempt + 1
+                ));
+            } else {
+                crate::win::log(
+                    "clip: 收起时剪贴板已被别人改过 —— 不还原（不覆盖用户新复制的东西）",
+                );
+            }
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(80));
     }
+    crate::win::log("clip: 收起时剪贴板一直被占用（6 次重试都打不开）—— 放弃还原");
 }
 pub fn restore_if_unchanged(s: &Snapshot) {
     let now = seq();
@@ -1308,6 +1345,17 @@ mod tests {
     /// 这条守的是"Ctrl+C 唤出网格后剪贴板能不能真回退"：
     /// 正常 `snapshot()` 抓的是复制**之后**的选区，还原等于没还原；
     /// `text_snapshot` 才是"复制之前"那份的替身。
+    /// v2.23.62：还原判定必须忽略行尾空白 / CRLF。
+    ///
+    /// 微信复制出来的文本常带 `\r\n`，而我们的 `expected` 是 trim 过的 ——
+    /// 逐字节比会判成"用户又复制了别的东西"，于是永不还原（用户报的
+    /// 「剪切板没有还原」就是这个）。
+    #[test]
+    fn 还原判定忽略行尾空白和crlf() {
+        assert_eq!(norm_text("abc\r\n"), norm_text("abc"));
+        assert_eq!(norm_text("  abc  "), norm_text("abc"));
+        assert_ne!(norm_text("abc"), norm_text("abd"));
+    }
     #[test]
     fn text_snapshot_round_trips_utf16() {
         let s = text_snapshot("你好 ABC");
