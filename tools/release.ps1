@@ -58,7 +58,9 @@ try {
 
     Step '2/7 测试'
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-    $rt = cargo test 2>&1 | Select-String -Pattern '^test result:'
+    # v2.23.61：**串行跑**。剪贴板相关的用例会互相抢剪贴板（并行时谁先谁后不定），
+# 以前偶尔会在发版这一步偶发红一次；串行后多花十几秒，但结果确定。
+$rt = cargo test -- --test-threads=1 2>&1 | Select-String -Pattern '^test result:'
     if ($LASTEXITCODE -ne 0) { Fail 'cargo test 退出码非 0' }
     if (-not $rt -or ($rt -join ' ') -notmatch 'ok\.') { Fail 'cargo test 没有 "ok." 结果行' }
     Ok ('cargo test  ' + ($rt -join ' | '))
