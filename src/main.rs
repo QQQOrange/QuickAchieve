@@ -1785,90 +1785,69 @@ fn exact_clear_deaf(pid: u32) {
 ///
 /// 所以第一次遇到这种窗口时给一条**可操作**的提示：
 /// 「这个窗口读不到选区，要用截图识别就按 Ctrl+Alt+O」。
-static NO_UIA_HINTED: std::sync::OnceLock<std::sync::Mutex<Vec<u32>>> = std::sync::OnceLock::new();
-
-/// 小提示条的去重表：每个 pid 最近一次提示的时刻（4 秒内不重复）。
-static NO_UIA_TOASTED: std::sync::OnceLock<std::sync::Mutex<Vec<(u32, std::time::Instant)>>> =
-    std::sync::OnceLock::new();
+static NO_UIA_HINTED: std::sync::OnceLock<std::sync::Mutex<Vec<String>>> = std::sync::OnceLock::new();
 
 fn hint_no_uia_once(pid: u32) {
     if pid == 0 {
         return;
     }
-    /* v2.23.60：**"这个软件不支持划词"要真的看得见**（用户口径）。
+    /* v2.23.63：**提示只发一次**（用户口径：「通知太频繁了」）。
      *
-     * 以前走 `toast_to_settings(...)` —— 那条只往**设置窗口**发 `qs://toast`，
-     * 用户在微信 / 任何别的软件里划词时设置窗根本没开，等于没提示，
-     * 于是他只觉得"这软件坏了"。
+     * v2.23.60 时是"小提示条每 4 秒一条 + 托盘气泡每程序一次" —— 在微信里
+     * 每划一次词就冒一条提示，等于噪音。现在两者都改成**每个程序每会话只发一次**：
+     * 第一次遇到划词取不到字的程序时说明清楚，之后安静，别反复打扰。
      *
-     * 现在两条都发：
-     *   · 小提示条（和「已使用：xxx」同一套）：**每次划词都提示**，同一个程序
-     *     4 秒内只发一条，避免连着拖选刷屏；
-     *   · 托盘气泡：同一个程序**只弹一次**（更重，不该反复打扰）。
-     * 文案都带程序名，让用户一眼知道"是这个软件不行"，不是自己没选中。 */
-    let exe = win::process_exe(pid).unwrap_or_default();
-    let name = std::path::Path::new(&exe)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let named = |tail: &str| -> String {
-        if name.is_empty() {
-            format!("这个软件{tail}")
-        } else {
-            format!("「{name}」{tail}")
-        }
+     * 想再看一次提示：重启本程序（不落盘——这是"用过就知道"的一次性说明，
+     * 不值得为它写配置）。 */
+    /* ⚠ 去重键是**可执行文件名**，不是 pid。
+     *
+     * 微信 4.x 是"主进程 + 一堆 WeChatAppEx 子进程"，每次划词落在哪个 pid 上
+     * 不固定 —— 按 pid 去重等于每个子进程各提示一次，用户看到的就是
+     * 「通知太频繁」。按 exe 去重才真的是"每个软件只提示一次"。 */
+    let exe = win::process_exe(pid).unwrap_or_default().to_ascii_lowercase();
+    let key = if exe.is_empty() {
+        format!("pid:{pid}")
+    } else {
+        exe.clone()
     };
-
-    // ① 小提示条：每程序 4 秒一条
-    let now = std::time::Instant::now();
-    let toast_due = {
-        let m = NO_UIA_TOASTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
-        match m.lock() {
-            Ok(mut g) => {
-                let fresh = match g.iter().find(|(p, _)| *p == pid) {
-                    Some((_, at)) => now.duration_since(*at) >= std::time::Duration::from_secs(4),
-                    None => true,
-                };
-                if fresh {
-                    g.retain(|(p, _)| *p != pid);
-                    g.push((pid, now));
-                }
-                fresh
-            }
-            Err(_) => false,
-        }
-    };
-    if toast_due {
-        crate::toast::show(
-            crate::app(),
-            &named("不支持划词弹条 —— 用 Ctrl+Alt+O 截图识别"),
-            2600,
-        );
-    }
-
-    // ② 托盘气泡：每程序只一次
     let first_time = {
         let m = NO_UIA_HINTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
         match m.lock() {
             Ok(mut g) => {
-                if g.contains(&pid) {
+                if g.contains(&key) {
                     false
                 } else {
-                    g.push(pid);
+                    g.push(key.clone());
                     true
                 }
             }
             Err(_) => false,
         }
     };
-    if first_time {
-        crate::trayhost::balloon(
-            "这个软件不支持划词弹条",
-            &named("不响应系统的选区接口（无障碍与复制都拿不到文字）。想取它的文字：按 Ctrl+Alt+O 截图识别。"),
-        );
+    if !first_time {
+        return;
     }
+    let exe = win::process_exe(pid).unwrap_or_default();
+    let name = std::path::Path::new(&exe)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let short = if name.is_empty() {
+        "这个软件不支持划词弹条 —— 用 Ctrl+Alt+O 截图识别".to_string()
+    } else {
+        format!("「{name}」不支持划词弹条 —— 用 Ctrl+Alt+O 截图识别")
+    };
+    crate::toast::show(crate::app(), &short, 2600);
+    let body = if name.is_empty() {
+        "它不响应系统的选区接口（无障碍与复制都拿不到文字）。想取它的文字：按 Ctrl+Alt+O 截图识别。".to_string()
+    } else {
+        format!(
+            "「{name}」不响应系统的选区接口（无障碍与复制都拿不到文字）。想取它的文字：按 Ctrl+Alt+O 截图识别。"
+        )
+    };
+    crate::trayhost::balloon("这个软件不支持划词弹条", &body);
     win::log(&format!(
-        "hint: pid={pid} exe={exe} 读不到选区 —— 小提示={toast_due} 气泡={first_time}"
+        "hint: pid={pid} exe={exe} 读不到选区 —— 已提示（每个程序每会话只提示一次）"
     ));
 }
 /// 这个 pid 是不是微信（Weixin.exe / WeChat.exe，含它的一堆子进程）。
@@ -3689,6 +3668,9 @@ static NOTIFY_LAST: std::sync::Mutex<(String, String, Option<std::time::Instant>
 /// 同一功能的提示间隔（见 [`notify_allows`]）。
 const NOTIFY_GAP: Duration = Duration::from_secs(60);
 
+/// **任意两条**提示之间的最小间隔（v2.23.63）。换功能也要等这么久。
+const NOTIFY_GAP_GLOBAL: Duration = Duration::from_secs(20);
+
 /// 该不该发这条提示 —— **纯判定**，方便单测。
 ///
 /// `last` = 上次的（节流键, 距今多久）；`None` 表示还没提示过。
@@ -3698,9 +3680,20 @@ const NOTIFY_GAP: Duration = Duration::from_secs(60);
 /// 还改错过一次"换软件也算换功能"。"多弹一条 / 少弹一条"在真机上根本没法
 /// 稳定复现，只能靠这里的边界用例钉住。
 fn notify_allows(last: Option<(&str, Duration)>, key: &str) -> bool {
+    /* v2.23.63：**加一条全局间隔**（用户口径：「通知太频繁了」）。
+     *
+     * 原来只有"同一功能 60 秒一次"：换个功能（甚至换个搜索引擎）就立刻再弹 ——
+     * 用户连着用几项功能时，右下角会一条接一条地冒。
+     * 现在无论换不换功能，两条提示之间至少隔 `NOTIFY_GAP_GLOBAL`。 */
     match last {
         None => true,
-        Some((k, ago)) => k != key || ago >= NOTIFY_GAP,
+        Some((k, ago)) => {
+            if k == key {
+                ago >= NOTIFY_GAP
+            } else {
+                ago >= NOTIFY_GAP_GLOBAL
+            }
+        }
     }
 }
 
@@ -23055,9 +23048,13 @@ mod tests {
             "文字识别"
         ), "差 1ms 到 60 秒也不发 —— 边界是「>= 60s」而不是「> 59s」");
         assert!(notify_allows(Some(("文字识别", gap)), "文字识别"));
-        // 换功能立刻发（不同功能是不同信息，不该被上一个功能压住）
-        assert!(notify_allows(
+        // v2.23.63：换功能也要等**全局间隔**（用户口径：通知太频繁）
+        assert!(!notify_allows(
             Some(("文字识别", Duration::from_secs(1))),
+            "翻译"
+        ));
+        assert!(notify_allows(
+            Some(("文字识别", NOTIFY_GAP_GLOBAL)),
             "翻译"
         ));
         // 包裹符号同理：整颗与某一组各自独立（节流键都归到"包裹符号"，
