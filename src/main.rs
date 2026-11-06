@@ -4621,14 +4621,14 @@ fn app_allowed(at: Option<(i32, i32)>) -> bool {
 /// `SEL_GEN` 就是干这个的。
 static SEL_GEN: AtomicUsize = AtomicUsize::new(0);
 
-fn schedule_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
+fn schedule_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
     let d = cfg_with(|c| c.delay_ms);
     if d == 0 {
         /* 也要起线程再走，不能在这条（事件消费）线程上直接跑：
          * start_capture 里 BUSY 的有界等待（#152）最长会占 1.2s，
          * 占着消费线程会让这期间的 Esc / 点击收条全部迟到。
          * 线程创建只要零点几毫秒，相对 40ms 稳定期完全免费。 */
-        std::thread::spawn(move || start_capture(target_pid, drag));
+        std::thread::spawn(move || start_capture(target_pid, drag, dbl));
         return;
     }
     let g = SEL_GEN.fetch_add(1, Ordering::SeqCst) + 1;
@@ -4638,7 +4638,7 @@ fn schedule_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
             win::log("schedule_capture: 期间又松了一次手，这次作废");
             return;
         }
-        start_capture(target_pid, drag);
+        start_capture(target_pid, drag, dbl);
     });
 }
 
@@ -4679,7 +4679,7 @@ fn trigger_allowed(at: Option<(i32, i32)>) -> bool {
     app_allowed(at)
 }
 
-fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
+fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
     // 划词的终点 = 用户真正在哪个软件里选字，黑名单该按这个判
     if !trigger_allowed(Some((drag.2, drag.3))) {
         return;
@@ -4802,7 +4802,13 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32)) {
              * （自绘界面 / 游戏的用户要靠它点「识图搜索」「OCR」）。 */
             let dragged = (drag.2 - drag.0).abs() > 4 || (drag.3 - drag.1).abs() > 4;
             if text.trim().is_empty() && cfg_with(|c| c.bar_need_text) {
-                if !dragged {
+                /* v2.23.65：**双击 / 三击选词也算"选中"**（`dbl`）。
+                 *
+                 * 用户报「抖音网页评论区选中文字不弹条」—— 评论区是短句，
+                 * 大家习惯**双击选一个词 / 三击选一行**，根本没有拖动过程：
+                 * `dragged` 为 false，这里直接 return，连复制都不试一下。
+                 * 双击在浏览器 / 编辑器里是最常见的选字方式，必须支持。 */
+                if !dragged && !dbl {
                     win::log(
                         "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
                     );
@@ -6027,7 +6033,7 @@ fn spawn_detector() {
                                         // 取词：前者给剪贴板归属校验用（多进程客户端里负责
                                         // 复制的未必是前台那个进程），后者给 OCR 兜底用
                                         // （对方不肯把选区交出来的客户端，直接读屏幕上那块字）。
-                                        schedule_capture(win::window_pid(tgt), (sx, sy, x, y));
+                                        schedule_capture(win::window_pid(tgt), (sx, sy, x, y), is_double);
                                     }
                                 }
                             }
@@ -6100,7 +6106,7 @@ fn spawn_detector() {
                                 std::thread::spawn(move || {
                                     // 等选区落定再读，避免读到上一次的内容
                                     std::thread::sleep(Duration::from_millis(140));
-                                    schedule_capture(pid, (px - 2, py - 2, px + 2, py + 2));
+                                    schedule_capture(pid, (px - 2, py - 2, px + 2, py + 2), true);
                                 });
                             }
                         }
