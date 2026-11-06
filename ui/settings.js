@@ -3134,8 +3134,6 @@ const SWITCHES = [
     //   ② 拖选复核时用"屏幕识别"当证据 → 拖滚动条/画布也可能认到字。
     //   现在两条都按这个开关走：开着就只认"真的选到了文字"。
     ['s-barNeedText', 'barNeedText'],
-    // v2.23.56：复制不通时用屏幕识别兜底（微信这类自绘界面靠它）
-    ['s-barOcrFallback', 'barOcrFallback'],
     // v2.23.3：框选后可调整 / 换用途 —— **默认关**（框完立刻执行打开的那个功能）
     ['s-regionAdjust', 'regionAdjust'],
     // v2.23.6：快捷键独占（热键撞车时只激发本软件），默认开
@@ -3201,7 +3199,6 @@ const SWITCH_DEFAULT = {
     triggerCopy: true,
     // 2026-10-23：划选没取到文字就不弹（与 config.rs 的 serde 默认值一致）
     barNeedText: true,
-    barOcrFallback: true,
     barDimDelayMs: 1500,
     anchorAtMouse: false,
     autoStart: false,

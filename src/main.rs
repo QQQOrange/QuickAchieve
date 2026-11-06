@@ -1783,22 +1783,88 @@ fn exact_clear_deaf(pid: u32) {
 /// 「这个窗口读不到选区，要用截图识别就按 Ctrl+Alt+O」。
 static NO_UIA_HINTED: std::sync::OnceLock<std::sync::Mutex<Vec<u32>>> = std::sync::OnceLock::new();
 
+/// 小提示条的去重表：每个 pid 最近一次提示的时刻（4 秒内不重复）。
+static NO_UIA_TOASTED: std::sync::OnceLock<std::sync::Mutex<Vec<(u32, std::time::Instant)>>> =
+    std::sync::OnceLock::new();
+
 fn hint_no_uia_once(pid: u32) {
     if pid == 0 {
         return;
     }
-    let m = NO_UIA_HINTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
-    if let Ok(mut g) = m.lock() {
-        if g.contains(&pid) {
-            return;
+    /* v2.23.60：**"这个软件不支持划词"要真的看得见**（用户口径）。
+     *
+     * 以前走 `toast_to_settings(...)` —— 那条只往**设置窗口**发 `qs://toast`，
+     * 用户在微信 / 任何别的软件里划词时设置窗根本没开，等于没提示，
+     * 于是他只觉得"这软件坏了"。
+     *
+     * 现在两条都发：
+     *   · 小提示条（和「已使用：xxx」同一套）：**每次划词都提示**，同一个程序
+     *     4 秒内只发一条，避免连着拖选刷屏；
+     *   · 托盘气泡：同一个程序**只弹一次**（更重，不该反复打扰）。
+     * 文案都带程序名，让用户一眼知道"是这个软件不行"，不是自己没选中。 */
+    let exe = win::process_exe(pid).unwrap_or_default();
+    let name = std::path::Path::new(&exe)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let named = |tail: &str| -> String {
+        if name.is_empty() {
+            format!("这个软件{tail}")
+        } else {
+            format!("「{name}」{tail}")
         }
-        g.push(pid);
+    };
+
+    // ① 小提示条：每程序 4 秒一条
+    let now = std::time::Instant::now();
+    let toast_due = {
+        let m = NO_UIA_TOASTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+        match m.lock() {
+            Ok(mut g) => {
+                let fresh = match g.iter().find(|(p, _)| *p == pid) {
+                    Some((_, at)) => now.duration_since(*at) >= std::time::Duration::from_secs(4),
+                    None => true,
+                };
+                if fresh {
+                    g.retain(|(p, _)| *p != pid);
+                    g.push((pid, now));
+                }
+                fresh
+            }
+            Err(_) => false,
+        }
+    };
+    if toast_due {
+        crate::toast::show(
+            crate::app(),
+            &named("不支持划词弹条 —— 用 Ctrl+Alt+O 截图识别"),
+            2600,
+        );
     }
-    /* 用横条上的提示条（`toast_settings` 那条路是设置窗的，这里用户在任意软件里，
-     * 走右下角系统提示更合适 —— 和「已使用：xxx」同一张卡片）。 */
-    crate::toast_to_settings("这个窗口读不到选区（不支持系统无障碍文本）。想识别它的文字：按 Ctrl+Alt+O 截图识别");
+
+    // ② 托盘气泡：每程序只一次
+    let first_time = {
+        let m = NO_UIA_HINTED.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+        match m.lock() {
+            Ok(mut g) => {
+                if g.contains(&pid) {
+                    false
+                } else {
+                    g.push(pid);
+                    true
+                }
+            }
+            Err(_) => false,
+        }
+    };
+    if first_time {
+        crate::trayhost::balloon(
+            "这个软件不支持划词弹条",
+            &named("不响应系统的选区接口（无障碍与复制都拿不到文字）。想取它的文字：按 Ctrl+Alt+O 截图识别。"),
+        );
+    }
     win::log(&format!(
-        "hint: pid={pid} 读不到选区且不响应合成复制 —— 已提示改用截图识别（每个程序只提示一次）"
+        "hint: pid={pid} exe={exe} 读不到选区 —— 小提示={toast_due} 气泡={first_time}"
     ));
 }
 fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
@@ -4357,37 +4423,14 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
     if let Some(t) = capture_selection_fast(target_pid, 700).filter(|t| !t.trim().is_empty()) {
         return Some(t);
     }
-    if need_text {
-        /* v2.23.56：**微信这类自绘界面，屏幕识别是唯一证据**。
-         *
-         * 微信 4.x 是 Electron 自绘：划词复制时剪贴板里读不到任何文本，
-         * UIA 也拿不到 —— 而「没取到文字就不弹」直接把这条路掐死了，
-         * 用户看到的就是「在微信里选字不弹条」。
-         *
-         * 兜底条件（防误弹）：
-         *   · 开关开着（`bar_ocr_fallback`，默认开）；
-         *   · 拖选矩形**像个文本选区**：宽高都 ≥ 8 CSS px。
-         *     拖滚动条 / 画布时矩形要么很窄、要么是随手一划，这里挡掉大半；
-         *   · 屏幕识别真的认出了非空文字（认不出 = 没选中，仍然不弹）。 */
-        let w = (drag.2 - drag.0).abs();
-        let h = (drag.3 - drag.1).abs();
-        if cfg_with(|c| c.bar_ocr_fallback) && w >= 8 && h >= 8 {
-            if let Some(t) = ocr_region_text(drag).filter(|t| !t.trim().is_empty()) {
-                win::log(&format!(
-                    "confirm: 复制通道没拿到 —— 选区像文本（{w}×{h}），屏幕识别兜底拿到 {} 字",
-                    t.chars().count()
-                ));
-                return Some(t);
-            }
-        }
-        win::log("confirm: 复制通道没拿到文字，且「没取到文字就不弹」开着 —— 不拿屏幕识别顶替，不弹");
-        /* v2.23.39：这种窗口（Qt / WPF 自绘）划词会**毫无反应**，
-         * 给一次"改用截图识别"的提示，别让用户以为软件坏了。 */
-        hint_no_uia_once(target_pid);
-        return None;
-    }
-    win::log("confirm: 复制通道没拿到 —— 改看屏幕（本地识别）确认选区");
-    ocr_region_text(drag).filter(|t| !t.trim().is_empty())
+    /* v2.23.60：**不用屏幕识别兜底**（用户口径：OCR 会影响精确性）。
+     *
+     * 复制 / UIA 两条通道都拿不到选区 → 认定这个程序不支持划词取词。
+     * 不弹条，但**给一次明确提示**，让用户知道"是这个软件不行"，而不是以为
+     * 软件坏了、或者自己没选中。提示里带程序名，一眼能认出来。 */
+    win::log("confirm: 复制与无障碍都没拿到选区 —— 该程序不支持划词取词，提示一次");
+    hint_no_uia_once(target_pid);
+    None
 }
 
 /// 这个窗口是不是「控制台 / 终端」。
@@ -6449,8 +6492,6 @@ fn config_view() -> Value {
         "barAwayPx": cfg.bar_away_px,
         // 没取到文字就不弹（默认开）—— 误触乱弹的主要来源。
         "barNeedText": cfg.bar_need_text,
-        // v2.23.56：复制不通时用屏幕识别兜底（微信这类自绘界面要靠它）
-        "barOcrFallback": cfg.bar_ocr_fallback,
         // v2.16.0：框选之后先停一下（可拖角微调 + 换用途）。关掉 = 松手立即执行。
         "regionAdjust": cfg.region_adjust,
         // v2.18.1：上次在动作条上点的动作 —— 页面拿它当"双击执行"的默认项
@@ -7253,8 +7294,6 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
             cfg.bar_away_px = value.as_i64().unwrap_or(400).clamp(0, 4000) as i32
         }
         "barNeedText" => cfg.bar_need_text = value.as_bool().unwrap_or(true),
-        // v2.23.56：复制不通时允许屏幕识别兜底（微信这类自绘界面要靠它）
-        "barOcrFallback" => cfg.bar_ocr_fallback = value.as_bool().unwrap_or(true),
         /* v2.23.3：框选后是否停下给调整/换用途。**默认关** ——
          * 框完立刻执行你打开的那个功能（识别 / 识图 / 二维码），不再弹动作条。
          * 开着才有手柄 + 动作条（也才有"复制图片"那条路）。 */
