@@ -684,7 +684,48 @@ document.addEventListener('pointercancel', () => {
     addDrag = null;
 }, true);
 
+/** v2.23.70：把「收藏这段文字」画成**横条成员**的一行（和 @ocr / @img 同样的样子）。
+ *
+ * 它在不在横条上由 `CONF.favQuickShow` 决定；按钮就是「加入横条 / 移出横条」，
+ * 和引擎列表里那套「添加到横条 / 移出」是同一个语义，用户不用再理解"固定按钮"。
+ */
+function renderFavQuickList() {
+    const box = $('favQuickList');
+    if (!box) return;
+    box.textContent = '';
+    const on = CONF.favQuickShow !== false;
+    const row = document.createElement('div');
+    row.className = 'item';
+    const ic = document.createElement('span');
+    ic.className = 'ic';
+    ic.textContent = '★';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = qsT('收藏这段文字');
+    const em = document.createElement('em');
+    em.textContent = on
+        ? qsT('在横条上 · 点一下把选中的文字存进「快速收藏」')
+        : qsT('不在横条上 · 点「加入横条」把它放回去');
+    nm.appendChild(em);
+    const ops = document.createElement('span');
+    ops.className = 'ops';
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost';
+    btn.textContent = on ? qsT('移出横条') : qsT('加入横条');
+    btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+            await invoke('set_setting', { key: 'favQuickShow', value: !on });
+            renderFavQuickList();
+        } catch { }
+    });
+    ops.appendChild(btn);
+    row.append(ic, nm, ops);
+    box.appendChild(row);
+}
+
 function renderBarList() {
+    try { renderFavQuickList(); } catch { }
     const box = $('barList');
     box.textContent = '';
     /* 防御性过滤：指向**已删除目录**的 `@fav:<id>` 哨兵不该出现在列表里。

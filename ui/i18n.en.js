@@ -1394,7 +1394,11 @@ window.QS_I18N.add({
     "横条固定位 · 点一下就把当前选中的文字存进「快速收藏」": "Fixed slot on the bar · one click saves the selected text to Quick Save",
     "移出横条": "Remove from bar",
     "★ 收藏这段文字": "★ Save this text",
-    "横条最左边那颗星：点一下就把当前选中的文字存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown."
+    "横条最左边那颗星：点一下就把当前选中的文字存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown.",
+    "横条成员": "Bar items",
+    "在横条上 · 点一下把选中的文字存进「快速收藏」": "On the bar · one click saves the selected text to Quick Save",
+    "不在横条上 · 点「加入横条」把它放回去": "Not on the bar · click \"Add to bar\" to put it back",
+    "加入横条": "Add to bar"
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */
