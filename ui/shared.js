@@ -229,6 +229,8 @@ window.qsSentinelLabel = function (name) {
     const raw = name.trim();
     if (!raw) return '';
     if (raw === window.QS_SEP) return qsI18nText('分隔线');
+    // v2.23.72：「收藏这段文字」必须有名字，否则重加回横条后显示「未命名功能」
+    if (raw === '@favquick') return qsI18nText('收藏这段文字');
     // 普通引擎名（百度 / Google…）不归这里管
     if (!raw.startsWith('@')) return '';
     let label = '';

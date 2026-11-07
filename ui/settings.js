@@ -695,6 +695,11 @@ function renderFavQuickList() {
     box.textContent = '';
     // v2.23.71：成员资格只认 barList（和 @ocr / @img 同一套）
     const on = Array.isArray(CONF.barList) && CONF.barList.includes('@favquick');
+    /* v2.23.72：**在横条上时这里不再画** —— 它已经在下面的成员列表里了
+     * （用户报：同一个功能在页面上出现两处）。这里只在"不在横条上"时
+     * 提供「加入横条」入口。 */
+    box.style.display = on ? 'none' : '';
+    if (on) return;
     const row = document.createElement('div');
     row.className = 'item';
     const ic = document.createElement('span');

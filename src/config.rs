@@ -3293,7 +3293,7 @@ pub fn load() -> Config {
      * 这些成员不是一套逻辑，「移出横条」也不生效。现在统一成成员：老配置里默认
      * 还在（fav_quick_show=true）的补到最前面；用户之前关掉的就不补。 */
     if c.fav_quick_show && !c.bar_list.iter().any(|x| x == BAR_FAVQUICK) {
-        c.bar_list.insert(0, BAR_FAVQUICK.to_string());
+        c.bar_list.push(BAR_FAVQUICK.to_string());
         crate::win::log("config: 迁移 —— 把 @favquick（收藏这段文字）并入横条成员列表");
         save_to(&p, &c);
     }
