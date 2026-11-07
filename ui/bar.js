@@ -970,6 +970,12 @@ function parseCssColor(s) {
  *  按 dark 挂 .qs-dark 类。 */
 function applyThemePayload(p) {
     const payload = p || {};
+    /* v2.23.67：**换主题不许有过渡**（用户口径：「有一个切换的过程，看起来特别难受」）。
+     *
+     * 横条每次弹出都可能判成另一种明暗；`.bar` 上有 120ms 的 background-color
+     * 过渡，于是"先按上次的颜色画出来、再渐变过去"。先挂 qs-instant 把过渡
+     * 全关掉，改完两帧后再摘 —— 换色瞬时到位。 */
+    stage.classList.add('qs-instant');
     stage.style.removeProperty('--qs-fg');
     stage.style.removeProperty('--qs-fg-dim');
     stage.style.removeProperty('--qs-tip');
@@ -978,6 +984,14 @@ function applyThemePayload(p) {
     stage.classList.toggle('qs-dark', !!payload.dark);
     // 顺序要紧：先挂类再同步背景，读到的 --qs-bg 才是新极性那套
     syncBarBg();
+    // 强制一次样式结算，让新颜色**这一帧**就生效，然后摘掉 qs-instant
+    void stage.offsetWidth;
+    /* 摘类用"rAF 尽快 + 定时器兜底"两条：窗口还没显示时 requestAnimationFrame
+     * 可能一直不跑（后台/被遮挡的窗口会被节流甚至暂停），只靠 rAF 会让
+     * qs-instant 一直挂着 —— 等于以后所有过渡都没了。 */
+    const dropInstant = () => stage.classList.remove('qs-instant');
+    requestAnimationFrame(() => requestAnimationFrame(dropInstant));
+    setTimeout(dropInstant, 120);
 }
 
 /** 同步横条背景色。
@@ -3187,6 +3201,26 @@ if (btnFav) {
                 btnFav.textContent = '✕';
                 btnFav.title = String((e && e.message) || e || '收藏失败');
             });
+    });
+}
+
+/* v2.23.67：引擎面板里的「★ 收藏」——和横条那颗 ★ 同一个动作。
+ * 用户报"横条里有收藏，引擎页看不到"，所以把这个入口也摆到面板头上。 */
+const btnPanelFav = $('btnPanelFav');
+if (btnPanelFav) {
+    btnPanelFav.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const text = String(currentText || '').trim();
+        if (!text) {
+            tip('没有选中文字，先选中一段再来收藏');
+            return;
+        }
+        invoke('fav_quick_add', { text })
+            .then((msg) => {
+                tip(String(msg || '已收藏'));
+                setTimeout(() => togglePanel(false), 700);
+            })
+            .catch((err) => tip('收藏失败：' + ((err && err.message) || err)));
     });
 }
 

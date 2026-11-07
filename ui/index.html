@@ -81,7 +81,10 @@
             <input id="engFilter" type="text" placeholder="🔍 搜索引擎…" spellcheck="false"
                    autocomplete="off" autocapitalize="off" autocorrect="off"
                    aria-label="搜索引擎" title="输入引擎名或它的别称，立刻筛出想要的那个">
-            <button class="panel-x" id="btnPanelClose" title="收起">收起</button>
+            <!-- v2.23.67：**收藏入口也放进"更多引擎"页**（用户口径：横条里那个收藏在引擎页看不到）。
+     它和横条上的 ★ 是同一个动作：把当前选中的文字存进「快速收藏」。 -->
+    <button class="panel-x" id="btnPanelFav" title="收藏当前选中的文字">★ 收藏</button>
+    <button class="panel-x" id="btnPanelClose" title="收起">收起</button>
         </div>
         <div class="panel-body" id="panelBody"></div>
         <div class="panel-foot">

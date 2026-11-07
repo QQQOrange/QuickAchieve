@@ -89,7 +89,8 @@ body {
     --qs-tip: #8A8D95;
     --qs-accent: #3B7DFF;
     /* v2.23.34：这个变量以前**只被使用、从未定义** —— 于是选中态一直吃
-     * gba(14,116,144,.10) 那个旧品牌青色的写死回退，和蓝色强调色不是一套。 */
+     * 
+gba(14,116,144,.10) 那个旧品牌青色的写死回退，和蓝色强调色不是一套。 */
     --qs-accent-soft: color-mix(in srgb, var(--qs-accent) 12%, transparent);
 }
 
@@ -657,7 +658,7 @@ button.fav-grp-head:focus-visible {
     /* 投影：用户开「浮层阴影」时的两层（默认全透明占位，见 .stage）。 */
     box-shadow: var(--qs-shadow);
     opacity: var(--qs-alpha, 1);
-    transition: background-color .14s ease, opacity .22s ease;
+transition: background-color .14s ease, opacity .22s ease;
     animation: qs-bar-in .16s cubic-bezier(.22, 1, .36, 1);
     position: relative;
     /* 开启 GPU 层，减少合成时的重绘 */
@@ -2947,4 +2948,12 @@ button.fav-grp-head:focus-visible {
     opacity: .62;
     pointer-events: none;
     white-space: nowrap;
+}
+
+/* v2.23.67：主题切换必须**瞬时**（横条每次弹出都可能换明暗）。
+ * 打上 qs-instant 的两帧里关掉所有过渡，避免"先按旧颜色画一帧再渐变过去"。 */
+.stage.qs-instant,
+.stage.qs-instant * {
+    transition: none !important;
+    animation-duration: 0s !important;
 }
