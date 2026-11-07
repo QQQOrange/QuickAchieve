@@ -693,7 +693,8 @@ function renderFavQuickList() {
     const box = $('favQuickList');
     if (!box) return;
     box.textContent = '';
-    const on = CONF.favQuickShow !== false;
+    // v2.23.71：成员资格只认 barList（和 @ocr / @img 同一套）
+    const on = Array.isArray(CONF.barList) && CONF.barList.includes('@favquick');
     const row = document.createElement('div');
     row.className = 'item';
     const ic = document.createElement('span');
@@ -715,7 +716,7 @@ function renderFavQuickList() {
     btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         try {
-            await invoke('set_setting', { key: 'favQuickShow', value: !on });
+            await invoke('toggle_bar_engine', { engine: '@favquick', on: !on });
             renderFavQuickList();
         } catch { }
     });

@@ -972,7 +972,9 @@ function parseCssColor(s) {
 function applyFavQuickVisible() {
     const btn = document.getElementById('btnFav');
     if (!btn) return;
-    const show = CONF.favQuickShow !== false;
+    /* v2.23.71：**以 barList 里有没有 @favquick 为准**（和 @ocr / @img 完全同一套）。
+     * 以前看 favQuickShow，和横条成员那套脱节 —— 用户点「移出横条」当然没反应。 */
+    const show = Array.isArray(CONF.barList) && CONF.barList.includes('@favquick');
     btn.hidden = !show;
     btn.style.display = show ? '' : 'none';
 }

@@ -18040,6 +18040,7 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
          * 会在后端被当成"不认识的引擎"静默拒掉：点了没反应、列表也不变
          * （和上面几条注释里记的是同一个坑）。 */
         && engine != config::BAR_ANY
+        && engine != config::BAR_FAVQUICK
         && !config::is_wrap_sentinel(engine)
         && !config::is_text_sentinel(engine)
         /* v2.13.1：绑定模型的格子（`@ocr:baidu` / `@ocr:a+b` / `@img:<id>` /

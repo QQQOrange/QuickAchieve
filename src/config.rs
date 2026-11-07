@@ -136,6 +136,12 @@ pub const BAR_OCR: &str = "@ocr";
 /// 前端 `window.QS_ANY` 必须与本常量保持一致。
 pub const BAR_ANY: &str = "@any";
 
+/// 「收藏这段文字」的哨兵（v2.23.71）。
+///
+/// 它和 `@ocr` / `@img` / `@any` 一样是**横条的一等成员**：
+/// 能加进 `bar_list`、能移出、能在设置页里按同样的一行显示。
+pub const BAR_FAVQUICK: &str = "@favquick";
+
 /// 前端 `window.QS_IMG` 必须与本常量保持一致。
 pub const BAR_IMG: &str = "@img";
 
@@ -3282,6 +3288,15 @@ pub fn load() -> Config {
     /* v2.23.66：老配置的 `theme` 默认是 "system"（跟随 Windows 日/夜间）。
      * 现在默认改成「跟随页面」，把**没显式选过**的那些（还是 "system"）
      * 一次性迁到 "page"；用户自己选过 light/dark 的不动。 */
+    /* v2.23.71：把「收藏这段文字」并进 bar_list（一次性）。它以前是横条上的固定
+     * 按钮（fav_quick_show 控制），不进 bar_list —— 于是设置页里它和 @ocr/@img
+     * 这些成员不是一套逻辑，「移出横条」也不生效。现在统一成成员：老配置里默认
+     * 还在（fav_quick_show=true）的补到最前面；用户之前关掉的就不补。 */
+    if c.fav_quick_show && !c.bar_list.iter().any(|x| x == BAR_FAVQUICK) {
+        c.bar_list.insert(0, BAR_FAVQUICK.to_string());
+        crate::win::log("config: 迁移 —— 把 @favquick（收藏这段文字）并入横条成员列表");
+        save_to(&p, &c);
+    }
     if c.theme == "system" {
         c.theme = "page".to_string();
         crate::win::log("config: 迁移 —— 主题 system → page（跟随页面明暗）");
