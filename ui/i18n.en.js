@@ -1388,7 +1388,9 @@ window.QS_I18N.add({
     "收藏当前选中的文字": "Save the selected text to favourites",
     "没有选中文字，先选中一段再来收藏": "Nothing selected — select some text first",
     "收藏失败：": "Save failed: ",
-    "★ 收藏": "★ Save"
+    "★ 收藏": "★ Save",
+    "★ 收藏（快捷收藏）": "★ Save (quick save)",
+    "横条最左边那颗星：把当前选中的文字一键存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown."
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

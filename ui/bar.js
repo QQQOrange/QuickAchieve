@@ -968,6 +968,15 @@ function parseCssColor(s) {
  *  明暗完全由这个 dark 决定。
  *  这里做两件事：清掉可能残留的内联覆盖（读 CSS 原色时不能被自己骗到），
  *  按 dark 挂 .qs-dark 类。 */
+/* v2.23.68：横条上的 ★ 收藏可以关（设置 → 横条引擎 → 「★ 收藏（快捷收藏）」）。 */
+function applyFavQuickVisible() {
+    const btn = document.getElementById('btnFav');
+    if (!btn) return;
+    const show = CONF.favQuickShow !== false;
+    btn.hidden = !show;
+    btn.style.display = show ? '' : 'none';
+}
+
 function applyThemePayload(p) {
     const payload = p || {};
     /* v2.23.67：**换主题不许有过渡**（用户口径：「有一个切换的过程，看起来特别难受」）。
@@ -6770,6 +6779,7 @@ function dumpState(tag) {
 
 listen('qs://config', (ev) => {
     CONF = window.CONF = ev.payload || {};
+    try { applyFavQuickVisible(); } catch { }
     // 自定义引擎增删改之后也会走到这里，重新合并一次再渲染
     qsMergeCustomEngines(CATALOG, ENGINE_BY_NAME, CONF);
     // 别名索引跟着重建（自定义引擎可增删改，别名表不能停在开机那一份）
@@ -7245,6 +7255,7 @@ async function boot() {
     }
 
     CONF = window.CONF = await invoke('get_config');
+    try { applyFavQuickVisible(); } catch { }
     // 用户自己加的引擎要在渲染之前并进来，否则横条上那一格会被当成
     // 「不认识的引擎」直接过滤掉 —— 表现为设置在、横条上没有。
     qsMergeCustomEngines(CATALOG, ENGINE_BY_NAME, CONF);

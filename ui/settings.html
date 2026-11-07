@@ -1255,7 +1255,15 @@
 
         </div>
 
-        <div class="list" id="barList"></div>
+        <!-- v2.23.68：**★ 收藏** 是横条上的一颗固定按钮（不属于引擎目录），
+     所以它不会出现在下面的 barList 里。用户口径：「设置里看不到收藏」——
+     这里单独给它一行开关，别再让人以为横条上那颗星是凭空冒出来的。 -->
+<div class="row">
+    <div class="rt"><b>★ 收藏（快捷收藏）</b><small>横条最左边那颗星：把当前选中的文字一键存进「快速收藏」。它不占引擎位，固定显示</small></div>
+    <label class="sw"><input type="checkbox" id="s-favQuickShow"><i></i></label>
+</div>
+
+<div class="list" id="barList"></div>
 
         <div class="hint">
 

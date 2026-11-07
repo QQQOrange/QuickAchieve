@@ -1785,6 +1785,12 @@ pub struct Config {
     /// 拖动到处都是，Ctrl+C 只有真的按了才有。
     #[serde(default = "default_true")]
     pub bar_need_text: bool,
+    /// 横条上是否显示「★ 收藏」（快捷收藏）。
+    ///
+    /// v2.23.68：它不属于引擎目录，是横条的一颗固定按钮 —— 设置页里单独给
+    /// 一行开关（用户报「设置里看不到收藏」）。默认开。
+    #[serde(default = "default_true")]
+    pub fav_quick_show: bool,
 
     /// **横条的触发方式**（v2.14.0）：`always` / `ctrl`，两者互斥。
     ///
@@ -2352,6 +2358,7 @@ impl Default for Config {
              * 统一成 **true**：和帮助文字（「没取到文字就不弹（默认开）」）、
              * 和前端开关的初值、和 serde 默认都对得上。 */
             bar_need_text: true,
+        fav_quick_show: true,
             bar_trigger_mode: default_bar_trigger_mode(),
             // 框选后是否停下给调整/换用途 —— 默认关：框完立刻执行打开的那个功能
             region_adjust: false,
