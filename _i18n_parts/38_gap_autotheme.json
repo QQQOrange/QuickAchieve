@@ -1,0 +1,4 @@
+{
+  "跟随页面": "Follow the page",
+  "「跟随页面」看当前网页/软件是深色还是浅色，横条与网格自动换皮（忽略视频：多帧比对，画面在动的像素不参与判断）。「跟随系统」则随 Windows 的日/夜间模式。": "\"Follow the page\" looks at whether the current web page or app is dark or light and switches the bar and grid to match (video is ignored: frames are compared and moving pixels are excluded). \"Follow the system\" uses the Windows light/dark setting instead."
+}

@@ -13,6 +13,8 @@ mod trayhost;
 mod toast;
 /* v2.23.46：诊断文本（从 main.rs 拆出的第一块） */
 mod diag;
+/* v2.23.66：横条/网格的自动明暗（看当前页面是深色还是浅色，忽略视频） */
+mod autotheme;
 /* v2.23.46：收藏夹一步收的纯逻辑 */
 mod favquick;
 /* v2.23.48：备份差异预览 */
@@ -472,10 +474,19 @@ fn theme_dark_from(theme: &str, system_light: Option<bool>) -> bool {
 /// 前端 applyThemePayload 本来就认 null）；明暗由「主题」设置 +
 /// Windows 日/夜间模式决定（theme_dark_from）。
 fn current_theme() -> Value {
-    let dark = theme_dark_from(
-        &cfg_with(|c| c.theme.clone()),
-        win::apps_use_light_theme(),
-    );
+    let theme = cfg_with(|c| c.theme.clone());
+    /* v2.23.66：「跟随页面」—— 看光标附近那块 UI 是深色还是浅色。
+     *
+     * 判据是**多帧稳定性**（见 `autotheme`）：视频/动画的像素帧间变化大，
+     * 整块丢掉，只拿静态 UI 的亮度做决定。判断不出来（全在动 / 灰区）就
+     * 落回系统偏好，不会硬猜。 */
+    if theme == "page" {
+        if let Some(dark) = crate::autotheme::detect() {
+            return json!({ "dark": dark, "bg": Value::Null });
+        }
+        win::log("autotheme: 判不出来（画面在动/灰区）—— 落回系统偏好");
+    }
+    let dark = theme_dark_from(&theme, win::apps_use_light_theme());
     json!({ "dark": dark, "bg": Value::Null })
 }
 
@@ -7429,7 +7440,7 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
         "theme" => {
             let s = value.as_str().unwrap_or("system");
             cfg.theme = match s {
-                "light" | "dark" => s.to_string(),
+                "light" | "dark" | "page" => s.to_string(),
                 _ => "system".to_string(),
             };
         }

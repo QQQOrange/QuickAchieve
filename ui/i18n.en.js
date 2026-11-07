@@ -1382,7 +1382,9 @@ window.QS_I18N.add({
     "收藏这段文字": "Save this text to favourites",
     "右键查看更多引擎": "Right-click for more engines",
     "取不到文字时用屏幕识别兜底": "Fall back to screen OCR when no text is captured",
-    "开着：复制/无障碍都拿不到字时，把拖选的那块屏幕识别一遍，认出来就弹条（微信、部分自绘软件靠它）。只在选区宽高都 ≥ 8px 时兜底，拖滚动条不会误弹；一个字都认不出仍然不弹。": "On: when neither the clipboard nor accessibility yields text, OCR the dragged region and show the bar if anything is recognised (needed by WeChat and some custom-drawn apps). Only applies when the selection is at least 8×8 px, so scrollbar drags do not trigger it; if OCR finds nothing, the bar still stays hidden."
+    "开着：复制/无障碍都拿不到字时，把拖选的那块屏幕识别一遍，认出来就弹条（微信、部分自绘软件靠它）。只在选区宽高都 ≥ 8px 时兜底，拖滚动条不会误弹；一个字都认不出仍然不弹。": "On: when neither the clipboard nor accessibility yields text, OCR the dragged region and show the bar if anything is recognised (needed by WeChat and some custom-drawn apps). Only applies when the selection is at least 8×8 px, so scrollbar drags do not trigger it; if OCR finds nothing, the bar still stays hidden.",
+    "跟随页面": "Follow the page",
+    "「跟随页面」看当前网页/软件是深色还是浅色，横条与网格自动换皮（忽略视频：多帧比对，画面在动的像素不参与判断）。「跟随系统」则随 Windows 的日/夜间模式。": "\"Follow the page\" looks at whether the current web page or app is dark or light and switches the bar and grid to match (video is ignored: frames are compared and moving pixels are excluded). \"Follow the system\" uses the Windows light/dark setting instead."
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

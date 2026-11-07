@@ -2306,7 +2306,8 @@ impl Default for Config {
             unify_icons: true,
             bar_padding: 5,
             item_radius: 9,
-            theme: "system".to_string(),
+            // v2.23.66：默认「跟随页面」—— 看当前页面/软件的 UI 是深是浅，横条跟着换皮
+            theme: "page".to_string(),
             animations: true,
             shadow: false,
             bar_blur: 0,
@@ -3271,6 +3272,14 @@ pub fn load() -> Config {
     /* v2.23.64：**老配置也要把「已使用」提示关掉**（用户口径「提示好烦人」）。
      * 只改 serde 默认值只能影响"新装用户"，已经存过 `notify_feature: true` 的
      * 配置读进来还是 true。这里做一次性迁移：关掉、打标记、写回。 */
+    /* v2.23.66：老配置的 `theme` 默认是 "system"（跟随 Windows 日/夜间）。
+     * 现在默认改成「跟随页面」，把**没显式选过**的那些（还是 "system"）
+     * 一次性迁到 "page"；用户自己选过 light/dark 的不动。 */
+    if c.theme == "system" {
+        c.theme = "page".to_string();
+        crate::win::log("config: 迁移 —— 主题 system → page（跟随页面明暗）");
+        save_to(&p, &c);
+    }
     if !c.notify_quiet_migrated {
         c.notify_quiet_migrated = true;
         if c.notify_feature {
