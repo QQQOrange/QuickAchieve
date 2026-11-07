@@ -1379,7 +1379,7 @@ window.QS_I18N.add({
     "剪贴板历史已关闭（已清空内存里的记录）": "Clipboard history is off (in-memory entries cleared)",
     "剪贴板历史已清空": "Clipboard history cleared",
     "清空失败：": "Clear failed: ",
-    "收藏这段文字": "Save this text to favourites",
+    "收藏这段文字": "Save this text",
     "右键查看更多引擎": "Right-click for more engines",
     "取不到文字时用屏幕识别兜底": "Fall back to screen OCR when no text is captured",
     "开着：复制/无障碍都拿不到字时，把拖选的那块屏幕识别一遍，认出来就弹条（微信、部分自绘软件靠它）。只在选区宽高都 ≥ 8px 时兜底，拖滚动条不会误弹；一个字都认不出仍然不弹。": "On: when neither the clipboard nor accessibility yields text, OCR the dragged region and show the bar if anything is recognised (needed by WeChat and some custom-drawn apps). Only applies when the selection is at least 8×8 px, so scrollbar drags do not trigger it; if OCR finds nothing, the bar still stays hidden.",
@@ -1390,7 +1390,11 @@ window.QS_I18N.add({
     "收藏失败：": "Save failed: ",
     "★ 收藏": "★ Save",
     "★ 收藏（快捷收藏）": "★ Save (quick save)",
-    "横条最左边那颗星：把当前选中的文字一键存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown."
+    "横条最左边那颗星：把当前选中的文字一键存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown.",
+    "横条固定位 · 点一下就把当前选中的文字存进「快速收藏」": "Fixed slot on the bar · one click saves the selected text to Quick Save",
+    "移出横条": "Remove from bar",
+    "★ 收藏这段文字": "★ Save this text",
+    "横条最左边那颗星：点一下就把当前选中的文字存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown."
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

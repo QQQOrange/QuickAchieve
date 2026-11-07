@@ -1,4 +1,9 @@
 {
   "★ 收藏（快捷收藏）": "★ Save (quick save)",
-  "横条最左边那颗星：把当前选中的文字一键存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown."
+  "横条最左边那颗星：把当前选中的文字一键存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown.",
+  "收藏这段文字": "Save this text",
+  "横条固定位 · 点一下就把当前选中的文字存进「快速收藏」": "Fixed slot on the bar · one click saves the selected text to Quick Save",
+  "移出横条": "Remove from bar",
+  "★ 收藏这段文字": "★ Save this text",
+  "横条最左边那颗星：点一下就把当前选中的文字存进「快速收藏」。它不占引擎位，固定显示": "The star at the far left of the bar: one click saves the selected text to Quick Save. It does not take an engine slot and is always shown."
 }
