@@ -60,9 +60,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::Shell::{IsUserAnAdmin, ShellExecuteW};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GA_PARENT, GA_ROOT, GetAncestor, GetClassNameW, GetClientRect, GetCursorPos,
-    GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowLongPtrW, GetWindowRect,
-    GetWindowTextW,
+    CallNextHookEx, GA_PARENT, GA_ROOT, GetAncestor, GetClassNameW, GetClientRect, GetCursorInfo,
+    GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowLongPtrW,
+    GetWindowRect, GetWindowTextW, LoadCursorW, CURSORINFO, IDC_IBEAM,
     GW_HWNDNEXT, GetTopWindow, GetDesktopWindow, GW_CHILD,
     GetSystemMetrics, GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow,
     IsIconic,
@@ -937,6 +937,95 @@ pub fn cursor_pos() -> POINT {
         let _ = GetCursorPos(&mut p);
     }
     p
+}
+
+/// 当前鼠标指针是不是**文本选择光标（I-beam）**。
+///
+/// 用途：划词判定。取词通道（UIA / 复制 / OCR）都可能偶发失败，但"用户是在
+/// 一段可选文字上按下左键"这件事，系统光标形状已经给出了一个很可靠的证据。
+/// 有了它，即使这次一个字都没取到，我们也能确定该弹横条，而不是静默丢失。
+///
+/// 只认标准 `IDC_IBEAM`：滚动条、标题栏、按钮、画布都是箭头/手形，不会误判。
+/// `GetCursorInfo` 只是一次很轻的查询，放在低级鼠标钩子的 `WM_LBUTTONDOWN`
+/// 分支里调用，不会碰到 `LowLevelHooksTimeout`。
+pub fn cursor_is_ibeam() -> bool {
+    static IBEAM: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    let ibeam = *IBEAM.get_or_init(|| unsafe {
+        LoadCursorW(None, IDC_IBEAM)
+            .map(|h| h.0 as isize)
+            .unwrap_or(0)
+    });
+    if ibeam == 0 {
+        return false;
+    }
+    let mut ci = CURSORINFO {
+        cbSize: std::mem::size_of::<CURSORINFO>() as u32,
+        ..Default::default()
+    };
+    unsafe {
+        GetCursorInfo(&mut ci).is_ok() && (ci.hCursor.0 as isize) == ibeam
+    }
+}
+
+/// 窗口类名是不是**原生文字控件**。
+///
+/// 抽成纯函数是为了能单测：这一类判断一旦把"整个 Chromium 渲染区"
+/// 也算进来，网页里的滚动条、图片、空白画布的拖动都会冒出一条空横条。
+/// 浏览器/Electron 的文字表面交给 `cursor_is_ibeam()` 判断 —— 网页文本上
+/// 系统光标就是标准 I-beam，比"整个 render widget 都算文字"精确得多。
+fn is_native_text_class(class: &str) -> bool {
+    let low = class.trim().to_ascii_lowercase();
+    low == "edit"
+        || low.starts_with("richedit")
+        || low == "notepadtextbox"
+        || low == "textbox"
+        || low == "scintilla"
+}
+
+/// 鼠标底下是不是一块**文字输入/选择区域**。
+///
+/// 只认**直接命中**的原生文字控件（Edit / RichEdit / NotepadTextBox /
+/// TextBox / Scintilla），或该控件线程确实有 caret。**不把
+/// `Chrome_RenderWidgetHostHWND` 整块算成文字表面**：它覆盖整个网页
+/// 客户区，滚动条、图片、视频、画布都在里面，用它当判据会让"拖任何东西
+/// 都先弹一条空横条"。网页里的文字由 `cursor_is_ibeam()` 识别。
+///
+/// 只用于"取词失败也先弹条"的兜底，不用于判断"真的选中了字"——
+/// 后者仍由编辑控件 / UIA / 复制通道给证据。
+pub fn text_surface_at(x: i32, y: i32) -> bool {
+    let h = window_under_point(x, y);
+    if h.0.is_null() {
+        return false;
+    }
+    /* 自己的设置页 / 横条也是 WebView2，绝不能因为"鼠标在自己窗口里"
+     * 就触发一次划词。 */
+    if window_pid(h) == std::process::id() {
+        return false;
+    }
+    if is_native_text_class(&class_name(h)) {
+        return true;
+    }
+    /* 原生输入框即使窗口类名不典型，通常也有 caret。只认直接命中，
+     * 避免把整棵祖先树上的 Scintilla/RichEdit 都当成命中点。 */
+    unsafe {
+        let fg = GetForegroundWindow();
+        if !fg.0.is_null() && window_pid(fg) != std::process::id() {
+            let tid = GetWindowThreadProcessId(fg, None);
+            if tid != 0 {
+                let mut gti = GUITHREADINFO {
+                    cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+                    ..Default::default()
+                };
+                if GetGUIThreadInfo(tid, &mut gti).is_ok()
+                    && !gti.hwndCaret.0.is_null()
+                    && gti.hwndCaret == h
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 /// 取当前前台窗口里「打字光标」的位置（屏幕物理像素）。拿不到就返回 None。
@@ -1911,10 +2000,18 @@ fn uia_selection_text_inner(pt_end: POINT, pt_start: POINT) -> UiaOutcome {
         uia_wake_render_children(GetForegroundWindow());
 
         /* 候选元素按"离用户划的那块有多近"排：
-         *   ① 松手点（最贴近选区）② 起点 ③ 前台窗口。
-         * 只取一个是不够的：浏览器里鼠标底下那个叶子元素通常**没有** TextPattern，
-         * 带 TextPattern 的是文档根节点 —— 所以下面还要往上找祖先。 */
+         *   ① **当前焦点元素**（最重要）② 松手点（最贴近选区）
+         *   ③ 起点 ④ 前台窗口。
+         *
+         * 为什么把焦点元素放第一：文本框里划词时，松手点经常落在滚动条、
+         * 内边距或父容器上（尤其拖出输入框边界时），`ElementFromPoint` 拿到的
+         * 叶子元素没有 TextPattern，往上走也走不到文本框；而焦点其实一直在
+         * 那个 textarea 里。`GetFocusedElement()` 正好直接命中它 —— DSH / Electron
+         * 里"有时读得到、有时读不到"的根因之一就是漏了这个候选。 */
         let mut cands: Vec<IUIAutomationElement> = Vec::new();
+        if let Ok(e) = auto.GetFocusedElement() {
+            cands.push(e);
+        }
         for p in [pt_end, pt_start] {
             if let Ok(e) = auto.ElementFromPoint(p) {
                 cands.push(e);
@@ -4753,5 +4850,33 @@ mod version_probe_tests {
             Some(v) => println!("PROBE OK {p} -> {}.{}.{}", v.0, v.1, v.2),
             None => println!("PROBE FAIL {p} -> None"),
         }
+    }
+}
+
+#[cfg(test)]
+mod text_surface_tests {
+    use super::is_native_text_class;
+
+    /// 网页渲染区（Chrome_RenderWidgetHostHWND）**不能**被当成"文字表面"：
+    /// 它覆盖整个页面，滚动条/图片/空白全在里面。网页文字靠 I-beam 光标判断。
+    #[test]
+    fn chromium_render_widget_is_not_a_text_surface() {
+        assert!(!is_native_text_class("Chrome_RenderWidgetHostHWND"));
+    }
+
+    #[test]
+    fn native_edit_controls_are_text_surfaces() {
+        for c in [
+            "Edit",
+            "RichEditD2DPT",
+            "RichEdit20W",
+            "NotepadTextBox",
+            "TextBox",
+            "Scintilla",
+        ] {
+            assert!(is_native_text_class(c), "{c} 应当被认成文字控件");
+        }
+        assert!(!is_native_text_class("Button"));
+        assert!(!is_native_text_class("Chrome_WidgetWin_1"));
     }
 }

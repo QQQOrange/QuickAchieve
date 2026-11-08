@@ -173,12 +173,17 @@ mod tests {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Ev {
-    /// 左键按下。字段 `(x, y, 时刻, 此刻是否按着 Ctrl)`。
+    /// 左键按下。字段 `(x, y, 时刻, 此刻是否按着 Ctrl, 起点是不是文字表面)`。
     ///
     /// 为什么 ctrl 要在钩子里取：见 `KeyDown` 的注释 —— 消费线程是异步的，
     /// 等它排到这条鼠标事件时用户可能已经把 Ctrl 松开了。触发方式 =「按住
     /// Ctrl 才弹」时，这一位就是唯一可靠的判据（v2.14.0）。
-    Down(i32, i32, u32, bool),
+    ///
+    /// 为什么文字表面也要在钩子里判：`WM_LBUTTONDOWN` 是"用户按下去"的
+    /// 第一现场，此刻指针还停在文字上；等消费线程处理时用户已经拖走，
+    /// 再去问就可能问错位置了。这一位只服务一个兜底：取词通道全失败时，
+    /// 只要起手在文字表面，也照样弹横条（用户口径：「任何情况下选中文字都要弹」）。
+    Down(i32, i32, u32, bool, bool),
     /// 左键抬起，同上。
     Up(i32, i32, u32, bool),
     /// 拖动中的移动。只在左键按着时发（见 `mouse_proc` 里 `WM_MOUSEMOVE` 的注释）。
@@ -301,6 +306,7 @@ unsafe extern "system" fn mouse_proc(code: i32, w: WPARAM, l: LPARAM) -> LRESULT
                     info.pt.y,
                     info.time,
                     win::ctrl_down(),
+                    win::text_surface_at(info.pt.x, info.pt.y) || win::cursor_is_ibeam(),
                 )),
                 WM_LBUTTONUP => send(Ev::Up(
                     info.pt.x,

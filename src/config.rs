@@ -44,6 +44,19 @@ pub fn is_locked() -> bool {
     LOCKED.load(Ordering::SeqCst)
 }
 
+/// 用户**显式选择**恢复/导入一份配置后，解除"主文件解不开"的锁写。
+///
+/// 锁写的本意是防止"带着默认配置跑一次，把唯一一份密文覆盖掉"。
+/// 但用户在设置里手动选了一份备份、确认恢复，是明确要覆盖当前坏文件的
+/// 意思 —— 此时还拒绝写盘，就会变成"恢复成功、重启回滚"，正是用户报的
+/// 一类"设置改了不生效"。坏文件在校验失败时已由 `preserve_broken` 留档，
+/// 这里只放行 save_to，不直接写任何东西。
+pub fn unlock_after_explicit_restore() {
+    if LOCKED.swap(false, Ordering::SeqCst) {
+        crate::win::log("config: 用户显式恢复备份 —— 解除锁写");
+    }
+}
+
 /// 程序版本 —— **直接取自 `Cargo.toml`**，不手写。
 ///
 /// # ⚠ 为什么改成这样（r80i 修的 bug）
@@ -561,6 +574,7 @@ pub fn prune_undefined_bar_engines(cfg: &mut Config) -> usize {
          *   `@ocr`     OCR 按钮
          *   `@img`     识图搜索按钮
          *   `@trans`   翻译按钮
+         *   `@favquick` 收藏这段文字（v2.23.71 起是一等成员）
          *   `@qr`      二维码解析（v2.12.0）
          *   `@qrmake`  二维码生成（v2.12.2）
          *   `@any`     **万能框选**（v2.23.3：框完弹动作条让你挑）
@@ -716,6 +730,7 @@ pub fn reserved_sentinel_name(name: &str) -> Option<&'static str> {
         BAR_QR => Some("横条上「二维码解析」按钮的标记"),
         BAR_QRMAKE => Some("横条上「二维码生成」按钮的标记"),
         BAR_WRAP => Some("横条上「包裹符号」按钮的标记"),
+        BAR_FAVQUICK => Some("横条上「收藏这段文字」按钮的标记"),
         _ => None,
     }
 }
@@ -730,6 +745,11 @@ fn is_bar_sentinel(n: &str) -> bool {
         || n == BAR_WRAP
         || n == BAR_QR
         || n == BAR_QRMAKE
+        /* v2.23.75：`@favquick` 是 v2.23.71 起的一等成员，但漏进了白名单。
+         * 后果是启动时被 `prune_undefined_bar_engines` 当孤儿剪掉，然后
+         * `load()` 的迁移又因 `fav_quick_show=true` 把它补回来 —— 用户
+         * 「移出横条」永远不生效，顺序也每次被重置。 */
+        || n == BAR_FAVQUICK
         || is_wrap_sentinel(n)
         || is_text_sentinel(n)
         || is_model_sentinel(n)
@@ -1584,6 +1604,13 @@ pub struct Config {
     /// 明暗只由这一条决定；老 config.json 里的 `auto_color` 字段被 serde
     /// 忽略，无感升级。
     pub theme: String,
+    /// v2.23.66 的 `system → page` 迁移是否已经做过。
+    ///
+    /// ⚠ 没有这个标记时，用户每次手动选「跟随系统」都会被启动迁移改回
+    /// 「跟随页面」—— 设置页看起来像"保存不上"。迁移只对升级前的老配置
+    /// 跑一次，之后 `system` 是合法选择。
+    #[serde(default)]
+    pub theme_migrated: bool,
     /// 弹出/展开动画
     pub animations: bool,
     /// 浮层投影（横条/面板/右键菜单下方的柔和阴影）。
@@ -1797,6 +1824,12 @@ pub struct Config {
     /// 一行开关（用户报「设置里看不到收藏」）。默认开。
     #[serde(default = "default_true")]
     pub fav_quick_show: bool,
+    /// v2.23.71 的 `@favquick` 并入 `bar_list` 是否已经迁移过。
+    ///
+    /// 没有这个标记时，每次启动都会因为 `fav_quick_show=true` 把它补回来，
+    /// 用户「移出横条」永远不生效；导出/导入也会在别的机器上被重新加回。
+    #[serde(default)]
+    pub fav_quick_migrated: bool,
 
     /// **横条的触发方式**（v2.14.0）：`always` / `ctrl`，两者互斥。
     ///
@@ -2320,6 +2353,7 @@ impl Default for Config {
             item_radius: 9,
             // v2.23.66：默认「跟随页面」—— 看当前页面/软件的 UI 是深是浅，横条跟着换皮
             theme: "page".to_string(),
+            theme_migrated: true,
             animations: true,
             shadow: false,
             bar_blur: 0,
@@ -2365,6 +2399,7 @@ impl Default for Config {
              * 和前端开关的初值、和 serde 默认都对得上。 */
             bar_need_text: true,
         fav_quick_show: true,
+            fav_quick_migrated: true,
             bar_trigger_mode: default_bar_trigger_mode(),
             // 框选后是否停下给调整/换用途 —— 默认关：框完立刻执行打开的那个功能
             region_adjust: false,
@@ -3102,6 +3137,69 @@ pub fn backup_key_path() -> PathBuf {
     data_dir().join("backup.key")
 }
 
+/// 自定义备份目录的独立提示文件（DPAPI 封装）。
+///
+/// config.json 从 v1.4.0 起整份加密，主文件坏掉时
+/// `configured_backup_dir()` 从密文里抠不出 `backup_dir`，于是自动恢复
+/// 只会扫默认目录 —— 用户明明设过 D 盘备份目录，却一份都找不到。
+/// 这个 sidecar 只存一个目录路径（同样用 DPAPI 封装，不落明文），
+/// 让"主文件解不开"时仍能找回备份。
+pub fn backup_dir_hint_path() -> PathBuf {
+    data_dir().join("backup-dir.txt")
+}
+
+fn write_backup_dir_hint(dir: &str) {
+    let p = backup_dir_hint_path();
+    let dir = dir.trim();
+    if dir.is_empty() {
+        let _ = std::fs::remove_file(&p);
+        return;
+    }
+    /* 和 backup.key 一样用 DPAPI 封一层：路径也会暴露用户名/目录结构，
+     * 不该以明文躺在数据目录里。DPAPI 跟着当前 Windows 用户走 ——
+     * "主配置损坏、同一用户启动"这个目标场景仍然能解开。 */
+    let body = match crate::crypto::encrypt_dpapi(dir) {
+        Ok(s) => s,
+        Err(e) => {
+            crate::win::log(&format!(
+                "config: 备份目录提示加密失败（{e}）—— 不写明文，本次跳过"
+            ));
+            return;
+        }
+    };
+    if let Err(e) = write_atomic(&p, body.as_bytes()) {
+        crate::win::log(&format!("config: 备份目录提示写入失败（{e}）—— 不影响主流程"));
+    }
+}
+
+fn read_backup_dir_hint() -> Option<String> {
+    let s = std::fs::read_to_string(backup_dir_hint_path()).ok()?;
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let plain = if crate::crypto::looks_dpapi(s) {
+        match crate::crypto::decrypt_dpapi(s) {
+            Ok(v) => v,
+            Err(e) => {
+                crate::win::log(&format!(
+                    "config: backup-dir 提示解不开（{e}）—— 换过 Windows 用户/机器？"
+                ));
+                return None;
+            }
+        }
+    } else {
+        /* 兼容开发期 / 早期测试留下的明文 sidecar。 */
+        s.to_string()
+    };
+    let plain = plain.trim().to_string();
+    if plain.is_empty() {
+        None
+    } else {
+        Some(plain)
+    }
+}
+
 /// 把备份密码写进独立存档（空密码 = 删掉存档）。
 ///
 /// ⚠ v1.4.0：**存档本身也必须加密**。用户要求「所有本地数据都要加密，不能
@@ -3121,8 +3219,13 @@ pub fn stash_backup_password(pw: &str) {
         crate::win::log("config: 备份密码存档加密失败（DPAPI 不可用）—— 不写明文");
         return;
     };
-    if std::fs::write(&p, body).is_err() {
-        crate::win::log("config: 备份密码独立存档写入失败（不影响主流程）");
+    /* 必须原子写：这个文件是"主文件解不开"时唯一的钥匙。裸 fs::write
+     * 在磁盘满/杀软锁文件时可能留下空文件或半截内容，而主文件仍然用
+     * 这个密码加密 —— 下次启动就永远解不开了。 */
+    if let Err(e) = write_atomic(&p, body.as_bytes()) {
+        crate::win::log(&format!(
+            "config: 备份密码独立存档写入失败（{e}）—— 保留上一份，避免钥匙与密文错位"
+        ));
     }
 }
 
@@ -3292,14 +3395,20 @@ pub fn load() -> Config {
      * 按钮（fav_quick_show 控制），不进 bar_list —— 于是设置页里它和 @ocr/@img
      * 这些成员不是一套逻辑，「移出横条」也不生效。现在统一成成员：老配置里默认
      * 还在（fav_quick_show=true）的补到最前面；用户之前关掉的就不补。 */
-    if c.fav_quick_show && !c.bar_list.iter().any(|x| x == BAR_FAVQUICK) {
-        c.bar_list.push(BAR_FAVQUICK.to_string());
-        crate::win::log("config: 迁移 —— 把 @favquick（收藏这段文字）并入横条成员列表");
+    if !c.fav_quick_migrated {
+        c.fav_quick_migrated = true;
+        if c.fav_quick_show && !c.bar_list.iter().any(|x| x == BAR_FAVQUICK) {
+            c.bar_list.push(BAR_FAVQUICK.to_string());
+            crate::win::log("config: 迁移 —— 把 @favquick（收藏这段文字）并入横条成员列表");
+        }
         save_to(&p, &c);
     }
-    if c.theme == "system" {
-        c.theme = "page".to_string();
-        crate::win::log("config: 迁移 —— 主题 system → page（跟随页面明暗）");
+    if !c.theme_migrated {
+        c.theme_migrated = true;
+        if c.theme == "system" {
+            c.theme = "page".to_string();
+            crate::win::log("config: 迁移 —— 主题 system → page（跟随页面明暗，一次性）");
+        }
         save_to(&p, &c);
     }
     if !c.notify_quiet_migrated {
@@ -3442,6 +3551,16 @@ pub fn load_from(path: &std::path::Path) -> Config {
         .as_ref()
         .map(|c| serde_json::to_value(c).unwrap_or_default());
     let raw = parsed.map(sanitize).unwrap_or_default();
+    /* 老用户的配置里可能早就设了自定义备份目录，但 sidecar 是这一版才加的。
+     * 正常启动（配置可读）时补写一次；主文件解不开时**绝不能**写 —— 那时
+     * raw 是默认配置，会把仅存的 backup-dir 提示抹掉。 */
+    if path == config_path()
+        && before.is_some()
+        && !is_locked()
+        && !crate::PROBE.load(std::sync::atomic::Ordering::SeqCst)
+    {
+        write_backup_dir_hint(&raw.backup_dir);
+    }
     if let (Some(before), true) = (&before, path.exists()) {
         let after = serde_json::to_value(&raw).unwrap_or_default();
         /* v2.23.17：从备份救回来的情况，即使归一没有改动也要写回 ——
@@ -4541,7 +4660,9 @@ pub fn read_backup_config(path: &std::path::Path, password: &str) -> Option<Conf
 ///
 /// 取不到（文件读不出、不是 JSON、字段为空）→ None，调用方回落默认目录。
 fn configured_backup_dir(path: &std::path::Path) -> Option<String> {
-    configured_string(path, "backup_dir")
+    /* ① 老格式明文配置里能直接抠出来；
+     * ② v1.4.0 起 config.json 是密文信封，抠不出来 —— 用 sidecar。 */
+    configured_string(path, "backup_dir").or_else(read_backup_dir_hint)
 }
 
 /// 从（可能损坏的）配置里抠出**任意一个字符串字段**。
@@ -4843,6 +4964,11 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) -> bool {
             path.display()
         ));
         return false;
+    }
+    /* 主文件已经落盘，再更新备份目录 sidecar。只在写**真实** config.json
+     * 时做：测试/探针用临时路径，不该碰用户的真实数据目录。 */
+    if path == config_path() && !crate::PROBE.load(std::sync::atomic::Ordering::SeqCst) {
+        write_backup_dir_hint(&cfg.backup_dir);
     }
     /* 新备份也走"临时文件 + rename"（以前是裸 fs::write，写一半被杀就只剩
      * 半截文件，而它恰恰是主文件坏掉时唯一的退路）。写成功之后再清旧的。
@@ -7176,5 +7302,17 @@ mod sanitize_tests {
             ..Default::default()
         });
         assert_eq!(kept.bar_trigger_mode, BAR_TRIGGER_CTRL, "合法值原样保留");
+    }
+}
+
+#[cfg(test)]
+mod v75_sentinel_tests {
+    use super::{is_bar_sentinel, BAR_FAVQUICK};
+
+    #[test]
+    fn favquick_is_a_first_class_bar_member() {
+        assert!(is_bar_sentinel(BAR_FAVQUICK));
+        assert!(is_bar_sentinel("@ocr"));
+        assert!(!is_bar_sentinel("@favquick-typo"));
     }
 }

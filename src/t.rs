@@ -297,6 +297,15 @@ impl AppHandle {
          * 托盘图标摘掉后没有新消息，主循环就永远阻塞 —— 现象是
          * 「图标没了、进程还在」。这一句就是那个"下一轮"的敲门砖。 */
         wake_main_loop();
+        /* 所有 `app().exit()` 的最后一道保险：哪怕事件循环因为第三方
+         * 模态框 / WebView2 卡住没有退出，3 秒后也强制结束进程。
+         * 更新重启、托盘退出、设置页退出都会经过这里，省得每条路径
+         * 各写一份兜底（漏一条就是"点了退出进程还在"）。 */
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            crate::win::log_sync("exit: 事件循环 3s 内未退出，强制结束进程");
+            std::process::exit(code);
+        });
     }
 }
 
@@ -1652,7 +1661,7 @@ pub mod tray {
                 None => std::sync::Arc::new(|_: u32| {}),
             };
 
-            crate::trayhost::install(
+            let installed = crate::trayhost::install(
                 crate::trayhost::TrayDef {
                     id: id.clone(),
                     tip,
@@ -1662,6 +1671,15 @@ pub mod tray {
                 on_menu,
                 on_event,
             );
+            if !installed {
+                /* 登录时 Explorer 可能还没就绪。这里不放弃：槽位已经存好了，
+                 * 2 秒后重试一次；Explorer 重启还有 `TaskbarCreated` 兜底。 */
+                crate::win::log("tray: 首次 NIM_ADD 失败，2s 后重试");
+                std::thread::spawn(|| {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    crate::trayhost::reinstall();
+                });
+            }
 
             let tray = TrayIcon {
                 id,

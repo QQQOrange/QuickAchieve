@@ -6027,7 +6027,8 @@ function bindGrid() {
                 const problems = [];
                 if (d.copyConflict) problems.push('Ctrl+C 是系统复制，不能当唤起键 —— 重新录一个');
                 if (!d.ok) problems.push('组合键写法不对（认不出主键）');
-                if (!d.triggerCopy) problems.push('「按快捷键弹出网格页」总开关是关的');
+                // v2.23.75：后者是旧字段（Ctrl+C 取词），网格总开关是 gridEnable。
+                if (!d.gridEnable) problems.push('「启用网格页」总开关是关的');
                 if (d.paused) problems.push('程序处于暂停状态');
                 if (!d.foregroundAllowed) problems.push('当前程序在黑名单里');
                 if (problems.length) {
@@ -9880,6 +9881,15 @@ window.addEventListener('keydown', (e) => {
             : 'Ctrl+Alt+O 是文字识别的快捷键，不能给收藏夹，换一个组合吧');
         return;
     }
+    // v2.23.75：网格页默认就是 Ctrl+Shift+G。钩子先匹配收藏夹再匹配网格，
+    // 同键会让网格快捷键静默失效 —— 录制时就拒绝，别让用户以为网格坏了。
+    const gridHk = String((CONF && CONF.gridHotkey) || '').toLowerCase();
+    if (gridHk && combo.toLowerCase() === gridHk) {
+        favHotkeyArmed = false;
+        favHotkeySyncUI();
+        toast('这个组合已经用于唤起网格页，换一个组合吧');
+        return;
+    }
     favHotkeyArmed = false;
     // 先给即时反馈（回广播前的那几十毫秒里按钮就该显示新组合），
     // 「清除」按钮的可用态等广播回来由 favHotkeySyncUI 统一刷新。
@@ -13108,8 +13118,16 @@ function bindAppBind() {
         $('btnAppGridBind').addEventListener('click', async () => {
             if (!appBindCur) { gridMsg('appGridMsg', '先在上面选一个应用', true); return; }
             const page = $('appGridPage') ? $('appGridPage').value : '';
-            if (!page) { gridMsg('appGridMsg', '先在左边选一页（「跟随默认」= 解除绑定）', true); return; }
             try {
+                // v2.23.75：「（跟随默认）」本身就是解除绑定，不该报错。
+                if (!page) {
+                    await invoke('grid_app_page_remove', { app: appBindCur });
+                    await refreshConf();
+                    await loadAppBind(appBindCur);
+                    renderAppBindList();
+                    gridMsg('appGridMsg', '已改为跟随默认网格页');
+                    return;
+                }
                 await invoke('grid_app_page_set', { app: appBindCur, page });
                 await refreshConf();
                 await loadAppBind(appBindCur);

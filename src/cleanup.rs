@@ -288,7 +288,18 @@ pub fn scan(dirs: &[PathBuf], password: &str, used_icons: &HashSet<String>) -> R
         .cloned()
         .collect();
     if snaps.len() > KEEP_SNAPSHOTS {
-        // 已经按名字升序 → 末尾的就是最新的
+        /* ⚠ 不能按文件名排：`config.before-restore(...)` 的 r 比
+         * `config.before-webdav(...)` 的 w 小，字典序会把**刚生成的**
+         * 恢复前快照排到最前面，清理时优先删掉 —— 恰好毁掉用户最需要的
+         * 那一份退路。按修改时间升序，drain 前段才是真正旧的。 */
+        snaps.sort_by_key(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        });
         let stale: Vec<PathBuf> = snaps.drain(..snaps.len() - KEEP_SNAPSHOTS).collect();
         rep.groups.push(Group {
             kind: "stale-snapshot",

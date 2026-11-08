@@ -21,9 +21,10 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
-    DestroyMenu, GetCursorPos, PostMessageW, RegisterClassW, SetForegroundWindow,
-    TrackPopupMenu, HICON, ICONINFO, MF_CHECKED, MF_SEPARATOR, MF_STRING, TPM_RIGHTBUTTON,
-    WM_APP, WM_COMMAND, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW,
+    DestroyMenu, GetCursorPos, PostMessageW, RegisterClassW, RegisterWindowMessageW,
+    SetForegroundWindow, TrackPopupMenu, HICON, ICONINFO, MF_CHECKED, MF_SEPARATOR, MF_STRING,
+    TPM_RIGHTBUTTON, WM_APP, WM_COMMAND, WM_LBUTTONDBLCLK, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP,
+    WNDCLASSW,
 };
 
 const WM_TRAY: u32 = WM_APP + 1;
@@ -58,6 +59,18 @@ struct Slot {
 
 static SLOT: Mutex<Option<Slot>> = Mutex::new(None);
 static MSG_HWND: Mutex<isize> = Mutex::new(0);
+static TASKBAR_CREATED: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+
+/// Explorer 重启后广播的 `TaskbarCreated` 消息号。
+///
+/// Explorer 重启会清空整个通知区；不重新 NIM_ADD 的话，程序还在跑，
+/// 托盘图标却永远消失 —— 用户只能去任务管理器退出。
+fn taskbar_created_msg() -> u32 {
+    *TASKBAR_CREATED.get_or_init(|| unsafe {
+        let name = wide("TaskbarCreated");
+        RegisterWindowMessageW(PCWSTR(name.as_ptr()))
+    })
+}
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -121,6 +134,12 @@ unsafe extern "system" fn wndproc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    /* Explorer 重启后通知区是空的，必须重新挂图标。这一步不做，
+     * 用户会看到"程序还在，托盘图标没了"，也就失去了退出入口。 */
+    if msg != 0 && msg == taskbar_created_msg() {
+        reinstall();
+        return LRESULT(0);
+    }
     if msg == WM_TRAY {
         match lparam.0 as u32 {
             WM_LBUTTONUP | WM_LBUTTONDBLCLK => {
@@ -274,6 +293,43 @@ fn fill_nid(nid: &mut NOTIFYICONDATAW, hwnd: HWND, hicon: isize, tip: &str) {
     nid.szTip[..n].copy_from_slice(&t[..n]);
 }
 
+/// 用已保存的槽位重新 NIM_ADD（Explorer 重启 / 首次安装失败时用）。
+///
+/// 不重建 HICON、不换回调：只补通知区那一条记录。
+pub fn reinstall() {
+    let Some(hwnd) = ensure_msg_window() else { return };
+    let (hicon, tip) = {
+        let g = match SLOT.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        match g.as_ref() {
+            Some(s) => (s.hicon, s.def.tip.clone()),
+            None => return,
+        }
+    };
+    if hicon == 0 {
+        return;
+    }
+    let mut nid = NOTIFYICONDATAW::default();
+    fill_nid(&mut nid, hwnd, hicon, &tip);
+    let mut ok = false;
+    for attempt in 0..3 {
+        ok = unsafe { Shell_NotifyIconW(NIM_ADD, &nid).as_bool() };
+        if ok {
+            break;
+        }
+        if attempt < 2 {
+            std::thread::sleep(std::time::Duration::from_millis(120));
+        }
+    }
+    crate::win::log(if ok {
+        "tray: 已重新挂到通知区（TaskbarCreated / 重试）"
+    } else {
+        "tray: 重新挂载失败（Explorer 可能还没就绪）"
+    });
+}
+
 /// 安装（或替换）托盘图标。
 pub fn install(def: TrayDef, icon_png: &[u8], on_menu: MenuFn, on_event: EventFn) -> bool {
     let Some(hwnd) = ensure_msg_window() else {
@@ -361,15 +417,39 @@ pub fn remove() {
             None => return,
         }
     };
+    if hicon == 0 {
+        return;
+    }
     let mut nid = NOTIFYICONDATAW::default();
     fill_nid(&mut nid, hwnd, hicon, "");
-    unsafe {
-        let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
-        if hicon != 0 {
-            let _ = windows::Win32::UI::WindowsAndMessaging::DestroyIcon(HICON(
-                hicon as *mut core::ffi::c_void,
-            ));
+    /* Explorer 忙 / 正在重启时 NIM_DELETE 会失败。失败还照常销毁 HICON，
+     * 通知区就可能留下一个"空壳/僵尸"图标 —— 用户以为程序没退干净。
+     * 重试三次，成功后才清槽并销毁句柄；全失败就保留现场，下一次退出再试。 */
+    let mut deleted = false;
+    for attempt in 0..3 {
+        if unsafe { Shell_NotifyIconW(NIM_DELETE, &nid).as_bool() } {
+            deleted = true;
+            break;
         }
+        if attempt < 2 {
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+    }
+    if !deleted {
+        crate::win::log("tray: NIM_DELETE 连续失败（Explorer 可能正在重启）—— 图标句柄保留待下次清理");
+        return;
+    }
+    if let Ok(mut g) = SLOT.lock() {
+        if let Some(s) = g.as_mut() {
+            if s.hicon == hicon {
+                s.hicon = 0;
+            }
+        }
+    }
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::DestroyIcon(HICON(
+            hicon as *mut core::ffi::c_void,
+        ));
     }
 }
 pub fn balloon(title: &str, text: &str) {

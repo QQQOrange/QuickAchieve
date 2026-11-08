@@ -1427,6 +1427,15 @@ fn clipboard_owner_trusted(trusted: &[u32]) -> bool {
     if trusted.iter().any(|&p| p != 0 && p == opid) {
         return true;
     }
+    /* 浏览器 / Electron 的剪贴板 owner 常是渲染子进程，而 `target_pid` 是
+     * 鼠标底下的另一个子进程；pid 对不上但 exe 是同一个。只比 pid 会把
+     * 真正的选区判成"别的程序写的"，日志里表现为 owned=false、白丢结果。 */
+    if trusted
+        .iter()
+        .any(|&p| p != 0 && same_app_pid(opid, p))
+    {
+        return true;
+    }
     // 一个可信 pid 都没有 —— 判据根本不成立，按 fail-open 放行
     if trusted.iter().all(|&p| p == 0) {
         return true;
@@ -1490,11 +1499,33 @@ fn clipboard_owned_by(target_pid: u32) -> bool {
 /// 只走一条路的话这类程序里就会出现「划词永远不弹条」。
 ///
 /// `target_pid` = 用户开始拖动的那个窗口所属进程，给剪贴板归属校验用。
-fn capture_selection(target_pid: u32) -> Option<String> {
+fn capture_selection(target_pid: u32, target_hwnd: Option<HWND>) -> Option<String> {
     // 仅测试用（和 QS_ALLOW_INJECTED / QS_SKIP_SENDINPUT 同一类逃生口）：
     // 跳过全部复制通道，直接落到 OCR 兜底，用来单独验证兜底那条路。
     if std::env::var("QS_FORCE_OCR").map(|v| v == "1").unwrap_or(false) {
         win::log("capture: QS_FORCE_OCR=1 —— 跳过复制通道");
+        return None;
+    }
+    /* ⚠ 完整通道是最后一道兜底，但**不能盲发**：
+     *   · 前台已经换人 → 复制回来的是别人的选区；
+     *   · 前台是终端 → Ctrl+C 会打断正在跑的命令；
+     *   · 横条自己拿着焦点 → 按键全打在我们身上，还要先还给目标窗口。 */
+    if win::window_pid(win::foreground_window()) == std::process::id() {
+        if let Some(h) = target_hwnd.filter(|h| !h.0.is_null()) {
+            win::force_foreground(h);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    let fg = win::foreground_window();
+    let fg_pid = win::window_pid(fg);
+    if !foreground_still_target(target_pid) {
+        win::log(&format!(
+            "capture: 前台已经换人（目标 pid={target_pid}，当前 pid={fg_pid}）—— 放弃完整复制"
+        ));
+        return None;
+    }
+    if is_console_window(fg) || is_console_window(win::root_window(fg)) {
+        win::log("capture: 当前前台是终端 —— 绝不发 Ctrl+C（会被当成中断信号）");
         return None;
     }
     // 整段都必须在 CLIP_LOCK 里：中途要和 Ctrl+C 兜底那条线抢同一个剪贴板，
@@ -1640,8 +1671,14 @@ fn capture_selection(target_pid: u32) -> Option<String> {
                 if let Some(t) = clip::read_text_any() {
                     let t = t.trim().to_string();
                     if !t.is_empty() {
-                        // 「和复制前不一样」才是硬证据，避免把旧内容当成这次选区
-                        if t.chars().count() <= 20000 && old_text.as_deref() != Some(t.as_str()) {
+                        /* ⚠ 不能要求"内容必须和复制前不同"：
+                         * 用户完全可能选中的就是剪贴板里已有的那段文字
+                         * （刚复制过、又回去重新选一次）。这时序号变了、
+                         * owner 也是目标程序，却因为内容相同被判"没选中"，
+                         * 横条永远是空的 —— 日志里的 `fresh=false valid=false`
+                         * 加 `读到=N 字` 就是它。
+                         * 序号变化 + 归属校验才是硬证据；内容相同也算。 */
+                        if t.chars().count() <= 20000 {
                             got_text = Some(t.clone());
                             probe = Some(t);
                             break;
@@ -1817,15 +1854,63 @@ fn hint_no_uia_once(pid: u32) {
 ///
 /// v2.23.61：微信 4.x 是 MMUI（Qt 5.15 自绘），UIA/MSAA 都拿不到选区，
 /// 唯一可行的路是"替用户按一次 Ctrl+C 再读剪贴板"。这条只对微信开。
+fn is_wechat_exe_name(name: &str) -> bool {
+    let n = name.trim();
+    n.eq_ignore_ascii_case("weixin.exe") || n.eq_ignore_ascii_case("wechat.exe")
+}
+
 fn is_wechat_pid(pid: u32) -> bool {
+    /* ⚠ `process_exe` 只返回**文件名**（如 `Weixin.exe`），不是全路径。
+     * 以前这里用 `ends_with("\\weixin.exe")` 判断，永远匹配不到 ——
+     * 于是微信专属的 1.5 秒复制预算、延迟还原全部失效，还反过来吃
+     * `exact_recently_deaf` 的 5 秒冷却：微信里连续划两次，第二次直接
+     * "跳过这一轮"，表现为不弹条。 */
     win::process_exe(pid)
-        .map(|p| {
-            let n = p.to_ascii_lowercase();
-            n.ends_with("\\weixin.exe") || n.ends_with("\\wechat.exe")
-        })
+        .map(|p| is_wechat_exe_name(&p))
         .unwrap_or(false)
 }
-fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
+/// 两个 pid 是不是同一个软件（主进程 / 渲染进程 / 助手进程都算）。
+///
+/// 浏览器和 Electron 是"主进程 + 一堆渲染进程"：鼠标底下的窗口属于渲染进程，
+/// 占着前台的却常常是主进程。只比 pid 会把"同一个软件"判成"前台已经换人"，
+/// 于是连 Ctrl+C 都不发出去 —— 这是日志里一类"选中文字不弹条"的直接原因。
+fn same_app_pid(a: u32, b: u32) -> bool {
+    if a == 0 || b == 0 {
+        return false;
+    }
+    if a == b {
+        return true;
+    }
+    match (win::process_exe(a), win::process_exe(b)) {
+        (Some(x), Some(y)) => x.eq_ignore_ascii_case(&y),
+        _ => false,
+    }
+}
+
+/// 当前前台还是不是这次取词的目标（允许我们自己短暂抢到焦点）。
+///
+/// 补字是异步的：横条弹出后用户完全可能 Alt+Tab 去别的软件。此时再发
+/// 合成 Ctrl+C，就会把**另一个程序**的选区复制回来；如果落到终端，还是
+/// SIGINT。所有"发送前"的闸门统一用这个函数。
+fn foreground_still_target(target_pid: u32) -> bool {
+    if target_pid == 0 {
+        return false;
+    }
+    let fg = win::window_pid(win::foreground_window());
+    if fg == 0 {
+        return false;
+    }
+    if fg == std::process::id() {
+        return true;
+    }
+    fg == target_pid || same_app_pid(fg, target_pid)
+}
+
+fn capture_selection_fast(
+    target_pid: u32,
+    budget_ms: u64,
+    target_hwnd: Option<HWND>,
+) -> Option<String> {
     /* ⚠ 先确认「前台还是它」再塞 Ctrl+C。
      *
      * 这条复核是在横条**已经弹出来之后**跑的（迟到几十~几百毫秒）。这段时间里
@@ -1847,10 +1932,7 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
          *
          * 换成按**可执行文件**比对：同一个 exe = 同一个软件，把选区复制回来
          * 正是用户刚才那一下的意图；跨软件仍然照旧拦住。 */
-        let same_app = match (win::process_exe(fg), win::process_exe(target_pid)) {
-            (Some(a), Some(b)) => a.eq_ignore_ascii_case(&b),
-            _ => false,
-        };
+        let same_app = same_app_pid(fg, target_pid);
         if fg != target_pid && fg != me && !same_app {
             /* v2.23.10：把两边的 exe 也写进日志。
              * 光看 pid 分不清"真的是两个软件"还是"同一个软件的不同进程"
@@ -1863,6 +1945,16 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
             return None;
         }
     }
+    /* 用户可能还没松开鼠标：`WM_LBUTTONUP` 已经在钩子里了，但目标程序
+     * 处理"选区落定"还要一点时间。以前这里只睡 20ms，浏览器 / Electron
+     * 经常还没来得及把选区提交，合成的 Ctrl+C 就发出去了 —— 日志里
+     * `写没写=false` 大多是这个时序。等物理左键抬起后再给 70ms 稳定期。
+     * 这一步放在锁剪贴板**之前**：等待期间不要占着全局剪贴板锁。 */
+    let release_deadline = std::time::Instant::now() + Duration::from_millis(350);
+    while win::left_down() && std::time::Instant::now() < release_deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(70));
     let _clip = lock_clip();
     /* ⚠ 快照拿不到就**绝不能发 Ctrl+C**（2026-10-30 用户明确要求：
      *   "复制操作之后不能影响原来的剪贴板"）。
@@ -1875,10 +1967,6 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
         win::log("capture(exact): 剪贴板快照失败（被占用）—— 不发 Ctrl+C，保持用户剪贴板原样");
         return None;
     };
-    let old = snap.text().map(|t| t.trim().to_string());
-    /* 这条是**复核**，不是首取：选区早在 mouseup 那一刻就落地了（首取路径已经
-     * 等过 60ms 稳定期），所以这里只留一点点余量。 */
-    std::thread::sleep(Duration::from_millis(20));
     let before = clip::seq();
     /* v2.23.32：用户按着修饰键时**不发**（见 `win::modifiers_down`）——
      * 宁可这一轮复核拿不到字，也不能把他的 Ctrl 松开、把复制搅坏。 */
@@ -1888,19 +1976,53 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
      * 先把横条显示出来，紧接着 `capture(exact)` 发 Ctrl+C —— 但那时前台已经是我们
      * 自己的横条窗口，按键全打在自己身上，剪贴板当然"写没写=false"，于是一整类
      * 浏览器 / 应用都表现成"划词不弹条"。
-     * `LAST_FOREIGN_FG` 记着用户真正在用的那个外部窗口，把它抢回前台再发。 */
+     * 有精确的目标 hwnd（拖选起点）就用它；没有才退回 `LAST_FOREIGN_FG`。 */
     let fg_now = win::foreground_window();
     if win::window_pid(fg_now) == std::process::id() {
+        let exact = target_hwnd
+            .map(win::root_window)
+            .filter(|h| !h.0.is_null());
         let last = LAST_FOREIGN_FG.load(Ordering::Relaxed);
-        if last != 0 {
-            win::force_foreground(HWND(last as *mut c_void));
-            std::thread::sleep(Duration::from_millis(40));
-            win::log("capture(exact): 前台是我们自己 —— 已把焦点还给上一个外部窗口再复制");
+        let restore = exact.or({
+            if last != 0 {
+                Some(HWND(last as *mut c_void))
+            } else {
+                None
+            }
+        });
+        if let Some(h) = restore {
+            win::force_foreground(h);
+            std::thread::sleep(Duration::from_millis(50));
+            let now = win::window_pid(win::foreground_window());
+            win::log(&format!(
+                "capture(exact): 前台是我们自己 —— 已把焦点还给目标窗口再复制（pid={now}）"
+            ));
         }
     }
-    if !win::send_ctrl_c() {
-        win::log("capture(exact): 用户正按着修饰键，跳过这次模拟复制");
+    /* 等待/还焦点期间用户可能又切走了；发送前最后确认一次。 */
+    let fg_final = win::foreground_window();
+    if win::window_pid(fg_final) == std::process::id() {
+        win::log("capture(exact): 还焦点失败，前台仍是本程序 —— 不发 Ctrl+C");
         return None;
+    }
+    if !foreground_still_target(target_pid) {
+        win::log(&format!(
+            "capture(exact): 发送前前台已换人（目标 pid={target_pid}）—— 放弃"
+        ));
+        return None;
+    }
+    if is_console_window(fg_final) || is_console_window(win::root_window(fg_final)) {
+        win::log("capture(exact): 前台是终端 —— 绝不发 Ctrl+C");
+        return None;
+    }
+    if win::send_ctrl_c() {
+        // 正常通道
+    } else {
+        /* 用户正按着 Ctrl/Shift（扩选、Ctrl 触发模式很常见）。不能等死：
+         * 先用不依赖键盘状态的 WM_COPY 试一次；循环里 600ms 时还会再试
+         * 一次 Ctrl+C —— 那时用户多半已经松手了。 */
+        win::log("capture(exact): 用户正按着修饰键 —— 先改发 WM_COPY，并继续等松手");
+        let _ = win::post_copy_to_focus();
     }
     /* v2.23.39：这个窗口 5 秒内刚证明过"对合成 Ctrl+C 没反应"就直接认输，
      * 不再陪着空等一整轮（实测同一目标会被复核两遍）。 */
@@ -1935,7 +2057,11 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
          * 而窗口已经换了人，这次复核拿到的也只会是别人的剪贴板。
          * 提前收手还有一个好处：`CLIP_LOCK` 少被占 700ms，
          * 用户自己按 Ctrl+C 时不会撞上我们。 */
-        if win::window_pid(win::foreground_window()) != target_pid {
+        let fg_pid = win::window_pid(win::foreground_window());
+        if fg_pid != target_pid
+            && fg_pid != std::process::id()
+            && !same_app_pid(fg_pid, target_pid)
+        {
             left_target = true;
             break;
         }
@@ -1943,9 +2069,11 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
             if let Some(t) = clip::read_text_any() {
                 let t = t.trim().to_string();
                 // 「和复制前不一样」才是硬证据（见 capture_selection 同一段注释）
+                /* 同上：内容与复制前相同也可能是"重新选中了同一段"。
+                 * 只要求非空 + 剪贴板归属可信；序号已经在上面确认变过。 */
                 if !t.is_empty()
                     && t.chars().count() <= 20000
-                    && old.as_deref() != Some(t.as_str())
+                    && clipboard_owned_by(target_pid)
                 {
                     got = Some(t);
                     break;
@@ -1957,7 +2085,19 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
             let spent = t0.elapsed().as_millis();
             if !tried_insert && got.is_none() && clip::seq() == before && spent >= 300 {
                 tried_insert = true;
-                win::log("capture(exact): Ctrl+C 没写剪贴板 —— 改发 Ctrl+Insert 再试");
+                /* 横条 / 面板可能刚把前台抢走。降级通道发送前再把目标窗口
+                 * 顶回前台一次 —— 否则 Ctrl+Insert 和 WM_COPY 都打在我们自己
+                 * 身上，日志只会留下"两个通道都没写"。 */
+                if win::window_pid(win::foreground_window()) == std::process::id() {
+                    if let Some(h) = target_hwnd.map(win::root_window) {
+                        win::force_foreground(h);
+                        std::thread::sleep(Duration::from_millis(40));
+                    }
+                }
+                win::log("capture(exact): Ctrl+C 没写剪贴板 —— 改发 Ctrl+Insert + WM_COPY 再试");
+                /* WM_COPY 走窗口消息，不依赖输入队列，能绕过一部分
+                 * 对合成按键的过滤（Chromium / Qt 都值得试一次）。 */
+                let _ = win::post_copy_to_focus();
                 let _ = win::send_ctrl_insert();
             } else if !resent_ctrlc && got.is_none() && clip::seq() == before && spent >= 600 {
                 resent_ctrlc = true;
@@ -2300,7 +2440,7 @@ fn spawn_exact_reread(gen: usize, target_pid: u32, ocr_text: String) {
             if GEN.load(Ordering::SeqCst) != gen {
                 return;
             }
-            let Some(exact) = capture_selection_fast(target_pid, 700) else {
+            let Some(exact) = capture_selection_fast(target_pid, 700, None) else {
                 return;
             };
             let exact = exact.trim().to_string();
@@ -3836,7 +3976,7 @@ fn grid_import_bar(page: Option<String>) -> Result<usize, String> {
     let list: Vec<String> = cfg
         .bar_list
         .iter()
-        .filter(|n| *n != config::SEP)
+        .filter(|n| *n != config::SEP && *n != config::BAR_FAVQUICK)
         .take(60)
         .cloned()
         .collect();
@@ -3887,6 +4027,9 @@ fn grid_diag() -> Value {
         // v2.12.6：ctrl+c 是系统复制，不能当唤起键（配置迁移 / 保存 / 导入三处都拦）
         "copyConflict": !config::grid_hotkey_allowed(&hot),
         "triggerCopy": cfg_with(|c| c.trigger_copy),
+        /* v2.23.75：网格真正的总开关是 `grid_enable`，不是早已废弃的
+         * Ctrl+C 取词开关。自检页拿错字段会误报"总开关关着"。 */
+        "gridEnable": cfg_with(|c| c.grid_enable),
         "paused": is_paused(),
         "foregroundIsOurs": foreground_is_ours(),
         "foregroundAllowed": app_allowed(None),
@@ -4189,7 +4332,11 @@ fn __probe_post_copy() -> String {
 /// `is_bar_shown() == false`，于是**一声不响地返回**。用户看到的就是
 /// "微信里划词没反应"，而日志里除了"改看屏幕"什么都没有。
 /// 补字期间（最多两三秒）先别收条，做完再让它照常按距离收。
-static CAPTURE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+static CAPTURE_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+/// 横条内容 / 布局发生过变化的代次。`bar-away` 用它重置"指针离开"计时：
+/// 补字成功、横条刚弹出时都应该重新给用户一段反应时间，而不是沿用
+/// 取词期间已经走完的计时。
+static BAR_ACTIVITY: AtomicUsize = AtomicUsize::new(0);
 
 /// 正在横条上拖格子（v2.20.0）。
 ///
@@ -4199,17 +4346,26 @@ static CAPTURE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 /// 所以拖动期间让那个守卫闭嘴（收条对拖动来说永远不是想要的结果）。
 static BAR_DRAG_HOLD: AtomicBool = AtomicBool::new(false);
 
-/// `CAPTURE_IN_FLIGHT` 的 RAII 守卫：任何一条提前 return 都会清掉标记。
+/// `CAPTURE_IN_FLIGHT` 的 RAII 守卫。
+///
+/// 用**计数**而不是 bool：补字线程和主取词线程可能短暂重叠（连续划两次、
+/// 快通道失败后退到完整通道），bool 会被先结束的那一条提前清零，`bar-away`
+/// 于是在另一条还在读屏/复制时把横条收掉 —— 用户看到"横条刚弹就消失"。
 struct CaptureInFlight;
+impl CaptureInFlight {
+    fn acquire() -> Self {
+        CAPTURE_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
 impl Drop for CaptureInFlight {
     fn drop(&mut self) {
-        CAPTURE_IN_FLIGHT.store(false, Ordering::SeqCst);
+        CAPTURE_IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
 fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
-    CAPTURE_IN_FLIGHT.store(true, Ordering::SeqCst);
-    let _busy = CaptureInFlight;
+    let _busy = CaptureInFlight::acquire();
     /* ⚠ 条件①必须**等横条真的可见**再判，不能直接 `is_bar_shown()`：
      *   `show_bar_at` 只是"发了事件"，`geo.shown` 要等前端量完尺寸回填
      *   （日志里 `after-show: visible=true` 那一行）。直接判会出现
@@ -4223,6 +4379,18 @@ fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
         return;
     }
     win::log("post-copy: 条件①弹条已出现 + 条件②未捕获文字 —— 开始复制补字");
+    /* 终端里 Ctrl+C 是 SIGINT，不是复制。先弹空条的路径完全绕过了
+     * `confirm_selection_text` 的那道保护，这里必须再挡一次。 */
+    if drag_in_console(drag) {
+        win::log("post-copy: 起点在终端里 —— 不发 Ctrl+C，改走本地识别");
+        post_ocr_fill(gen, fg_pid, drag);
+        return;
+    }
+    /* 用户已经切走：不要拿新前台的选区冒充这一次划词的结果。 */
+    if !foreground_still_target(fg_pid) {
+        win::log("post-copy: 前台已经换人 —— 放弃补字");
+        return;
+    }
     /* v2.11.4：快通道（SendInput）拿不到就退到**完整三级通道**
      * （合成按键 → WM_COPY → WM_KEYDOWN/KILLFOCUS 那套，见 `capture_selection`）。
      *
@@ -4230,11 +4398,25 @@ fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
      * 只发 SendInput 的话它一声不响 —— 横条弹出来了，字永远补不上。
      * 完整通道里那两条窗口消息不依赖按键注入，Qt 的编辑控件照样认。
      * 代价只落在"快通道失败"这一支，成功路径完全不受影响。 */
-    let got = capture_selection_fast(fg_pid, 700)
+    let target_hwnd = {
+        let h = win::window_under_point_app(drag.0, drag.1);
+        if h.0.is_null() {
+            None
+        } else {
+            Some(win::root_window(h))
+        }
+    };
+    let got = capture_selection_fast(fg_pid, 700, target_hwnd)
         .filter(|t| !t.trim().is_empty())
         .or_else(|| {
+            /* 快通道可能因为"前台换人"而返回 None；那种情况下绝不能再走
+             * 完整通道 —— 它会把 Ctrl+C 发给新前台。 */
+            if !foreground_still_target(fg_pid) {
+                win::log("post-copy: 快通道失败且前台已换人 —— 不再发完整复制");
+                return None;
+            }
             win::log("post-copy: 快通道没拿到 —— 退到完整复制通道（合成键 / WM_COPY / WM_KEYDOWN）");
-            capture_selection(fg_pid).filter(|t| !t.trim().is_empty())
+            capture_selection(fg_pid, target_hwnd).filter(|t| !t.trim().is_empty())
         });
     match got {
         Some(t) if !t.trim().is_empty() => {
@@ -4398,6 +4580,14 @@ fn ocr_region_text(drag: (i32, i32, i32, i32)) -> Option<String> {
 /// ⚠ 这里**不走 `capture_selection` 的完整三级通道**（最坏 3.7s）：弹条前
 ///   不能把用户晾在那里。快通道 700ms 拿不到就直接看屏幕 —— 而"看屏幕"
 ///   正好就是微信这条路的唯一证据来源。
+fn drag_in_console(drag: (i32, i32, i32, i32)) -> bool {
+    let start = win::window_under_point(drag.0, drag.1);
+    let app_win = win::window_under_point_app(drag.0, drag.1);
+    [start, win::root_window(start), app_win, win::root_window(app_win)]
+        .iter()
+        .any(|h| is_console_window(*h))
+}
+
 fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option<String> {
     /* ⚠ v2.23.8：**屏幕识别不再算"选中了文字"的证据**（当「没取到文字就不弹」开着时）。
      *
@@ -4420,7 +4610,6 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
      * 正在跑的命令（编译、脚本、服务器）会被直接打断。这条兜底以前就存在
      * （`post_show_copy_fill` 对空文字的拖选一律复制），趁这次把口子堵上：
      * 终端里改走"看屏幕"，一样能确认有没有选中文字，还不会误杀进程。 */
-    let start = win::window_under_point(drag.0, drag.1);
     /* ⚠ v2.23.10：**浮层下面如果是终端，也绝不能发 Ctrl+C**。
      *
      * 判据以前只看"鼠标底下那个窗口"，可鼠标底下可能盖着一层穿透浮层
@@ -4428,11 +4617,7 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
      * 我们照样把 Ctrl+C 发出去，落到下面的终端里就是**中断信号**，
      * 用户正在跑的编译 / 脚本当场被杀。
      * 现在把"鼠标底下的窗口"和"用户以为自己在操作的那个窗口"都查一遍。 */
-    let app_win = win::window_under_point_app(drag.0, drag.1);
-    let is_con = [start, win::root_window(start), app_win, win::root_window(app_win)]
-        .iter()
-        .any(|h| is_console_window(*h));
-    if is_con {
+    if drag_in_console(drag) {
         if need_text {
             win::log("confirm: 起点在终端里，且「没取到文字就不弹」开着 —— 不模拟 Ctrl+C、也不看屏幕，不弹");
             return None;
@@ -4440,7 +4625,17 @@ fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option
         win::log("confirm: 起点在终端里 —— 不模拟 Ctrl+C（会打断正在跑的命令），直接看屏幕");
         return ocr_region_text(drag).filter(|t| !t.trim().is_empty());
     }
-    if let Some(t) = capture_selection_fast(target_pid, 700).filter(|t| !t.trim().is_empty()) {
+    let target_hwnd = {
+        let h = win::window_under_point_app(drag.0, drag.1);
+        if h.0.is_null() {
+            None
+        } else {
+            Some(win::root_window(h))
+        }
+    };
+    if let Some(t) = capture_selection_fast(target_pid, 700, target_hwnd)
+        .filter(|t| !t.trim().is_empty())
+    {
         return Some(t);
     }
     /* v2.23.60：**不用屏幕识别兜底**（用户口径：OCR 会影响精确性）。
@@ -4521,6 +4716,7 @@ fn sel_urls_snapshot() -> Vec<String> {
 static GRID_PENDING: AtomicBool = AtomicBool::new(false);
 
 fn push_late_text(text: String, via_copy: bool) {
+    BAR_ACTIVITY.fetch_add(1, Ordering::SeqCst);
     let url = remember_text(&text);
     let urls = sel_urls_snapshot();
     let _ = app().emit_to(
@@ -4616,19 +4812,19 @@ fn app_allowed(at: Option<(i32, i32)>) -> bool {
     }
     /* 先看鼠标底下那个窗口；拿不到再退回前台。
      * 两步都拿不到才走 fail-open（下面那个 `else` 分支）。 */
-    /* ⚠ 优先用**调用方给的坐标**（划词就是那次拖选的终点）。
+    /* ⚠ 优先用**调用方给的坐标**（划词就是按下左键的位置）。
      *
      * 为什么不能只用当前鼠标位置：横条弹出来之后鼠标可能已经移开，
      * 或者上一个实例的横条还盖在上面 —— 实测就是这样翻车的：
      * 判据拿到的是 LauncherSearchWindow（我们自己的搜索窗），
-     * 于是黑名单比对了错的进程、cmd.exe 压根没参与判定。
-     *
-     * 划词那条路有精确坐标（drag 的终点），一定要用上。 */
-    let (px, py) = at.unwrap_or_else(|| {
-        let c = win::cursor_pos();
-        (c.x, c.y)
-    });
-    let under = win::window_under_point(px, py);
+     * 于是黑名单比对了错的进程、cmd.exe 压根没参与判定。 */
+    /* 有坐标（鼠标划词）→ 用那个窗口；
+     * 没坐标（Ctrl+A 这类键盘触发）→ 用**前台窗口**，不能退回鼠标位置：
+     * 用户按快捷键时光标可能停在别的软件上，那会判错对象。 */
+    let under = match at {
+        Some((px, py)) => win::window_under_point_app(px, py),
+        None => win::foreground_window(),
+    };
     let exe = if !under.0.is_null() {
         win::process_exe(win::window_pid(under))
     } else {
@@ -4664,14 +4860,19 @@ fn app_allowed(at: Option<(i32, i32)>) -> bool {
 /// `SEL_GEN` 就是干这个的。
 static SEL_GEN: AtomicUsize = AtomicUsize::new(0);
 
-fn schedule_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
+fn schedule_capture(
+    target_pid: u32,
+    drag: (i32, i32, i32, i32),
+    dbl: bool,
+    text_surface: bool,
+) {
     let d = cfg_with(|c| c.delay_ms);
     if d == 0 {
         /* 也要起线程再走，不能在这条（事件消费）线程上直接跑：
          * start_capture 里 BUSY 的有界等待（#152）最长会占 1.2s，
          * 占着消费线程会让这期间的 Esc / 点击收条全部迟到。
          * 线程创建只要零点几毫秒，相对 40ms 稳定期完全免费。 */
-        std::thread::spawn(move || start_capture(target_pid, drag, dbl));
+        std::thread::spawn(move || start_capture(target_pid, drag, dbl, text_surface));
         return;
     }
     let g = SEL_GEN.fetch_add(1, Ordering::SeqCst) + 1;
@@ -4681,7 +4882,7 @@ fn schedule_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
             win::log("schedule_capture: 期间又松了一次手，这次作废");
             return;
         }
-        start_capture(target_pid, drag, dbl);
+        start_capture(target_pid, drag, dbl, text_surface);
     });
 }
 
@@ -4715,23 +4916,77 @@ fn trigger_allowed(at: Option<(i32, i32)>) -> bool {
         win::log("trigger: 已暂停使用，忽略自动弹条");
         return false;
     }
-    if foreground_is_ours() {
+    /* 鼠标划词**不能**只看前台。横条是 WS_EX_NOACTIVATE 浮层，但 WebView2
+     * 创建/更新时仍可能短暂把前台记在我们头上；此外用户可能刚点过横条里的
+     * 按钮，前台还没还回去。此时鼠标明明在别的软件里划字，旧判据却
+     * `foreground_is_ours()` → 整条链路直接被否 —— 这正是"有时候不弹"的一个
+     * 真实来源。鼠标路已经有精确坐标（`at`），该问的是"鼠标底下是谁"，
+     * 所以只在**没有坐标**的键盘触发（Ctrl+A）上保留前台判据。 */
+    if at.is_none() && foreground_is_ours() {
         win::log("trigger: 前台是我们自己的窗口，忽略");
         return false;
     }
     app_allowed(at)
 }
 
-fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
-    // 划词的终点 = 用户真正在哪个软件里选字，黑名单该按这个判
-    if !trigger_allowed(Some((drag.2, drag.3))) {
+fn start_capture(
+    target_pid: u32,
+    drag: (i32, i32, i32, i32),
+    dbl: bool,
+    text_surface: bool,
+) {
+    // 用户**开始**划词的那个窗口才是"他在哪个软件里操作"，
+    // 黑名单按它判。按松手点判会在"拖出窗口边界"时换成别的程序。
+    if !trigger_allowed(Some((drag.0, drag.1))) {
         return;
     }
+    /* 钩子里的 `text_surface` 是按下瞬间采的：WinUI / 浏览器有时在
+     * WM_LBUTTONDOWN 那一刻还返回一层透明的 DesktopChildSiteBridge，
+     * 等消息消费线程跑到这里时窗口已经稳定，再问一次才问得到真正的
+     * RichEdit / 文本控件。两次取 OR，既不增加误判，也补上这一类漏弹。 */
+    let text_surface = text_surface || win::text_surface_at(drag.0, drag.1);
+
+    /* 从"先弹空条"到"补字结束"整段都算取词在途：`bar-away` 看到计数 > 0
+     * 就不会把正在补字的横条收走。这个守卫会跟着取词线程一起活到线程结束，
+     * 任何提前 return 都由 RAII 递减。 */
+    let capture_hold = CaptureInFlight::acquire();
+    let dismiss0 = DISMISS_EPOCH.load(Ordering::SeqCst);
+
+    /* ══════════════════════════════════════════════════════════════════
+     * 先弹条，再取词（v2.23.75，用户口径：「任何情况下选中文字都要弹」）
+     *
+     * 旧顺序是"三条取词通道全部跑完 → 有字才弹"。问题是浏览器 / Electron
+     * 里合成 Ctrl+C 经常被吞、UIA 偶尔读空，于是**取词失败 = 横条根本不出现**。
+     * 用户看到的正是"有时候选中文字不弹"。
+     *
+     * 现在只要这一下**像在选择文字**（起点落在文字表面 / 编辑控件 / 浏览器
+     * 渲染区，或用户把"没取到文字就不弹"关了），就先把空横条弹出来；文字在后台补。
+     *   · `show_bar_at` 是线程安全的，这里是 `qs-capture` 线程，不是 UI 线程；
+     *   · 取词成功 → `push_late_text` 原地补字，不重新摆窗；
+     *   · 取词失败 → `post_show_copy_fill` 继续尝试复制/OCR，横条至少已经在了。
+     * 这样"取词慢"只影响字什么时候出现，不再决定横条弹不弹。
+     * ══════════════════════════════════════════════════════════════════ */
+    let need_text = cfg_with(|c| c.bar_need_text);
+    let dragged = (drag.2 - drag.0).abs() > 4 || (drag.3 - drag.1).abs() > 4;
+    let early_gen = if text_surface || !need_text {
+        let gen = show_bar_at(String::new(), false, true, Some(drag));
+        if gen == 0 {
+            // 锁屏 / 状态未就绪：show_bar_at 已经处理过提示，别再往下取词。
+            return;
+        }
+        win::log(&format!(
+            "start_capture: 先弹空条 gen={gen}（textSurface={text_surface} dbl={dbl} needText={need_text}）"
+        ));
+        Some(gen)
+    } else {
+        None
+    };
+
     /* 上一次取词还没结束怎么办？以前是 BUSY.swap 拿到 true 就 return
      * —— 直接丢弃本次。但连续划选（第一段的横条还没出来、第二段已经
      * 划完了）时，用户看到的就是"划了却不弹"，丢一次就够判死刑。
-     * 现在改成最多等 1.2s：等到了就正常做，等不到（软件卡死级慢）
-     * 才放弃并记日志。 */
+     * 现在改成最多等 4.5s：等到了就正常做，等不到（软件卡死级慢）
+     * 也**已经弹了空条**（early_gen），用户至少不会以为软件坏了。 */
     /* 等上一次取词结束的上限。必须 >= 一次取词的最坏耗时：
      * 3 轮 × 读窗口(1500+800+800) + 两段退避(220+380) ≈ 3.7s。
      * 给小了，用户"连着划两下"的第二下会被直接丢弃 —— 那是最容易被骂的体验。 */
@@ -4744,7 +4999,7 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
             break;
         }
         if std::time::Instant::now() >= deadline {
-            win::log("start_capture: 上一次取词超过 4.5s 仍未结束，本次放弃");
+            win::log("start_capture: 上一次取词超过 4.5s 仍未结束，本次只保留已弹出的空条");
             return;
         }
         std::thread::sleep(Duration::from_millis(30));
@@ -4754,6 +5009,7 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
     let Ok(handle) = std::thread::Builder::new()
         .name("qs-capture".into())
         .spawn(move || {
+            let _capture_hold = capture_hold;
             let _g = BusyGuard;
             /* 取词开始时的"用户收起过几次"。三条通道（编辑控件 → UIA → OCR）
              * 加起来可能要几百毫秒，这期间用户完全可能点了别处、按了 Esc ——
@@ -4763,7 +5019,7 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
              * 用来把 UIA 通道的结果和老通道并排对比。平时永远走下面那条。 */
             let out = if std::env::var("QS_FORCE_COPY").map(|v| v == "1").unwrap_or(false) {
                 win::log("capture: QS_FORCE_COPY=1 —— 走模拟复制的旧通道");
-                capture_selection(target_pid).map(|t| (t, "复制"))
+                capture_selection(target_pid, None).map(|t| (t, "复制"))
             } else {
                 /* ① 先走不碰剪贴板的通道：编辑控件 / UIA。绝大多数编辑器走这条。
                  * ② 拿不到（浏览器、自绘 UI 这类没有 UIA 文本模式的程序）→
@@ -4814,63 +5070,36 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
                 Some((t, v)) => (t, v),
                 None => (String::new(), ""),
             };
-            /* ⚠ 2026-10-23 收紧（用户报「横条会莫名其妙地出来，明明我没选中文字」）。
-             *
-             * r89 那条"取不到文字也要弹"的兜底，实际效果是**任何一次拖动**都会
-             * 弹一条空横条：拖窗口、拖滚动条、拖画布、拖文件图标……落在客户区里
-             * 全都算"划选"，三条取词通道一个都没拿到文字时照样弹（这就是用户
-             * 说的"误触也出来"）。
-             *
-             * 现在默认改成：**没拿到文字就不弹**。`bar_need_text = false` 可以把
-             * 老行为开回来（自绘界面 / 游戏的用户划词取不到词，仍然需要那条空横条
-             * 去点「识图搜索」「OCR」）。设置页在「通用 → 触发」里。 */
-            /* 「没取到文字就不弹」现在**对拖选也生效**（v2.12.6）。
-             *
-             * 之前（2026-10-30）为了让浏览器里的"选中就弹"能出现，把拖选这一支
-             * 从开关下面放了出来：拖选 + 没文字 → 照样弹一条空条。代价是
-             * **任何一次拖动**都会冒一条空横条 —— 拖滚动条、拖画布、拖图片、
-             * 拖窗口边缘……用户报的"没选中任何文字也弹横条"就是这条。
-             *
-             * 现在改成"**先确认选区，再弹条**"：
-             *   · 拖选 + 没文字 → 立刻走 `confirm_selection_text`（复制通道 +
-             *     屏幕识别），确认真的有字才弹；一个字都没有就不弹；
-             *   · 点击 + 没文字 → 维持原样不弹（防"误点一下就冒一条"）。
-             *
-             * ⚠ 顺序变了但代价没变：以前是"先弹空条、再复制补字"，复制同样
-             *   发生在每一次空文字的拖选上；现在只是把它挪到弹条**之前**，
-             *   剪贴板的快照/还原逻辑一字未动。区别只有一个 —— 没选区时
-             *   屏幕上不会再冒出一条空横条。
-             *
-             * `bar_need_text = false` 时行为完全不变：无论如何都弹一条空条
-             * （自绘界面 / 游戏的用户要靠它点「识图搜索」「OCR」）。 */
-            let dragged = (drag.2 - drag.0).abs() > 4 || (drag.3 - drag.1).abs() > 4;
-            if text.trim().is_empty() && cfg_with(|c| c.bar_need_text) {
-                /* v2.23.65：**双击 / 三击选词也算"选中"**（`dbl`）。
-                 *
-                 * 用户报「抖音网页评论区选中文字不弹条」—— 评论区是短句，
-                 * 大家习惯**双击选一个词 / 三击选一行**，根本没有拖动过程：
-                 * `dragged` 为 false，这里直接 return，连复制都不试一下。
-                 * 双击在浏览器 / 编辑器里是最常见的选字方式，必须支持。 */
-                if !dragged && !dbl {
-                    win::log(
-                        "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
-                    );
-                    return;
-                }
-                match confirm_selection_text(target_pid, drag) {
-                    Some(t) => {
-                        win::log(&format!(
-                            "start_capture: 复核确认选区里有 {} 字 —— 弹条",
-                            t.chars().count()
-                        ));
-                        text = t;
-                        via = "复核";
-                    }
-                    None => {
+            /* 已经先弹了空条时，不再做"先确认选区再弹"这一步：
+             * 用户已经看到横条，剩下的只是补字；`post_show_copy_fill` 会继续
+             * 走复制 / 屏幕识别，成功就原地补上。没先弹的那条路（起点不是
+             * I-beam，也不是双击）才需要确认，避免拖滚动条也冒空条。 */
+            if text.trim().is_empty() && need_text {
+                /* v2.23.65：**双击 / 三击选词也算"选中"**（`dbl`）。 */
+                if early_gen.is_some() {
+                    win::log("start_capture: 空条已先弹出，继续后台补字（复制 / 本地识别）");
+                } else {
+                    if !dragged && !dbl {
                         win::log(
-                            "start_capture: 拖选但没有选区（复制与屏幕识别都没拿到字）—— 这次不弹",
+                            "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
                         );
                         return;
+                    }
+                    match confirm_selection_text(target_pid, drag) {
+                        Some(t) => {
+                            win::log(&format!(
+                                "start_capture: 复核确认选区里有 {} 字 —— 弹条",
+                                t.chars().count()
+                            ));
+                            text = t;
+                            via = "复核";
+                        }
+                        None => {
+                            win::log(
+                                "start_capture: 拖选但没有选区（复制与屏幕识别都没拿到字）—— 这次不弹",
+                            );
+                            return;
+                        }
                     }
                 }
             }
@@ -4892,25 +5121,58 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
              * 只在「这段文字里可能藏着网址/路径」时才动剪贴板（见
              * `exact_reread_why` 的注释），普通中文划词一个字节都不碰。 */
             let in_browser = win::uia_foreground_is_browser();
-            /* ⚠ 取词的这几百毫秒里，用户可能已经点了别处 / 按了 Esc —— 那说明
-             * 他不要这条。此时再弹出来，主观上就是「横条会莫名其妙地冒出来」
-             * （而且是在他已经去干别的之后）。作废这一次。 */
-            if INPUT_EPOCH.load(Ordering::SeqCst) != epoch0 {
-                win::log("start_capture: 取词期间你又点击/划选了一次 —— 这一次不弹");
-                return;
-            }
-            /* 把这次拖选的矩形一并带过去：浏览器里真光标取不到，
-             * 「上方/下方」只能靠它。 */
-            let gen = show_bar_at(text.clone(), false, true, Some(drag));
+            /* 已经先弹空条的那条路：横条在取词之前就已可见，用户随后可能
+             * 点了别处 / 按 Esc 把它收掉。此时**绝不能**再补弹 —— 但也不能
+             * 因为"取词期间又有一次 mouseup"就把已经显示的那条误判成不要了。
+             * 只以"这条横条现在还在不在、代次对不对"为准。 */
+            let gen = if let Some(g) = early_gen {
+                /* 用户可能在窗口还没完成 layout 时就按了 Esc / 点了别处。
+                 * `dismiss_bar_now` 在这种情况下不会把 `g.shown` 置 true，
+                 * 但会递增 `DISMISS_EPOCH` —— 必须认这个信号，否则取词结束后
+                 * 横条会"自己冒出来"。 */
+                if DISMISS_EPOCH.load(Ordering::SeqCst) != dismiss0 {
+                    win::log("start_capture: 取词期间用户已收起先弹的横条 —— 本次结果丢弃");
+                    return;
+                }
+                /* `show_bar_at` 只是投递了 `qs://show`，真正可见要等前端量完
+                 * 尺寸回填 `geo.shown`。取词很快时（UIA 20~60ms）这里直接
+                 * 查一次会把"横条还没显示"误判成"已被收起"，白丢一份好结果。 */
+                if !win::wait_until(500, || {
+                    GEN.load(Ordering::SeqCst) == g && is_bar_shown()
+                }) {
+                    win::log("start_capture: 先弹的横条 500ms 内未显示/已被换新 —— 本次结果丢弃");
+                    return;
+                }
+                if DISMISS_EPOCH.load(Ordering::SeqCst) != dismiss0 {
+                    win::log("start_capture: 横条显示后被收起 —— 本次结果丢弃");
+                    return;
+                }
+                if !text.trim().is_empty() {
+                    // 原地补字，不重新摆窗、不改变用户已经看到的横条位置。
+                    push_late_text(text.clone(), false);
+                    win::log(&format!(
+                        "start_capture: 先弹后取到 {} 字 —— 已原地补进横条",
+                        text.chars().count()
+                    ));
+                }
+                g
+            } else {
+                /* 没有先弹空条（起点不是 I-beam，也不是双击）：仍按旧逻辑，
+                 * 取词期间用户点了别处就不要这条了。 */
+                if INPUT_EPOCH.load(Ordering::SeqCst) != epoch0 {
+                    win::log("start_capture: 取词期间你又点击/划选了一次 —— 这一次不弹");
+                    return;
+                }
+                /* 把这次拖选的矩形一并带过去：浏览器里真光标取不到，
+                 * 「上方/下方」只能靠它。 */
+                show_bar_at(text.clone(), false, true, Some(drag))
+            };
             /* ── 方案 C：复制**只在两个条件同时成立时**才执行 ──────────
-             *   ① 横条已经出现：上一行刚弹完，`gen` 就是它的代次；
+             *   ① 横条已经出现：上面刚弹完 / 先弹的空条还在，`gen` 就是它的代次；
              *   ② 没抓到文字：`text` 为空。
              *
              * 顺序是硬性的：**先弹条 → 再判断 → 最后才复制**。
-             * 文字已经正常拿到时，这里根本不会进，一次复制都不会发生。
-             *
-             * 放进独立线程：复制会阻塞几百毫秒，不能拖住已经完成的"弹条"，
-             * 也不能占用事件消费线程（否则这期间 Esc / 点击都要迟到）。 */
+             * 文字已经正常拿到时，这里根本不会进，一次复制都不会发生。 */
             if text.trim().is_empty() {
                 let pid = target_pid;
                 std::thread::spawn(move || post_show_copy_fill(gen, pid, drag));
@@ -4918,7 +5180,7 @@ fn start_capture(target_pid: u32, drag: (i32, i32, i32, i32), dbl: bool) {
             /* ⚠ `via` 为空串 = 三条通道**全都没拿到文字**（OCR 也失败）——
              * 那也是 OCR 这条路上的失败，同样要复核：用户日志里"选中的是网址，
              * 横条却是空的"就是这么来的（`show_bar: ""`）。 */
-            if matches!(via, "OCR" | "") {
+            if !text.trim().is_empty() && matches!(via, "OCR" | "") {
                 /* 要不要复核、为什么复核，全在 `exact_reread_trigger` 里
                  * （三条规则 + 理由都写在那儿；2026-10-23 扩的第 ② ③ 条
                  *   就是用户报的「马尾辫skill安装 → 《马尾辫 sk 泔安装、」）。 */
@@ -5206,6 +5468,7 @@ fn show_bar_at(
      * 日志是明文文件，以前这一行把划到的原文（最多 60 字）原样写进去 ——
      * 那是货真价实的用户数据。排查"有没有取到词"看字数就够了。 */
     win::log(&format!("show_bar: {} 字", text.chars().count()));
+    BAR_ACTIVITY.fetch_add(1, Ordering::SeqCst);
     let a = app();
     // 选区 / 选区 URL 的共享状态走 remember_text，和"迟到补丁"用同一套，
     // 免得两条路各写各的、前后端对不上（点引擎到底搜哪份文字那种事）。
@@ -5724,22 +5987,49 @@ fn spawn_bar_away_guard() {
     const TICK_SHOWN_MS: u64 = 70;     // 显示时 70ms —— 手感上跟得住手
     std::thread::Builder::new()
         .name("qs-baraway".into())
-        .spawn(move || loop {
+        .spawn(move || {
+            /* 连续离开多久才收。以前是"这一帧离得远就收"—— 用户刚划完字、
+             * 手一抬甩到几百像素外，横条 600ms 宽限期一到就消失，看上去
+             * 和"根本没弹"一样。现在要求**连续**超过 1.8s 才收；中途回来一次
+             * 就清零。补字成功、横条内容变化也会重置计时（`BAR_ACTIVITY`）。 */
+            const AWAY_HOLD_MS: u64 = 1800;
+            let mut away_since: Option<std::time::Instant> = None;
+            let mut last_gen = 0usize;
+            let mut last_activity = 0usize;
+            loop {
             let shown = bar_rects().is_some();
             std::thread::sleep(Duration::from_millis(
                 if shown { TICK_SHOWN_MS } else { TICK_HIDDEN_MS },
             ));
-            let Some((outer, _)) = bar_rects() else { continue };
+            let Some((outer, _)) = bar_rects() else {
+                away_since = None;
+                continue;
+            };
+            /* 换了一根新横条：上一根的"离开计时"不能继承。 */
+            let gen = GEN.load(Ordering::SeqCst);
+            if gen != last_gen {
+                last_gen = gen;
+                away_since = None;
+            }
+            /* 刚补进文字 / 刚重新摆过窗口：从这一刻重新给用户 1.8s。 */
+            let activity = BAR_ACTIVITY.load(Ordering::SeqCst);
+            if activity != last_activity {
+                last_activity = activity;
+                away_since = None;
+            }
             /* 正在补字（复制 / 本地识别）时先别收：见 `CAPTURE_IN_FLIGHT` 的注释。 */
-            if CAPTURE_IN_FLIGHT.load(Ordering::SeqCst) {
+            if CAPTURE_IN_FLIGHT.load(Ordering::SeqCst) > 0 {
+                away_since = None;
                 continue;
             }
             /* 正在拖格子：指针离开横条是**有意**的（要拖出去），别把窗口收了。 */
             if BAR_DRAG_HOLD.load(Ordering::SeqCst) {
+                away_since = None;
                 continue;
             }
             let away = cfg_with(|cf| cf.bar_away_px);
             if away <= 0 {
+                away_since = None;
                 continue;   // 用户把这条关了
             }
             let c = win::cursor_pos();
@@ -5760,6 +6050,7 @@ fn spawn_bar_away_guard() {
             };
             let d2 = dx * dx + dy * dy;
             if d2 <= (away as i64) * (away as i64) {
+                away_since = None;
                 continue;
             }
             /* ⚠ 两道保护，都是为了躲开"窗口还在屏外、坐标是上一轮的"那个空档。
@@ -5778,11 +6069,18 @@ fn spawn_bar_away_guard() {
                 win::log("bar-away: 读到屏外坐标（窗口还没挪到位）—— 本次不收起");
                 continue;
             }
+            let started = *away_since.get_or_insert_with(std::time::Instant::now);
+            if started.elapsed() < Duration::from_millis(AWAY_HOLD_MS) {
+                continue;
+            }
             win::log(&format!(
-                "bar-away: 指针离横条 {:.0}px，超过 {away}px —— 收起横条",
+                "bar-away: 指针连续 {}ms 离横条 {:.0}px（超过 {away}px）—— 收起横条",
+                started.elapsed().as_millis(),
                 (d2 as f64).sqrt()
             ));
+            away_since = None;
             dismiss_bar();
+            }
         })
         .ok();
 }
@@ -5877,6 +6175,9 @@ fn spawn_detector() {
             .spawn(move || {
                 let mut down: Option<(i32, i32, u32)> = None;
                 let mut dragging = false;
+                /* 本次按下时指针是不是落在文字表面 —— 只用于"取词全失败也弹条"
+                 * 的兜底。见 `Ev::Down` 和 `win::text_surface_at` 的注释。 */
+                let mut down_text_surface = false;
                 /* v2.14.0：本次手势里"有没有按住 Ctrl"（按下 / 拖动 / 松手任一时刻）。
                  * 只在触发方式选 `ctrl` 时被消费，判据见 `Ev::Up` 那一段。 */
                 let mut sel_ctrl = false;
@@ -5888,8 +6189,9 @@ fn spawn_detector() {
 
             for ev in rx {
                 match ev {
-                    Ev::Down(x, y, t, ctrl) => {
+                    Ev::Down(x, y, t, ctrl, text_surface) => {
                         dragging = false;
+                        down_text_surface = text_surface;
                         /* 这一次"按下"时 Ctrl 是否按着 —— 触发方式选「按住 Ctrl
                          * 才弹」时的起手判据。松手时还会再取一次（见 `Ev::Up`）：
                          * 先按 Ctrl 再拖的算、拖完才松开 Ctrl 的也算，两种常见习惯
@@ -5944,6 +6246,8 @@ fn spawn_detector() {
                     }
                     Ev::Up(x, y, t, ctrl) => {
                         let d = down.take();
+                        let text_surface = down_text_surface;
+                        down_text_surface = false;
                         /* 「按住 Ctrl 选中」的判据 = **按下时** 或 **松手时** 按着 Ctrl。
                          *
                          * 只用这两个时刻是有意的：
@@ -5995,12 +6299,22 @@ fn spawn_detector() {
                         let is_double = !was
                             && last_click
                                 .map(|(lx, ly, lt)| {
-                                    lt.elapsed() < std::time::Duration::from_millis(450)
+                                    lt.elapsed()
+                                        < std::time::Duration::from_millis(
+                                            win::double_click_ms() as u64,
+                                        )
                                         && (x - lx).abs() <= 4
                                         && (y - ly).abs() <= 4
                                 })
                                 .unwrap_or(false);
-                        last_click = if was { None } else { Some((x, y, std::time::Instant::now())) };
+                        /* 双击被消费后必须清掉 `last_click`：三击选段时，
+                         * 第二击已经触发过一次取词；若这里仍记录第二击，
+                         * 第三击会再次满足 `is_double`，横条闪两次/叠两条。 */
+                        last_click = if was || is_double {
+                            None
+                        } else {
+                            Some((x, y, std::time::Instant::now()))
+                        };
                         dragging = false;
                         // v2.23.35：原始事件流水降级为 trace（见 hook.rs 那段注释）
                         win::trace(&format!(
@@ -6017,7 +6331,7 @@ fn spawn_detector() {
                             let dt = t.saturating_sub(stt);
                             let bo_end = is_bar_outer(x, y);
                             let bo_start = is_bar_outer(sx, sy);
-                            let ok_sel = should_try_select(sx, sy);
+                            let ok_sel = text_surface || should_try_select(sx, sy);
                             /* v2.23.10：**跳过穿透浮层**再认"这次选词属于谁"。
                              *
                              * 用户日志里：拖选落点是一个第三方工具窗
@@ -6076,7 +6390,12 @@ fn spawn_detector() {
                                         // 取词：前者给剪贴板归属校验用（多进程客户端里负责
                                         // 复制的未必是前台那个进程），后者给 OCR 兜底用
                                         // （对方不肯把选区交出来的客户端，直接读屏幕上那块字）。
-                                        schedule_capture(win::window_pid(tgt), (sx, sy, x, y), is_double);
+                                        schedule_capture(
+                                            win::window_pid(tgt),
+                                            (sx, sy, x, y),
+                                            is_double,
+                                            text_surface,
+                                        );
                                     }
                                 }
                             }
@@ -6149,7 +6468,12 @@ fn spawn_detector() {
                                 std::thread::spawn(move || {
                                     // 等选区落定再读，避免读到上一次的内容
                                     std::thread::sleep(Duration::from_millis(140));
-                                    schedule_capture(pid, (px - 2, py - 2, px + 2, py + 2), true);
+                                    schedule_capture(
+                                        pid,
+                                        (px - 2, py - 2, px + 2, py + 2),
+                                        true,
+                                        true,
+                                    );
                                 });
                             }
                         }
@@ -7090,7 +7414,11 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
         }
     }
     if let Some(s) = v.get("backupDir").and_then(|x| x.as_str()) {
-        cfg.backup_dir = s.trim().to_string();
+        /* 空值不覆盖：一份"没设备份目录"的备份，不该把本机精心设置的
+         * D 盘备份目录清空。真要恢复默认，用户在设置里手动清一次。 */
+        if !s.trim().is_empty() {
+            cfg.backup_dir = s.trim().to_string();
+        }
     }
     // 上次用的搜索引擎。config_view 一直在 emit 它，以前 restore 侧没接 ——
     // 换电脑恢复后横条默认落回第一个引擎，用户「明明一切恢复了」的错觉就被
@@ -8153,8 +8481,18 @@ fn startup_password_disable(password: String) -> Result<bool, String> {
 #[crate::t::command]
 fn quit_locked_app() {
     win::log("lock: 用户点「退出程序」");
-    img_temp_cleanup();
+    shutdown_common();
     app().exit(0);
+}
+
+/// 所有退出路径共用的清理：临时图 + 托盘图标。
+///
+/// 以前只有 `quit_with_sync` 调这两步，锁屏退出、更新重启都绕过去了：
+/// 进程没了，通知区图标还挂着，要等鼠标划过才消失。集中到这里以后，
+/// 新加退出入口只要调一次，不会再漏。
+fn shutdown_common() {
+    img_temp_cleanup();
+    crate::trayhost::remove();
 }
 
 /// 解锁之后才该发生的启动动作：亮出主界面 + 自动检查更新 + 启动时的云同步。
@@ -8895,6 +9233,9 @@ fn restore_from_text(text: &str) -> Result<String, String> {
         /* v2.23.19：保存失败要在**返回值里**体现 —— 否则界面照样弹"已恢复"，
          * 磁盘上还是恢复前那份，重启就退回去了（`note_save_error` 那条气泡
          * 只在第一次失败时弹，用户很可能已经错过）。 */
+        /* 用户已经明确确认恢复：允许这次写盘，否则主文件解不开时的锁写
+         * 会把恢复结果原样弹回去（重启又回默认）。 */
+        config::unlock_after_explicit_restore();
         saved_ok = config::save(&cfg);
         /* 恢复只把 `autoStart` / `autoElevate` 写进了配置，但它们描述的是
          * **这台机器的真实状态**：前者是 HKCU 的 Run 注册表项，后者是
@@ -9661,24 +10002,25 @@ fn prune_backups(keep: usize) {
                             "prune: 云端备份都没有时间戳，改按文件名倒序判定新旧（名字是零填充的时间戳）",
                         );
                     }
-                    cloud_kept = v.len().min(keep);
-                    for b in v.iter().skip(keep) {
-                        /* ⚠ 云端删除必须和本地用**同一个判据**。
-                         *
-                         * WebDAV 列目录是按"看起来像文件"过滤的（有扩展名就收），
-                         * 用户那个目录里完全可能有别的东西（别的软件的备份、
-                         * 同步下来的文档）。无条件 `skip(keep)` 全删 = 把不属于
-                         * 本软件的文件也删了 —— 本地侧一直有 `is_prunable_backup`
-                         * 这道闸，云端这边原来漏了。
-                         *
-                         * 认不出是"我们的备份"就跳过，只记一行日志。 */
-                        if !is_prunable_backup(&b.name) {
-                            win::log(&format!(
-                                "prune: 云端 {} 不是本软件的备份命名，跳过不删",
-                                b.name
-                            ));
-                            continue;
-                        }
+                    /* ⚠ 必须先过滤再算「保留 N 份」。
+                     *
+                     * WebDAV 列目录会收下目录里所有像文件的东西（别的软件
+                     * 的备份、同步文档都在内）。以前先 `skip(keep)` 再判
+                     * `is_prunable_backup`：外来文件虽然不删，却**占掉了
+                     * keep 个名额**，本软件最新几份备份反而被跳过到删除区，
+                     * 用户点一次「仅保留 10 份」可能把自己的备份删光。 */
+                    let ours: Vec<&webdav::Backup> = v
+                        .iter()
+                        .filter(|b| is_prunable_backup(&b.name))
+                        .collect();
+                    let foreign = v.len().saturating_sub(ours.len());
+                    if foreign > 0 {
+                        win::log(&format!(
+                            "prune: 云端另有 {foreign} 个不是本软件备份的文件，不参与保留名额"
+                        ));
+                    }
+                    cloud_kept = ours.len().min(keep);
+                    for b in ours.iter().skip(keep) {
                         match webdav::delete_named(&o, &b.name) {
                             Ok(_) => cloud_removed += 1,
                             Err(e) => {
@@ -10350,6 +10692,9 @@ fn update_restart() {
             cmd.env("QS_TAKEOVER", "1");
             match cmd.spawn() {
                 Ok(_) => {
+                    /* 新进程已经拉起来了，再把旧托盘图标摘掉。放在 spawn 成功
+                     * 之后：启动失败时用户还要继续用这一份，图标不能先没。 */
+                    crate::trayhost::remove();
                     app().exit(0);
                 }
                 Err(e) => {
@@ -10378,43 +10723,25 @@ fn open_repo_page() {
 
 /// 所有「用户主动退出」的入口都走这里：先把该同步的同步掉，再退。
 fn quit_with_sync(code: i32) {
-    /* r57：退出前把识图留下的那张临时图清掉。
+    /* ⚠ 退出链路上有两处会同步等待外部组件：
+     *   · `trayhost::remove()` → `Shell_NotifyIconW`，Explorer 卡死时会等；
+     *   · 退出同步 → 网络 I/O（最长 5 秒）。
      *
-     * 放在这里（而不是各条退出路径各写一次）是因为它是**唯一**的退出入口 ——
-     * 托盘退出、设置页退出、带云同步退出，最后都落到这一句 `app().exit()`。
-     * 少写一处，那条路上就会留一张图在 %TEMP% 里躺着，正好是用户说的
-     * 「不能永久的存在电脑里面」。 */
-    img_temp_cleanup();
-    /* ⚠ 退出同步挪到**后台线程**跑，最多等 5 秒。
-     *
-     * 原来 `exit_sync_if_needed()` 直接在这条调用栈上同步跑 `backup_once`：
-     * 它是网络操作（最长 5 秒超时），期间窗口不重绘、点哪都没反应 ——
-     * 用户看到的是"点了退出，程序卡住几秒才消失"。
-     *
-     * 现在：起一个线程做同步，主线程最多等 5 秒（超时就不等了，直接退）。
-     * 网络通畅时行为和以前一样；网络不通时也不会让退出变得更卡。 */
-    /* v2.23.11：退出前先把托盘图标摘掉 —— 否则进程没了、图标还挂在通知区，
-     * 要等鼠标划过才消失（用户会看到一个点了没反应的僵尸图标）。 */
-    crate::trayhost::remove();
+     * watchdog **只覆盖清理阶段**（临时图 + 托盘），不覆盖 WebDAV 同步：
+     * 以前统一给 3 秒，网络稍慢就把 5 秒的上传提前砍断，云端备份静默丢失。
+     * 同步线程结束、进入 `app().exit()` 之后，那里还有自己的 3 秒硬退兜底。 */
+    let cleanup_done = std::sync::Arc::new(AtomicBool::new(false));
+    let done = cleanup_done.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(5));
+        if !done.load(Ordering::SeqCst) {
+            win::log_sync("quit: 5s 内未完成托盘/临时文件清理，强制结束进程");
+            std::process::exit(code);
+        }
+    });
+    shutdown_common();
+    cleanup_done.store(true, Ordering::SeqCst);
     if cfg_with(|c| c.webdav_on_exit && !c.webdav_url.trim().is_empty()) {
-        /* ⚠ v2.23.11：**主线程不再等这 6 秒**。
-         *
-         * 原来这里 `recv_timeout(6s)` —— 而托盘菜单的回调本身就在主线程上
-         * （`TrackPopupMenu` 的调用栈里），于是点「退出」之后菜单消失了、
-         * 整个程序却卡 6 秒不重绘，用户以为没点上，接着再点。
-         *
-         * 现在：同步线程跑完（或超时）由**它自己**调 `exit`，主线程立刻返回。
-         * 代价是"退出"变成异步的：真有未同步的数据，进程会晚几秒才消失 ——
-         * 但界面是活的，行为也更符合"点了就有反应"。 */
-        /* 兜底：万一同步线程自己卡住（网络栈卡死不是没可能），
-         * 8 秒后强制退出 —— 绝不让"点了退出却永远退不掉"这种事发生。 */
-        std::thread::spawn(|| {
-            std::thread::sleep(Duration::from_secs(8));
-            win::log("quit: 同步超时，强制退出");
-            // v2.23.53：这里**必须硬退**。以前写的是 app().exit(0)，而主循环
-            // 可能还阻塞在 GetMessageW 里 —— 那等于"点了退出永远退不掉"。
-            std::process::exit(0);
-        });
         std::thread::spawn(move || {
             exit_sync_if_needed();
             app().exit(code);
@@ -10422,20 +10749,6 @@ fn quit_with_sync(code: i32) {
         return;
     }
     app().exit(code);
-    /* v2.23.53：**硬兜底**。
-     *
-     * 用户右键托盘点「退出」，结果图标没了、进程还挂在任务管理器里 ——
-     * 根因是主循环收到 Exit 后还阻塞在 `GetMessageW`（详见 t.rs 的
-     * `wake_main_loop`）。那边已经补了唤醒；这里再兜一层：1.2 秒还没退
-     * 就直接结束进程。退出是用户主动点的，不能"点了没反应"。
-     *
-     * ⚠ 只加在这条**不跑退出同步**的分支上：走 WebDAV 同步那条自己带 8 秒
-     *   上限，不能被这 1.2 秒提前砍断。 */
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(1200));
-        win::log("quit: 主循环未在 1.2s 内退出，强制结束进程");
-        std::process::exit(code);
-    });
 }
 
 /// 载入之前导出的配置备份。
@@ -17056,6 +17369,26 @@ async fn icon_remove_bg(
     }))
 }
 
+/// data URL 的 MIME → 文件扩展名。
+///
+/// ⚠ 必须先把 `;base64` 参数切掉。`read_icon_src` 原样返回
+/// `image/jpeg;base64`，以前直接 `rsplit('/')` 得到 `jpeg;base64`，
+/// 所有分支都匹配不到，最终一律落成 `.png` —— JPEG/SVG 内容却顶着
+/// .png 后缀，导出/横条显示都可能坏。
+fn icon_ext_from_mime(mime: &str) -> &'static str {
+    let base = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    match base.rsplit('/').next().unwrap_or("") {
+        "png" => "png",
+        "jpeg" | "jpg" => "jpg",
+        "svg+xml" => "svg",
+        "gif" => "gif",
+        "webp" => "webp",
+        "bmp" => "bmp",
+        "x-icon" | "vnd.microsoft.icon" => "ico",
+        _ => "png",
+    }
+}
+
 /// 保存处理结果：写 icons 目录 + 更新 overrideIcons + 广播。
 ///
 /// 扩展名按 src 的 mime 推导（处理结果恒为 PNG；SVG 原样应用时还是 SVG），
@@ -17066,16 +17399,7 @@ fn icon_editor_save(src: String) -> Result<String, String> {
         return Err("编辑会话已过期，请重新打开编辑器".to_string());
     };
     let (mime, bytes) = read_icon_src(&src)?;
-    let ext = match mime.rsplit('/').next().unwrap_or("") {
-        "png" => "png",
-        "jpeg" | "jpg" => "jpg",
-        "svg+xml" => "svg",
-        "gif" => "gif",
-        "webp" => "webp",
-        "bmp" => "bmp",
-        "x-icon" | "vnd.microsoft.icon" => "ico",
-        _ => "png",
-    };
+    let ext = icon_ext_from_mime(&mime);
     // 和 stash_icon 同一套安全化：键里的 @ : / 之类全变下划线
     let safe: String = session
         .key
@@ -17685,14 +18009,7 @@ fn ai_cutout_save(
 #[crate::t::command]
 fn icon_editor_export(app: AppHandle, src: String, suggested: Option<String>) -> Result<Value, String> {
     let (mime, bytes) = read_icon_src(&src)?;
-    let ext = match mime.rsplit('/').next().unwrap_or("") {
-        "jpeg" | "jpg" => "jpg",
-        "webp" => "webp",
-        "gif" => "gif",
-        "bmp" => "bmp",
-        "svg+xml" => "svg",
-        _ => "png",
-    };
+    let ext = icon_ext_from_mime(&mime);
     // 默认文件名：优先用调用方给的（一般是图标名），否则用会话键，再不行用个通用名。
     // 都要走一遍安全化 —— 引擎名里可能有 `（首页）`、`/`、`:` 之类不能做文件名的字符。
     let raw_name = suggested
@@ -18117,6 +18434,12 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
     let mut changed = false;
     if engine == config::BAR_IMG && cfg.img_add_to_bar != on {
         cfg.img_add_to_bar = on;
+        changed = true;
+    }
+    /* v2.23.75：`@favquick` 的成员资格历史上由 `fav_quick_show` 控制。
+     * 两处必须同步，否则移出后下次启动又被 `load()` 的兼容迁移补回来。 */
+    if engine == config::BAR_FAVQUICK && cfg.fav_quick_show != on {
+        cfg.fav_quick_show = on;
         changed = true;
     }
     let has = cfg.bar_list.iter().any(|n| n == engine);
@@ -26528,5 +26851,27 @@ mod tests {
             "同步命令跑在主线程上，里面不许 sleep / 阻塞打开：{bad:?} —— \
              要等就 std::thread::spawn 出去（见 fire_hotkey_engine / open_trans_window 的注释）"
         );
+    }
+}
+
+#[cfg(test)]
+mod wechat_name_tests {
+    use super::{icon_ext_from_mime, is_wechat_exe_name};
+
+    #[test]
+    fn process_exe_name_matches_wechat() {
+        assert!(is_wechat_exe_name("Weixin.exe"));
+        assert!(is_wechat_exe_name("wechat.exe"));
+        assert!(!is_wechat_exe_name(r"C:\Program Files\Tencent\Weixin\Weixin.exe"));
+        assert!(!is_wechat_exe_name("WeChatApp.exe"));
+    }
+
+    #[test]
+    fn data_url_mime_base64_suffix_is_stripped() {
+        assert_eq!(icon_ext_from_mime("image/png;base64"), "png");
+        assert_eq!(icon_ext_from_mime("image/jpeg;base64"), "jpg");
+        assert_eq!(icon_ext_from_mime("image/svg+xml;base64"), "svg");
+        assert_eq!(icon_ext_from_mime("image/x-icon;base64"), "ico");
+        assert_eq!(icon_ext_from_mime("image/webp"), "webp");
     }
 }

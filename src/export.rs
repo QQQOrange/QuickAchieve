@@ -66,7 +66,7 @@ pub struct Group {
     pub default_checked: bool,
 }
 
-/// 八组导出项。
+/// 导出项分组表。
 ///
 /// ⚠ 一张表同时服务三处：设置页的勾选界面、`export_items` 的键裁剪、
 ///    `import_items` 的合法性校验。**加一组只改这里**，界面和后端自动跟上
@@ -195,6 +195,85 @@ pub static GROUPS: &[Group] = &[
         desc: "唤起收藏夹的按键（目前只有这一项）",
         keys: &["favHotkey"],
         private: false,
+        default_checked: false,
+    },
+    /* v2.23.75：以下四组是后来加的整块功能，之前导出表一直没跟上。
+     * 用户勾"全部"导到新机器，网格页/翻译/外部软件/OCR 设置会静默回默认，
+     * `@app:` 横条项还会因为 apps 为空被当成悬空项剪掉。 */
+    Group {
+        id: "grid",
+        name: "网格页",
+        desc: "网格快捷键、行列/格子尺寸、分页内容、按应用绑定与点击行为",
+        keys: &[
+            "gridHotkey",
+            "gridRows",
+            "gridCols",
+            "gridCellW",
+            "gridCellH",
+            "gridGap",
+            "gridRadius",
+            "gridShowLabel",
+            "gridItemStyle",
+            "gridEnable",
+            "gridClick",
+            "gridAllowAdd",
+            "gridPages",
+            "gridDefaultPage",
+            "gridAppPages",
+        ],
+        private: false,
+        default_checked: true,
+    },
+    Group {
+        id: "ocr",
+        name: "文字识别（OCR）",
+        desc: "OCR 引擎、语言、多引擎名单、文本整理偏好与各家凭据",
+        keys: &[
+            "ocrEnable",
+            "ocrLang",
+            "ocrAccurate",
+            "ocrEngine",
+            "ocrMulti",
+            "ocrStayDefault",
+            "ocrCleanGarbage",
+            "ocrCleanSpace",
+            "ocrCleanWidth",
+            "ocrCleanUnwrap",
+            "ocrCreds",
+            "ocrKey",
+            "ocrSecret",
+        ],
+        private: true,
+        default_checked: false,
+    },
+    Group {
+        id: "translation",
+        name: "翻译",
+        desc: "翻译引擎、目标语言、多引擎名单与凭据",
+        keys: &[
+            "transEnable",
+            "transEngine",
+            "transMulti",
+            "transTarget",
+            "transCreds",
+        ],
+        private: true,
+        default_checked: false,
+    },
+    Group {
+        id: "apps",
+        name: "外部软件与按应用横条",
+        desc: "添加过的外部软件、快捷输入绑定，以及每个软件的专属横条内容",
+        keys: &["apps", "barAppItems"],
+        private: true,
+        default_checked: false,
+    },
+    Group {
+        id: "ai",
+        name: "AI 抠图",
+        desc: "AI 抠图总开关与自定义模型目录（目录路径可能暴露本机结构）",
+        keys: &["aiMattingEnable", "aiModelDir"],
+        private: true,
         default_checked: false,
     },
     Group {
@@ -917,5 +996,37 @@ mod tests {
         assert_eq!(data.as_object().unwrap().len(), 1, "只该带 barList");
         assert!(data.get("theme").is_none(), "application settings 没勾 → 不带 theme");
         let _ = std::fs::remove_file(&p);
+    }
+}
+
+#[cfg(test)]
+mod v75_export_group_tests {
+    use super::filter_keys;
+
+    /// 后加的整块功能（网格 / OCR / 翻译 / 外部软件）必须出现在导出键表里，
+    /// 否则换机导入后这些设置静默回默认。
+    #[test]
+    fn later_features_are_in_the_export_key_set() {
+        let keys = filter_keys(&[
+            "grid".to_string(),
+            "ocr".to_string(),
+            "translation".to_string(),
+            "apps".to_string(),
+            "ai".to_string(),
+        ]);
+        for k in [
+            "gridPages",
+            "gridDefaultPage",
+            "gridAppPages",
+            "ocrEngine",
+            "ocrCreds",
+            "transEngine",
+            "transCreds",
+            "apps",
+            "barAppItems",
+            "aiMattingEnable",
+        ] {
+            assert!(keys.iter().any(|x| x == k), "导出键表缺 {k}");
+        }
     }
 }
