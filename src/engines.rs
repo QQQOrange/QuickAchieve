@@ -975,3 +975,22 @@ mod tests {
         assert_eq!(encode_query("中文"), "%E4%B8%AD%E6%96%87");
     }
 }
+
+#[cfg(test)]
+mod douyin_link_tests {
+    use super::{extract_links, text_to_url};
+
+    #[test]
+    fn douyin_short_link_is_a_direct_url() {
+        let u = "https://v.douyin.com/70NAaFJGzWg/";
+        assert_eq!(text_to_url(u).as_deref(), Some(u));
+        assert_eq!(extract_links(u), vec![u.to_string()]);
+    }
+
+    #[test]
+    fn douyin_share_text_extracts_only_the_link() {
+        let u = "https://v.douyin.com/70NAaFJGzWg/";
+        let text = format!("7.43 复制打开抖音，看看【某个视频】 {u} 复制此链接，打开Dou音搜索");
+        assert_eq!(extract_links(&text), vec![u.to_string()]);
+    }
+}

@@ -515,7 +515,7 @@ window.QS_I18N.add({
     "主要能力": "Capabilities",
     "划词横条 · 网格页 · 780+ 引擎 · 软件直达 · 文字识别（本地 + 多在线引擎并行） · 翻译 · 截图识图 · 收藏夹 · 二维码 · 加密备份 · WebDAV 同步": "Selection bar · Grid page · 780+ engines · App launch · OCR (local + several online engines in parallel) · Translation · Image search · Favorites · QR codes · Encrypted backup · WebDAV sync",
     "常用快捷键": "Hotkeys",
-    "Ctrl+Shift+G 网格页 · Ctrl+C 取词 · Ctrl+Alt+O 文字识别 · 其余热键可在设置里改": "Ctrl+Shift+G grid page · Ctrl+C capture · Ctrl+Alt+O text recognition · the rest are configurable",
+    "Ctrl+Shift+G 网格页 · Ctrl+C 复制链接直达 · Ctrl+Alt+O 文字识别 · 其余热键可在设置里改": "Ctrl+Shift+G grid page · Ctrl+C opens copied links · Ctrl+Alt+O text recognition · the rest are configurable",
     "数据位置": "Data location",
     "便携模式：exe 旁边的 Quick Achieve data 与 Quick Achieve back；只读目录下退回 %APPDATA%\\QuickAchieve": "Portable mode: Quick Achieve data and Quick Achieve back next to the executable; a read-only folder falls back to %APPDATA%\\QuickAchieve",
     "Quick Achieve 是 Windows 上的划词效率工具：在任意软件里选中文字、或按一下快捷键， 屏幕上方就弹出一条搜索横条（或一整页网格）；点一颗图标，这段文字就交给对应的 网站 / 软件 / 快捷键去处理。所有数据都在本机，不登录、不上传； 联网只发生在你主动使用在线引擎时。": "Quick Achieve is a selection-powered productivity tool for Windows: select text in any app, or press a hotkey, and a search bar (or a full grid page) drops down from the top of the screen; click one icon and the text is handed to that site, app or shortcut. Everything stays on this machine: no sign-in, no uploads — the network is used only when you deliberately call an online engine.",
@@ -1398,7 +1398,10 @@ window.QS_I18N.add({
     "横条成员": "Bar items",
     "在横条上 · 点一下把选中的文字存进「快速收藏」": "On the bar · one click saves the selected text to Quick Save",
     "不在横条上 · 点「加入横条」把它放回去": "Not on the bar · click \"Add to bar\" to put it back",
-    "加入横条": "Add to bar"
+    "加入横条": "Add to bar",
+    "复制链接后弹直达条": "Show a direct-link bar after copying a link",
+    "只对网址生效：Ctrl+C 复制一条链接后自动弹出横条，并显示「打开直达链接」；复制普通文字/图片仍然完全不打扰": "Only for links: copying a URL with Ctrl+C opens the bar with “Open direct link”; copying ordinary text or images stays quiet",
+    "打开直达链接": "Open direct link"
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */

@@ -3126,11 +3126,15 @@ async function applyWrapPair(name) {
  *    让后端用同一套判据再解析一次（解析失败它会自己兜底打开原文）。 */
 function syncLinkBtn() {
     const n = (currentUrls || []).length;
-    const has = n > 0 || currentIsUrl;
+    /* 兜底：后端 extract_links 偶尔会被分享文案里的零宽字符/断行干扰，
+     * 但当前文字里明明有 http(s) 链接 —— 这种时候也要把直达按钮亮出来，
+     * 点下去由后端 `open_link(text)` 再解析一次。 */
+    const textHasUrl = /https?:\/\/[^\s]+/i.test(String(currentText || ''));
+    const has = n > 0 || currentIsUrl || textHasUrl;
     btnLink.hidden = !has || ocrOnly;
     if (n > 1) btnLink.title = `打开这 ${n} 个链接（分别开标签页）`;
     else if (n === 1) btnLink.title = '打开：' + currentUrls[0];
-    else btnLink.title = has ? '打开：' + currentText : '';
+    else btnLink.title = has ? '打开：' + String(currentText || '').trim() : '打开直达链接';
 }
 /* ---------------- 本地答案（v2.23.43） ----------------
  *
@@ -6748,6 +6752,8 @@ listen('qs://text', (ev) => {
     currentIsUrl = !!p.isUrl;
     currentUrls = Array.isArray(p.urls) ? p.urls : [];
     viaCopy = !!p.viaCopy;
+    /* 迟到补的是文字：无论上一轮是不是 OCR-only，现在都有文字可打开/收藏。 */
+    ocrOnly = false;
     syncLinkBtn();
     refreshAnswer();
     syncWrapBtn();

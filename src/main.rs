@@ -247,6 +247,8 @@ static DISMISS_EPOCH: AtomicUsize = AtomicUsize::new(0);
 /// "明明选到了文字也不弹"（用户报的 bug）。现在改看这个：只有用户在取词期间
 /// **又松了一次鼠标**（点别处 / 重新划选）或**按了 Esc** 才作废。
 static INPUT_EPOCH: AtomicUsize = AtomicUsize::new(0);
+/// 复制链接触发的去抖（同一串 Ctrl+C 连发时只弹一次）。
+static COPY_URL_LAST: AtomicU64 = AtomicU64::new(0);
 
 /// 剪贴板操作的串行锁。
 ///
@@ -4119,6 +4121,48 @@ fn copy_trigger(before: u32) {
     }
 }
 
+/// 复制到的是**链接**时，弹一条带「打开直达链接」的横条。
+///
+/// 这是 v2.23.54「普通 Ctrl+C 不再打扰」和「复制链接后仍要能直达」的折中：
+/// 只有剪贴板里的新内容确实是网址/含网址才弹，普通文字、图片、文件一律不弹。
+/// 读剪贴板全在后台线程，钩子回调本身立刻返回。
+fn text_has_url(text: &str) -> bool {
+    let text = text.trim();
+    engines::text_to_url(text).is_some() || !engines::extract_links(text).is_empty()
+}
+
+fn copy_url_bar(before: u32) {
+    let fg_pid = win::window_pid(win::foreground_window());
+    let spawned = std::thread::Builder::new()
+        .name("qs-copyurl".into())
+        .spawn(move || {
+            let Got::Text(text) = read_current(before) else {
+                return;
+            };
+            let text = text.trim().to_string();
+            if text.is_empty() {
+                return;
+            }
+            if !clipboard_owned_by_pid(fg_pid) {
+                win::log("copy-url: 剪贴板归属不是刚才的前台程序 —— 不弹");
+                return;
+            }
+            if !text_has_url(&text) {
+                return; // 普通文字：保持 Ctrl+C 安静
+            }
+            let links = engines::extract_links(&text);
+            win::log(&format!(
+                "copy-url: 复制到链接 {} 条（{} 字）—— 弹直达条",
+                links.len().max(1),
+                text.chars().count()
+            ));
+            show_bar(text, true, true, None);
+        });
+    if spawned.is_err() {
+        win::log("copy-url: 起线程失败，本次不弹");
+    }
+}
+
 /// 剪贴板 owner 是不是「按下 Ctrl+C 那一刻的前台进程」。
 ///
 /// 判据与 fail-open 原则都在 `clipboard_owner_trusted` 里（取不到就放行：
@@ -4945,6 +4989,9 @@ fn start_capture(
      * 等消息消费线程跑到这里时窗口已经稳定，再问一次才问得到真正的
      * RichEdit / 文本控件。两次取 OR，既不增加误判，也补上这一类漏弹。 */
     let text_surface = text_surface || win::text_surface_at(drag.0, drag.1);
+    /* 文字横条绝不能继承上一轮图片复制的 OCR-only 形态（否则 🔗 会被
+     * `syncLinkBtn` 的 `ocrOnly` 条件藏掉）。 */
+    OCR_ONLY.store(false, Ordering::SeqCst);
 
     /* 从"先弹空条"到"补字结束"整段都算取词在途：`bar-away` 看到计数 > 0
      * 就不会把正在补字的横条收走。这个守卫会跟着取词线程一起活到线程结束，
@@ -5435,6 +5482,17 @@ fn __probe_copy_trigger(copy: Option<String>) -> u32 {
     }
     copy_trigger(before);
     before
+}
+
+/// 探针：只走 v2.23.77 的“复制链接”分支（不弹普通文字）。
+#[crate::t::command]
+fn __probe_copy_url_bar(copy: Option<String>) -> bool {
+    let before = clip::seq();
+    if let Some(t) = copy {
+        clip::set_text(&t);
+    }
+    copy_url_bar(before);
+    true
 }
 
 /// `show_bar` 的实体，多一个 `sel`：这次拖选的矩形（按下点 → 抬起点，
@@ -6642,6 +6700,32 @@ fn spawn_detector() {
                          * 配置项只为兼容老配置保留（默认已改 false，没有任何代码再读它唤起）。
                          *
                          * 取词仍有两条路：鼠标拖选（钩子）、以及自定义快捷键 / 托盘 / 收藏夹。 */
+                        /* v2.23.77：普通 Ctrl+C 仍然不弹；但**复制到的是一条链接**时，
+                         * 横条应该直接给出「打开直达链接」。这条只读剪贴板、不发按键，
+                         * 对普通文字/图片零打扰。 */
+                        if vk == VK_C.0 as u32 && win::trace_on() {
+                            win::trace(&format!(
+                                "copy-url: 条件 ctrl={ctrl} alt={alt} shift={shift} ours={ours} paused={} cfg={}",
+                                is_paused(),
+                                cfg_with(|c| c.copy_url_bar)
+                            ));
+                        }
+                        if vk == VK_C.0 as u32
+                            && ctrl
+                            && !alt
+                            && !shift
+                            && !ours
+                            && !is_paused()
+                            && cfg_with(|c| c.copy_url_bar)
+                        {
+                            let now = mono_ms();
+                            if now.saturating_sub(COPY_URL_LAST.load(Ordering::Relaxed)) > 400 {
+                                COPY_URL_LAST.store(now, Ordering::Relaxed);
+                                win::trace("copy-url: Ctrl+C 命中，读剪贴板判断是不是链接");
+                                let before = clip::seq();
+                                copy_url_bar(before);
+                            }
+                        }
                     }
                 }
             }
@@ -6752,6 +6836,7 @@ fn config_view() -> Value {
         "selftest": std::env::var("QS_SELFTEST").map(|v| v == "1").unwrap_or(false),
         "triggerSelect": cfg.trigger_select,
         "triggerCopy": cfg.trigger_copy,
+        "copyUrlBar": cfg.copy_url_bar,
         "notifyFeature": cfg.notify_feature,
         // 右下角提示显示几秒（v2.6.8：内置提示，时长自己做主）
         "notifySeconds": cfg.notify_seconds,
@@ -7036,6 +7121,7 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     }
     if let Some(x) = b("triggerSelect") { cfg.trigger_select = x; }
     if let Some(x) = b("triggerCopy") { cfg.trigger_copy = x; }
+    if let Some(x) = b("copyUrlBar") { cfg.copy_url_bar = x; }
     // 网格页：备份/导入恢复。夹取到合法范围，避免手改过的备份把界面弄崩
     if let Some(x) = s("gridHotkey") {
         // v2.12.6：老备份里可能是 ctrl+c —— 那是系统复制，导入时直接丢掉
@@ -7633,6 +7719,7 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
     match key {
         "triggerSelect" => cfg.trigger_select = value.as_bool().unwrap_or(true),
         "triggerCopy" => cfg.trigger_copy = value.as_bool().unwrap_or(false),
+        "copyUrlBar" => cfg.copy_url_bar = value.as_bool().unwrap_or(true),
         // 右下角"正在使用什么功能"的通知（默认开）
         "notifyFeature" => cfg.notify_feature = value.as_bool().unwrap_or(true),
         // 提示显示几秒（1~15，默认 3）
@@ -22294,6 +22381,7 @@ fn main() {
             show_bar,
             // v1.5.6：Ctrl+C 真路径（探针用，模拟"按了 Ctrl+C 但没复制到东西"）
             __probe_copy_trigger,
+            __probe_copy_url_bar,
             __probe_post_copy,
             __probe_clip_restore,
             __probe_bar_stays,
@@ -26873,5 +26961,18 @@ mod wechat_name_tests {
         assert_eq!(icon_ext_from_mime("image/svg+xml;base64"), "svg");
         assert_eq!(icon_ext_from_mime("image/x-icon;base64"), "ico");
         assert_eq!(icon_ext_from_mime("image/webp"), "webp");
+    }
+}
+
+#[cfg(test)]
+mod copy_url_tests {
+    use super::text_has_url;
+
+    #[test]
+    fn only_links_count_for_the_copy_url_bar() {
+        assert!(text_has_url("https://v.douyin.com/70NAaFJGzWg/"));
+        assert!(text_has_url("7.43 复制打开抖音 https://v.douyin.com/70NAaFJGzWg/ 看看"));
+        assert!(!text_has_url("这是一段普通文字，没有链接"));
+        assert!(!text_has_url("版本 1.2.3 更新说明"));
     }
 }

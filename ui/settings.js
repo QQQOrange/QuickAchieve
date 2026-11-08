@@ -3172,6 +3172,7 @@ function renderAiList() {
 const SWITCHES = [
     ['s-triggerSelect', 'triggerSelect'],
     ['s-triggerCopy', 'triggerCopy'],
+    ['s-copyUrlBar', 'copyUrlBar'],
     // v2.6.7：右下角"正在使用什么功能"的通知（默认开，见 config.rs default_true）
     ['s-notifyFeature', 'notifyFeature'],
     // 2026-10-23：没取到文字就不弹（误触乱弹的主要来源，默认开）
@@ -3245,6 +3246,7 @@ const SWITCH_DEFAULT = {
     ocrCleanUnwrap: false,
     triggerSelect: true,
     triggerCopy: true,
+    copyUrlBar: true,
     // 2026-10-23：划选没取到文字就不弹（与 config.rs 的 serde 默认值一致）
     barNeedText: true,
     favQuickShow: true,
