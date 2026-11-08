@@ -1380,6 +1380,7 @@ window.QS_I18N.add({
     "剪贴板历史已清空": "Clipboard history cleared",
     "清空失败：": "Clear failed: ",
     "收藏这段文字": "Save this text",
+    "把「收藏这段文字」放到横条上，之后可以拖到任意位置": "Put “Save this text” on the bar; you can drag it anywhere afterwards",
     "右键查看更多引擎": "Right-click for more engines",
     "取不到文字时用屏幕识别兜底": "Fall back to screen OCR when no text is captured",
     "开着：复制/无障碍都拿不到字时，把拖选的那块屏幕识别一遍，认出来就弹条（微信、部分自绘软件靠它）。只在选区宽高都 ≥ 8px 时兜底，拖滚动条不会误弹；一个字都认不出仍然不弹。": "On: when neither the clipboard nor accessibility yields text, OCR the dragged region and show the bar if anything is recognised (needed by WeChat and some custom-drawn apps). Only applies when the selection is at least 8×8 px, so scrollbar drags do not trigger it; if OCR finds nothing, the bar still stays hidden.",

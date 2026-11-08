@@ -684,54 +684,7 @@ document.addEventListener('pointercancel', () => {
     addDrag = null;
 }, true);
 
-/** v2.23.70：把「收藏这段文字」画成**横条成员**的一行（和 @ocr / @img 同样的样子）。
- *
- * 它在不在横条上由 `CONF.favQuickShow` 决定；按钮就是「加入横条 / 移出横条」，
- * 和引擎列表里那套「添加到横条 / 移出」是同一个语义，用户不用再理解"固定按钮"。
- */
-function renderFavQuickList() {
-    const box = $('favQuickList');
-    if (!box) return;
-    box.textContent = '';
-    // v2.23.71：成员资格只认 barList（和 @ocr / @img 同一套）
-    const on = Array.isArray(CONF.barList) && CONF.barList.includes('@favquick');
-    /* v2.23.72：**在横条上时这里不再画** —— 它已经在下面的成员列表里了
-     * （用户报：同一个功能在页面上出现两处）。这里只在"不在横条上"时
-     * 提供「加入横条」入口。 */
-    box.style.display = on ? 'none' : '';
-    if (on) return;
-    const row = document.createElement('div');
-    row.className = 'item';
-    const ic = document.createElement('span');
-    ic.className = 'ic';
-    ic.textContent = '★';
-    const nm = document.createElement('span');
-    nm.className = 'nm';
-    nm.textContent = qsT('收藏这段文字');
-    const em = document.createElement('em');
-    em.textContent = on
-        ? qsT('在横条上 · 点一下把选中的文字存进「快速收藏」')
-        : qsT('不在横条上 · 点「加入横条」把它放回去');
-    nm.appendChild(em);
-    const ops = document.createElement('span');
-    ops.className = 'ops';
-    const btn = document.createElement('button');
-    btn.className = 'btn ghost';
-    btn.textContent = on ? qsT('移出横条') : qsT('加入横条');
-    btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        try {
-            await invoke('toggle_bar_engine', { engine: '@favquick', on: !on });
-            renderFavQuickList();
-        } catch { }
-    });
-    ops.appendChild(btn);
-    row.append(ic, nm, ops);
-    box.appendChild(row);
-}
-
 function renderBarList() {
-    try { renderFavQuickList(); } catch { }
     const box = $('barList');
     box.textContent = '';
     /* 防御性过滤：指向**已删除目录**的 `@fav:<id>` 哨兵不该出现在列表里。
@@ -1112,6 +1065,43 @@ function renderBarList() {
         b.textContent = '＋ 加进横条';
         b.title = '把「万能框选」放到横条上 —— 框完先不做事，弹动作条让你挑';
         b.addEventListener('click', () => invoke('toggle_bar_engine', { engine: window.QS_ANY, on: true }));
+        ops.appendChild(b);
+
+        row.appendChild(grip);
+        row.appendChild(ic);
+        row.appendChild(nm);
+        row.appendChild(ops);
+        box.appendChild(row);
+    }
+    /* 「收藏这段文字」没在横条上时，和识图 / OCR / 翻译 / 万能框选一样，
+     * 在成员列表末尾给一条**同款入口行**。不要再用列表上方那块独立的
+     * "点这里加入横条"提示 —— 用户明确说它和百度上面的其它成员不是同一种形式。 */
+    if (!list.some((x) => x.name === '@favquick')) {
+        const row = document.createElement('div');
+        row.className = 'item add-row favquick-add-row';
+
+        const grip = document.createElement('span');
+        grip.className = 'grip';
+        grip.style.visibility = 'hidden';
+
+        const ic = document.createElement('span');
+        ic.className = 'ic';
+        ic.appendChild(barItemIcon('@favquick', 24));
+
+        const nm = document.createElement('span');
+        nm.className = 'nm';
+        nm.textContent = '收藏这段文字';
+        const em = document.createElement('em');
+        em.textContent = '还没加进横条 · 加进来之后就能拖到任意位置、也能换图标';
+        nm.appendChild(em);
+
+        const ops = document.createElement('span');
+        ops.className = 'ops';
+        const b = document.createElement('button');
+        b.className = 'mini';
+        b.textContent = '＋ 加进横条';
+        b.title = '把「收藏这段文字」放到横条上，之后可以拖到任意位置';
+        b.addEventListener('click', () => invoke('toggle_bar_engine', { engine: '@favquick', on: true }));
         ops.appendChild(b);
 
         row.appendChild(grip);

@@ -193,7 +193,7 @@ window.qsGoLabel = function (it) {
  *    · 列表里出现 `@qr` / `@qrmake` 这种内部代号（用户报的"qr qrmake"）；
  *    · 网格条目行 / 实时预览里画出一个字母徽标「Q」而不是那颗二维码图标。
  *  收成一份之后，上述三处都改成问 `qsIsFuncSentinel()`，不会再各写一遍。 */
-window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@any', '@wrap', '@txt', '@qr', '@qrmake'];
+window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@any', '@wrap', '@txt', '@qr', '@qrmake', '@favquick'];
 
 /** 这一项是不是内置功能（`@ocr`、`@wrap`、`@qr`、绑定模型的 `@ocr:<id>` …）。
  *  `@go:` / `@app:` / `@fav:` 不在这里 —— 它们是"用户数据"，各有各的图标与名字来源。 */
@@ -553,6 +553,15 @@ window.qsFuncIcon = function (name) {
             window.qsApplyOpticalScale(img, conf.unifyIcons !== false);
         }
         return img;
+    }
+    if (name === '@favquick') {
+        /* 「收藏这段文字」和 OCR / 翻译 / 识图 / 万能框选一样有固定图标：
+         * 用一颗星，而不是让 iconNode 落到字母/点状兜底。 */
+        const sp = document.createElement('span');
+        sp.className = 'letter';
+        sp.textContent = '★';
+        sp.setAttribute('data-i18n-skip', '');
+        return sp;
     }
     if (name === window.QS_ANY && window.qsAnyIconNode) {
         return window.qsAnyIconNode();
