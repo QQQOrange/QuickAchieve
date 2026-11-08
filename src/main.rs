@@ -1882,6 +1882,22 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
     let before = clip::seq();
     /* v2.23.32：用户按着修饰键时**不发**（见 `win::modifiers_down`）——
      * 宁可这一轮复核拿不到字，也不能把他的 Ctrl 松开、把复制搅坏。 */
+    /* v2.23.73：**横条自己抢了前台时，先把焦点还给目标窗口再发 Ctrl+C**。
+     *
+     * 实测日志（Edge / 抖音网页）：`start_capture: 没拿到文字，仍然弹条（兜底）`
+     * 先把横条显示出来，紧接着 `capture(exact)` 发 Ctrl+C —— 但那时前台已经是我们
+     * 自己的横条窗口，按键全打在自己身上，剪贴板当然"写没写=false"，于是一整类
+     * 浏览器 / 应用都表现成"划词不弹条"。
+     * `LAST_FOREIGN_FG` 记着用户真正在用的那个外部窗口，把它抢回前台再发。 */
+    let fg_now = win::foreground_window();
+    if win::window_pid(fg_now) == std::process::id() {
+        let last = LAST_FOREIGN_FG.load(Ordering::Relaxed);
+        if last != 0 {
+            win::force_foreground(HWND(last as *mut c_void));
+            std::thread::sleep(Duration::from_millis(40));
+            win::log("capture(exact): 前台是我们自己 —— 已把焦点还给上一个外部窗口再复制");
+        }
+    }
     if !win::send_ctrl_c() {
         win::log("capture(exact): 用户正按着修饰键，跳过这次模拟复制");
         return None;
