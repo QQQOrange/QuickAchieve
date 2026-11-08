@@ -4326,6 +4326,51 @@ fn __probe_clip_restore() -> String {
     }
 }
 
+/// 诊断：自动收起看门狗此刻看到的原始状态（仅排查用，不改任何东西）。
+#[crate::t::command]
+fn bar_auto_state() -> serde_json::Value {
+    let rect = bar_rects();
+    let c = win::cursor_pos();
+    let (dist, away, capture, drag, activity, since) = match rect {
+        Some((outer, _)) => {
+            let dx = if c.x < outer.0 {
+                (outer.0 - c.x) as i64
+            } else if c.x > outer.2 {
+                (c.x - outer.2) as i64
+            } else {
+                0
+            };
+            let dy = if c.y < outer.1 {
+                (outer.1 - c.y) as i64
+            } else if c.y > outer.3 {
+                (c.y - outer.3) as i64
+            } else {
+                0
+            };
+            (
+                ((dx * dx + dy * dy) as f64).sqrt(),
+                cfg_with(|cf| cf.bar_away_px),
+                CAPTURE_IN_FLIGHT.load(Ordering::SeqCst),
+                BAR_DRAG_HOLD.load(Ordering::SeqCst),
+                BAR_ACTIVITY.load(Ordering::SeqCst),
+                mono_ms().saturating_sub(BAR_SHOWN_MS.load(Ordering::SeqCst)),
+            )
+        }
+        None => (0.0, cfg_with(|cf| cf.bar_away_px), 0, false, 0, 0),
+    };
+    json!({
+        "shown": is_bar_shown(),
+        "rect": rect.map(|(o, _)| [o.0, o.1, o.2, o.3]),
+        "cursor": [c.x, c.y],
+        "distance": dist.round(),
+        "awayPx": away,
+        "captureInFlight": capture,
+        "dragHold": drag,
+        "activity": activity,
+        "sinceShownMs": since,
+    })
+}
+
 /// 自检：横条弹出后**不会被 `bar-away` 看门狗误收**。
 ///
 /// 复现的是一个真实竞态：`layout_bar` 先置 `shown=true`，之后才把窗口从
@@ -6048,9 +6093,10 @@ fn spawn_bar_away_guard() {
         .spawn(move || {
             /* 连续离开多久才收。以前是"这一帧离得远就收"—— 用户刚划完字、
              * 手一抬甩到几百像素外，横条 600ms 宽限期一到就消失，看上去
-             * 和"根本没弹"一样。现在要求**连续**超过 1.8s 才收；中途回来一次
-             * 就清零。补字成功、横条内容变化也会重置计时（`BAR_ACTIVITY`）。 */
-            const AWAY_HOLD_MS: u64 = 1800;
+             * 和"根本没弹"一样。现在要求**连续**超过 0.9s 才收（600ms 首屏
+             * 宽限之后）；中途回来一次就清零。补字成功、横条内容变化也会
+             * 重置计时（`BAR_ACTIVITY`）。 */
+            const AWAY_HOLD_MS: u64 = 900;
             let mut away_since: Option<std::time::Instant> = None;
             let mut last_gen = 0usize;
             let mut last_activity = 0usize;
@@ -22385,6 +22431,7 @@ fn main() {
             __probe_post_copy,
             __probe_clip_restore,
             __probe_bar_stays,
+            bar_auto_state,
             // 后台线程弹条（专测窗口操作的跨线程安全性）
             __probe_bg_show,
             __probe_inject_drag_in,

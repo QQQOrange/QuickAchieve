@@ -305,6 +305,8 @@ let barHovered = false;
  *   · 右键菜单开着 —— 同上。
  */
 let idleTimer = 0;
+/** 这一次 5 秒到期时是否已经为"指针停在横条上"多等过一轮。 */
+let idleHoverGrace = false;
 
 /** 配置里的秒数 → 毫秒。0 / 未设置 = 关掉这条。 */
 function idleMs() {
@@ -315,6 +317,7 @@ function idleMs() {
 /** （重新）开始计时。不满足条件就只清掉旧计时器。 */
 function armIdle() {
     if (idleTimer) { clearTimeout(idleTimer); idleTimer = 0; }
+    idleHoverGrace = false;
     if (!barVisible) return;
     if (!panelEl.hidden) return;
     if (!menuEl.hidden) return;
@@ -335,9 +338,15 @@ function onIdleFire() {
     // v2.23.22：同 armIdle —— 包裹符号菜单开着就别收（见那里的注释）
     if (typeof wrapMenuEl !== 'undefined' && wrapMenuEl && !wrapMenuEl.hidden) return;
     if (barHovered || barEl.matches(':hover')) {
-        // 指针就在横条上（只是没动）—— 再等一轮，别把人正要点的东西收走
-        armIdle();
-        return;
+        /* 指针在横条上：用户可能正要点击，但不能无限等下去。
+         * 只给一轮 1.2 秒的短宽限；这期间真的点了会被 pointerdown 重置计时，
+         * 没点则按用户要求收起（以前这里 armIdle() 会重新等满 5 秒，
+         * 指针一直搁在横条上时永远不收）。 */
+        if (!idleHoverGrace) {
+            idleHoverGrace = true;
+            idleTimer = setTimeout(onIdleFire, 1200);
+            return;
+        }
     }
     invoke('log_msg', {
         msg: 'idle: 横条 ' + Math.round(idleMs() / 1000) + ' 秒没有任何操作，自动收起',
@@ -345,8 +354,14 @@ function onIdleFire() {
     invoke('hide_bar').catch(() => {});
 }
 
-/* 任何一点操作都重新计时。capture 阶段、passive —— 只是"记一笔"，不拦事件。 */
-for (const ev of ['pointermove', 'pointerdown', 'pointerup', 'wheel', 'keydown', 'input']) {
+/* 真正算"操作"的是**点击 / 按键 / 滚轮**。
+ *
+ * v2.23.79：`pointermove` 不再重置计时。用户的要求是「横条出来后多少秒
+ * 没有**点击**就收」，鼠标只是从横条旁边划过去不算用它；以前任何一点
+ * pointermove 都把 5 秒推后，鼠标在附近来回动时横条就可以永远不收。
+ * 指针**进入**横条仍然单独重置一次（见下面的 mouseenter），给用户完整
+ * 的点击时间；进入后仍不点，到点也会收。 */
+for (const ev of ['pointerdown', 'pointerup', 'wheel', 'keydown', 'input']) {
     document.addEventListener(ev, () => { if (idleTimer) armIdle(); },
         { passive: true, capture: true });
 }
@@ -3558,7 +3573,7 @@ btnMore.addEventListener('click', (e) => {
 
 /* 待机淡度的两个 hover 入口。mouseenter/leave 只在指针真的跨越元素边界时发，
  * 比轮询 :hover 便宜也可靠。面板开着时横条始终不透明（见 syncDim）。 */
-barEl.addEventListener('mouseenter', () => { barHovered = true; syncDim(); });
+barEl.addEventListener('mouseenter', () => { barHovered = true; syncDim(); if (idleTimer) armIdle(); });
 barEl.addEventListener('mouseleave', () => { barHovered = false; syncDim(); });
 
 function togglePanel(force) {
