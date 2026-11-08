@@ -1919,6 +1919,11 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
      * 700ms 实测不够；1.5 秒能覆盖绝大多数情况，用户也不会觉得慢。 */
     let budget_ms = if wechat { budget_ms.max(1500) } else { budget_ms };
     let t0 = std::time::Instant::now();
+    /* v2.23.74：Ctrl+C 没反应就补一次 Ctrl+Insert（见 win::send_ctrl_insert）。
+     * 实测 Edge 某些页面（抖音网页评论区）对注入的 Ctrl+C 不写剪贴板，
+     * 但对 Ctrl+Insert 有反应。两者语义一样，都只是"复制选中内容"。 */
+    let mut tried_insert = false;
+    let mut resent_ctrlc = false;
     let mut got: Option<String> = None;
     let mut left_target = false;
     while t0.elapsed() < Duration::from_millis(budget_ms) {
@@ -1948,6 +1953,17 @@ fn capture_selection_fast(target_pid: u32, budget_ms: u64) -> Option<String> {
             }
         }
         std::thread::sleep(Duration::from_millis(25));
+            /* 300ms 还没动静 → 换 Ctrl+Insert；600ms 还没动静 → 再补一次 Ctrl+C */
+            let spent = t0.elapsed().as_millis();
+            if !tried_insert && got.is_none() && clip::seq() == before && spent >= 300 {
+                tried_insert = true;
+                win::log("capture(exact): Ctrl+C 没写剪贴板 —— 改发 Ctrl+Insert 再试");
+                let _ = win::send_ctrl_insert();
+            } else if !resent_ctrlc && got.is_none() && clip::seq() == before && spent >= 600 {
+                resent_ctrlc = true;
+                win::log("capture(exact): Ctrl+Insert 也没写 —— 再补一次 Ctrl+C");
+                let _ = win::send_ctrl_c();
+            }
     }
     let wrote = clip::seq() != before;
     /* 记一笔：没写进剪贴板 = 这个窗口不响应合成复制，5 秒内别再来一次 */

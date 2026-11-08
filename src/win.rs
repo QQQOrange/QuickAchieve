@@ -1202,6 +1202,43 @@ pub fn modifiers_down() -> bool {
         .any(|vk| unsafe { GetAsyncKeyState(*vk) } as u16 & 0x8000 != 0)
 }
 
+/// v2.23.74：**Ctrl+Insert**（老式复制快捷键）。
+///
+/// 有些程序（实测 Edge 的某些页面）对注入的 Ctrl+C 不响应，但接收 Ctrl+Insert。
+/// 取词时先发 Ctrl+C，没反应就补一次它 —— 两者语义完全相同，都是"复制选中内容"。
+pub fn send_ctrl_insert() -> bool {
+    if modifiers_down() {
+        crate::win::log("send_ctrl_insert: 用户正按着修饰键，跳过");
+        return false;
+    }
+    let key = |vk: VIRTUAL_KEY, scan: u16, up: bool| -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: scan,
+                    dwFlags: if up { KEYEVENTF_KEYUP } else { Default::default() },
+                    time: 0,
+                    dwExtraInfo: SELF_INJECT_TAG,
+                },
+            },
+        }
+    };
+    unsafe {
+        let cs = MapVirtualKeyW(VK_CONTROL.0 as u32, MAPVK_VK_TO_VSC) as u16;
+        let xs = MapVirtualKeyW(VK_INSERT.0 as u32, MAPVK_VK_TO_VSC) as u16;
+        let seq: [INPUT; 4] = [
+            key(VK_CONTROL, cs, false),
+            key(VK_INSERT, xs, false),
+            key(VK_INSERT, xs, true),
+            key(VK_CONTROL, cs, true),
+        ];
+        let n = SendInput(&seq, std::mem::size_of::<INPUT>() as i32);
+        n == seq.len() as u32
+    }
+}
+
 pub fn send_ctrl_c() -> bool {
     /* v2.23.32：用户按着修饰键时**绝不注入** —— 详见 `modifiers_down` 的注释。
      * 注入和不注入的取舍：漏一次取词（有 UIA / OCR 兜底）远好过打断用户的复制。 */
