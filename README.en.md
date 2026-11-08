@@ -8,7 +8,7 @@
 A Windows 10 / 11 desktop app built on a **native host (wry + system WebView2)**, with no
 bundled runtime dependencies.
 
-> **Size**: a single **~7.6 MiB** executable with the frontend embedded and
+> **Size**: a single **~7.8 MiB** executable with the frontend embedded and
 > compressed — copy one `.exe` anywhere and it runs, with no resource folder beside it.
 >
 > **Renamed in v2.15.0**: the app is now **Quick Achieve** (formerly Quick Search), and the
