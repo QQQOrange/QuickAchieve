@@ -3784,8 +3784,9 @@ function renderPreview() {
         box.style.setProperty('--pv-blur-bright', String(tone.bright));
         /* v2.23.83：磨砂预览的底板透明度（和真身同一个判据：只在磨砂样式
          * 下吃 barBgAlpha，其它样式 100%）。 */
+        const pvRaw = Number(CONF.barBgAlpha);
         const pvBg = blur > 0
-            ? Math.max(0, Math.min(100, Number(CONF.barBgAlpha) || 55))
+            ? Math.max(0, Math.min(100, Number.isFinite(pvRaw) ? pvRaw : 55))
             : 0;
         /* v2.23.84：语义是「透明度」——100 = 完全透出磨砂背景，所以这里
          * 卡片底色的**不透明度**要反过来（100 - 透明度）。 */

@@ -3,7 +3,7 @@ members = ["qa-macros"]
 
 [package]
 name = "quick-achieve"
-version = "2.23.84"
+version = "2.23.85"
 edition = "2021"
 description = "Quick Achieve 原生宿主（wry + tao 取代 Tauri 运行时）"
 

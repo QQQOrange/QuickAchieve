@@ -209,25 +209,23 @@ var barGhost = false;
         '  vec4 baseCol=sampleSource(mapped);',
         '  vec2 texel=1.0/u_textureResolution; vec2 chroma=offset*u_aberration;',
         '  vec4 refrCol;',
-        '  if(u_frost>0.0){',                      // 磨砂：黄金角螺旋采样（v2.23.84）
-        // 原来是 16 个**随机**采样：半径大时点分布太稀，画面上会出现一片
-        // 细密噪点（用户侧看就是"磨砂像雪花屏"）。改成固定的黄金角螺旋，
-        // 同半径下覆盖更均匀，观感是平滑的雾面而不是噪点；采样数提到 20。
-        '    vec4 sum=vec4(0.0); float radius=u_frost*3.0;',
-        '    for(int i=0;i<20;i++){',
-        '      float fi=float(i)+0.5;',
-        '      float ang=fi*2.39996323;',
-        '      float dist=sqrt(fi/20.0)*radius;',
-        '      vec2 foff=vec2(cos(ang),sin(ang))*texel*dist;',
-        '      if(u_aberration>0.0){',
-        '        sum.r+=sampleSource(sampleUV+foff-chroma).r;',
-        '        sum.g+=sampleSource(sampleUV+foff).g;',
-        '        sum.b+=sampleSource(sampleUV+foff+chroma).b;',
-        '        sum.a+=sampleSource(sampleUV+foff).a;',
-        '      } else sum+=sampleSource(sampleUV+foff);',
+        '  if(u_frost>0.0){',
+        // v2.23.85：**硬件 mipmap 模糊**。
+        // 上一版用 20 个螺旋采样，半径大时仍然稀疏 —— 用户看到的是
+        // "很粗糙、有颗粒"。mipmap 由 GPU 逐级做盒式滤波，低层级本身就是
+        // 连续渐变的模糊图，再在相邻两级之间混合，观感平滑无噪点。
+        '    float lod = clamp(log2(max(1.0, u_frost)), 0.0, 6.0);',
+        '    float l0 = floor(lod); float fr = lod - l0;',
+        '    float l1 = min(l0 + 1.0, 6.0);',
+        '    if(u_aberration>0.0){',
+        '      refrCol = vec4(textureLod(u_tex, sampleUV - chroma, l0).r,',
+        '                     textureLod(u_tex, sampleUV, l0).g,',
+        '                     textureLod(u_tex, sampleUV + chroma, l0).b, 1.0);',
+        '    } else {',
+        '      vec4 a = textureLod(u_tex, sampleUV, l0);',
+        '      vec4 b = textureLod(u_tex, sampleUV, l1);',
+        '      refrCol = mix(a, b, fr);',
         '    }',
-        '    if(u_aberration>0.0) refrCol=vec4(sum.r/20.0,sum.g/20.0,sum.b/20.0,1.0);',
-        '    else refrCol=sum/20.0;',
         '  } else {',                              // 清晰：5-tap 去锯齿 + 色差
         '    refrCol=sampleSource(sampleUV)',
         '      +sampleSource(sampleUV+vec2(texel.x,0.0))+sampleSource(sampleUV-vec2(texel.x,0.0))',
@@ -324,7 +322,10 @@ var barGhost = false;
         // 纹理：线性过滤 + 边缘钳取（折射采样会探到窗口外，钳取比环绕正确）
         tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        /* v2.23.85：磨砂要平滑，MIN_FILTER 必须带 mipmap（见 shader 的
+         * frost 分支：用 textureLod 取低分辨率层，比逐像素随机采样平滑
+         * 得多）。玻璃模式不受影响。 */
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -395,18 +396,18 @@ var barGhost = false;
         return [r.left / vw, r.top / vh, r.width / vw, r.height / vh];
     }
 
-    /** v2.23.84：磨砂样式（barGlass=false + barBlur>0）也走这条玻璃管线。
-     *
-     * 为什么：CSS backdrop-filter 在透明悬浮窗里取样的是「页面自己的背后」
-     * （空的），根本糊不到桌面 —— 用户看到的"磨砂强度调了没区别、下面
-     * 内容依然清晰"就是它。桌面背景必须由 Rust 抓，玻璃管线已经全套做好
-     * 了（抓屏 / 隐身 / 上传 / 绘制），磨砂只需要换一组 uniform。 */
-    function isFrost(c) {
-        return !!c && c.barGlass === false && (Number(c.barBlur) || 0) > 0;
+    function glassOn(c) {
+        return !!c && c.barGlass !== false;
     }
 
-    function glassOn(c) {
-        return !!c && (c.barGlass !== false || isFrost(c));
+    /** 实时抓屏：只在**液态玻璃**样式且用户明确开了「实时折射」时跑。
+     *
+     * v2.23.85：磨砂样式不再走这条 WebGL/抓屏管线 —— 用户口径是
+     * 「不需要实时渲染，只要有一层磨砂效果，下面的东西直接透出来，
+     * 别浪费算力」。磨砂改成纯 CSS 的静态雾面 + 细颗粒（见 bar.css），
+     * 零抓屏、零 rAF、零 WebGL。 */
+    function liveWanted(c) {
+        return glassOn(c) && c.barGlassLive === true;
     }
 
     /** 明暗判定：复用横条自己的 qs-dark（WCAG 那套，applyThemePayload 挂的）。 */
@@ -441,6 +442,8 @@ var barGhost = false;
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE,
             new Uint8Array(bytes, 16, w * h * 4));
+        // v2.23.85：磨砂用 mipmap 层级做硬件平滑（纹理不大，重生成很便宜）
+        gl.generateMipmap(gl.TEXTURE_2D);
         texW = w;
         texH = h;
         stats.lastRect = w + 'x' + h + '@' + x + ',' + y;
@@ -621,7 +624,7 @@ var barGhost = false;
             reveal = Math.min(1, (now - revealT0) / 180);
         }
 
-        var liveOn = !!(conf && conf.barGlassLive) && glassOn(conf) && !!gl;
+        var liveOn = liveWanted(conf) && !!gl;
         /* 这一帧要不要继续跑下去？
          *   · 淡入中 → 要（那 180ms 是用户唯一盯着的动画）
          *   · 鼠标在条上 → 要（光斑跟着动）
@@ -794,7 +797,7 @@ var barGhost = false;
             var st = document.getElementById('stage');
             if (st) st.classList.toggle('qs-glass', on && this.ready);
             // 实时模式的起停跟着配置走（配置可能在横条开着时被改）
-            if (on && this.ready && conf.barGlassLive === true) this.startLive();
+            if (on && this.ready && liveWanted(conf)) this.startLive();
             else this.stopLive();
             /* v2.23.84：配置广播不只会开关玻璃，还会改磨砂半径 / 底板浓度。
              * 不重画的话，用户拖滑块时画布停在上一帧 —— 看起来又是
@@ -865,7 +868,7 @@ var barGhost = false;
                 this.stopLive();                 // 隐身期间不必再抓屏
                 if (this.ready) kick();          // 出一帧，把画布擦干净
             } else if (shown && this.ready) {
-                if (conf && conf.barGlassLive === true) this.startLive();
+                if (liveWanted(conf)) this.startLive();
                 kick();
             }
         },
@@ -935,7 +938,7 @@ var barGhost = false;
             liveStarting = true;
             this.exclSet(true).then(function () {
                 liveStarting = false;
-                if (shown && glassOn(conf) && conf.barGlassLive === true) startLiveLoop();
+                if (shown && liveWanted(conf)) startLiveLoop();
             });
         },
         stopLive: function () {
@@ -972,11 +975,7 @@ var barGhost = false;
         debugInfo: function () {
             return {
                 ready: this.ready, on: glassOn(conf), shown: shown,
-                /* v2.23.84：探针要看得出当前走的是哪条路线、以及磨砂参数
-                 * 到底有没有跟着配置走（曾经"画布停在第一帧"就是靠这个查出来的）。 */
-                mode: isFrost(conf) ? 'frost' : (glassOn(conf) ? 'glass' : 'off'),
-                blur: conf && conf.barBlur,
-                bgAlpha: conf && conf.barBgAlpha,
+                mode: glassOn(conf) ? 'glass' : 'off',
                 texW: texW, texH: texH, bounds: boundsOf(),
                 params: {
                     refraction: conf && conf.barGlassRefraction,
@@ -997,7 +996,7 @@ var barGhost = false;
                     loop: !!raf, starting: liveStarting, excluded: excluded,
                     busy: captureBusy,
                     /* r86 新增：实时抓屏的当前状态，供探针验证"跟手" */
-                    liveOn: !!(conf && conf.barGlassLive) && glassOn(conf) && !!gl,
+                    liveOn: liveWanted(conf) && !!gl,
                     fps: conf && conf.barGlassFps,          // 0 = 跟随显示器
                     intervalMs: liveIntervalMs,             // 0 = 不限速
                     dirty: dirty,

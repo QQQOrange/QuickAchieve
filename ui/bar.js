@@ -1062,16 +1062,26 @@ function syncBarBg() {
      *   · 面板 / 右键菜单继续用 --qs-bg-fill（实色），不跟着变透 ——
      *     里面有文字和按钮，透底会看不清。
      * 图标不受影响：它们的浓淡仍由 --qs-alpha（「横条不透明度」）管。 */
+    /* v2.23.85：磨砂改成**静态雾面**（纯 CSS），不抓屏、不跑 WebGL。
+     *
+     * 用户口径：「不需要实时渲染，只要有一层磨砂效果，下面的东西直接透
+     * 出来，别浪费算力」。所以：
+     *   · 底板透明度（barBgAlpha）：100 = 完全透出背后内容，0 = 实色；
+     *   · 磨砂强度（barBlur）：只调那层白色雾面的浓度（越浓越像磨砂玻璃），
+     *     不再做真实模糊 —— 静态一层，滚动时内容自然透过去，零算力。 */
     const frost = Math.max(0, Math.min(32, Number(CONF && CONF.barBlur) || 0)) > 0;
-    /* v2.23.84：真磨砂改由 glass.js 抓桌面 + 着色器模糊，横条自己不再叠
-     * 半透明底板（叠了就是"磨砂上再蒙一层"，桌面反而更清楚）。
-     *   · 画布就绪：底板透明，磨砂层的浓淡由 shader 的 u_bgMix 管；
-     *   · WebGL2 不可用：底板保持实色（宁可看不到桌面，也不露出**清晰**的
-     *     桌面 —— 那正是用户报的「磨砂跟没开一样」）。 */
-    const canvasOn = !!(frost && window.QSGlass && window.QSGlass.ready);
-    const barA = canvasOn ? 0 : a;
+    /* ⚠ 0 是合法值（完全实色），不能用 `|| 55` —— 那会把 0 变成默认 55。 */
+    const bgRaw = Number(CONF && CONF.barBgAlpha);
+    const bgPct = frost
+        ? Math.max(0, Math.min(100, Number.isFinite(bgRaw) ? bgRaw : 55))
+        : 100;
+    const barA = frost ? a * (1 - bgPct / 100) : a;
     stage.style.setProperty('--qs-bar-fill',
         'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + barA.toFixed(3) + ')');
+    /* 白色雾面：强度随「磨砂强度」走。12 档约 0.14，32 档约 0.29。
+     * 这就是"磨砂玻璃"的那层乳白感，静态、不随滚动重绘。 */
+    const veil = frost ? 0.05 + 0.0075 * Math.min(32, Number(CONF && CONF.barBlur) || 0) : 0;
+    stage.style.setProperty('--qs-frost-veil', 'rgba(255, 255, 255, ' + veil.toFixed(3) + ')');
 }
 
 /** 图标大小、不透明度、内边距、底板、动画这些外观项，统一落到 CSS 变量/类上 */

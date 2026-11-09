@@ -1132,9 +1132,9 @@ fn layout_bar(
      * 补发 qs://glass，前端收到再 glass_take 取字节 —— 那时 DOM 已布局，
      * 算得出玻璃画布在窗口里的子矩形（shader 的 u_bounds）。 */
     let mut glass_fresh = false;
-    /* v2.23.84：磨砂样式也走这条抓屏管线 —— CSS backdrop-filter 糊不到桌面，
-     * 只有抓下背后的桌面再模糊，用户才能看到真正的"磨砂强度"差别。 */
-    if first_show && cfg_with(|c| c.bar_glass || c.bar_blur > 0) {
+    /* v2.23.85：只有**液态玻璃**样式抓屏。磨砂样式改成纯 CSS 静态雾面
+     * （不抓屏、不跑 WebGL），用户明确要求省算力。 */
+    if first_show && cfg_with(|c| c.bar_glass) {
         if let Some(s) = glass::capture_store(wx, wy, pw, ph) {
             win::log(&format!(
                 "glass: 已抓背景 {}x{} @({},{})，{} 字节，等前端取",

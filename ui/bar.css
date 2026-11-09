@@ -168,8 +168,11 @@ gba(14,116,144,.10) 那个旧品牌青色的写死回退，和蓝色强调色不
       重建合成层，拖动/缩放时那一帧的重建就是肉眼可见的顿挫。 */
 .stage { --qs-blur: 0px; --qs-blur-sat: 1.4; --qs-blur-bright: 1; }
 
-/* 磨砂：bar、面板、右键菜单三块都吃这一套。 */
-.stage[data-blur]:not([data-blur="0"]) .bar,
+/* 磨砂：面板、右键菜单两块都吃这一套（横条自 v2.23.85 改成静态雾面，
+   不再参与 backdrop-filter —— 透明窗里糊不到桌面，纯白烧 GPU）。 */
+/* v2.23.86：**.bar 不再吃 backdrop-filter** —— 透明悬浮窗里它取样的是
+   页面自己的背后（空的），糊不到桌面，纯白烧一层 GPU 合成；磨砂改由
+   下面那条静态雾面规则负责。面板 / 右键菜单仍保留（它们背后是页面内容）。 */
 .stage[data-blur]:not([data-blur="0"]) .panel,
 .stage[data-blur]:not([data-blur="0"]) .menu {
     -webkit-backdrop-filter: blur(var(--qs-blur)) saturate(var(--qs-blur-sat, 1.4)) brightness(var(--qs-blur-bright, 1));
@@ -666,6 +669,41 @@ transition: background-color .14s ease, opacity .22s ease;
     position: relative;
     /* 开启 GPU 层，减少合成时的重绘 */
     will-change: transform, opacity;
+}
+
+/* v2.23.86：**静态磨砂雾面**。
+ *
+ * 一层白色薄纱 + 一张固定的细颗粒纹理，叠在 `--qs-bar-fill`（半透明底板）
+ * 上面。它不抓屏、不做真实模糊、不跑 rAF —— 背后的内容直接从底板透明处
+ * 透出来，滚动时自然跟着动，零额外算力。
+ *
+ * 颗粒图是内联 SVG（feTurbulence 生成的灰度噪点，静态缓存，浏览器只栅格化
+ * 一次）；用 overlay 混合，让雾面有"玻璃"的细微质感，而不是一块平板色。 */
+.stage {
+    --qs-frost-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+}
+/* 用伪元素叠雾面 / 颗粒，而不是改 .bar 自己的 background-image：
+   基础规则保持「只有 background-color」的既有约定（test-ui 的【删净玻璃】
+   就是守这条）。图标等子元素抬到雾面之上，按钮仍可点。 */
+.stage[data-blur]:not([data-blur="0"]):not(.qs-glass) > .bar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        linear-gradient(var(--qs-frost-veil, transparent), var(--qs-frost-veil, transparent)),
+        var(--qs-frost-noise);
+    background-size: 100% 100%, 120px 120px;
+    background-repeat: no-repeat, repeat;
+    background-blend-mode: normal, overlay;
+    /* 一层极淡的内高光，模拟玻璃片的边缘 —— 不加投影，省合成。 */
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22);
+}
+.stage[data-blur]:not([data-blur="0"]):not(.qs-glass) > .bar > * {
+    position: relative;
+    z-index: 1;
 }
 
 /* ---- 待机淡度：横条弹出后、鼠标还没过来时先淡着 ----
