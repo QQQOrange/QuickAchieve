@@ -6065,10 +6065,19 @@ fn spawn_bar_away_guard() {
              * 收到 0.6s：实测 0.9s 在"故意把鼠标移开"时已经明显偏慢，
              * 用户会以为这条逻辑没生效。中途回来一次仍然清零；补字成功、
              * 横条内容变化也会重置计时（`BAR_ACTIVITY`）。 */
-            const AWAY_HOLD_MS: u64 = 600;
+            const AWAY_HOLD_MS: u64 = 350;
             let mut away_since: Option<std::time::Instant> = None;
             let mut last_gen = 0usize;
             let mut last_activity = 0usize;
+            /* v2.23.87：**指针动过**才开始算"移远"。
+             *
+             * 起因是一条真实日志：多行划词时横条挂在选区下方，指针停在选区
+             * 中间，离横条 already 53px（> 阈值 40）—— 横条弹出 0.44s 后
+             * 就开始倒计时，用户一根手指都没动，1 秒后横条自己没了。
+             * 这不是"移远收起"，是"弹出即收起"。现在记下弹出时的指针位置，
+             * 移动超过 6px 才武装；没动过就一直等（无操作收起另有 3s 兜底）。 */
+            let mut base: Option<(i32, i32)> = None;
+            let mut armed = false;
             loop {
             let shown = bar_rects().is_some();
             std::thread::sleep(Duration::from_millis(
@@ -6083,6 +6092,8 @@ fn spawn_bar_away_guard() {
              * 面板展开时 inner 会跟着包含面板，指针在面板里仍然不算走开。 */
             let Some((outer, inner)) = bar_rects() else {
                 away_since = None;
+                base = None;
+                armed = false;
                 continue;
             };
             /* 换了一根新横条：上一根的"离开计时"不能继承。 */
@@ -6090,6 +6101,8 @@ fn spawn_bar_away_guard() {
             if gen != last_gen {
                 last_gen = gen;
                 away_since = None;
+                base = None;
+                armed = false;
             }
             /* 刚补进文字 / 刚重新摆过窗口：从这一刻重新给用户 1.8s。 */
             let activity = BAR_ACTIVITY.load(Ordering::SeqCst);
@@ -6113,6 +6126,24 @@ fn spawn_bar_away_guard() {
                 continue;   // 用户把这条关了
             }
             let c = win::cursor_pos();
+            /* 弹出位置记一次；之后按位移武装（见 AWAY_HOLD_MS 上方注释）。 */
+            if base.is_none() {
+                base = Some((c.x, c.y));
+            }
+            if !armed {
+                if let Some((bx, by)) = base {
+                    if (c.x - bx).abs() + (c.y - by).abs() >= 6 {
+                        armed = true;
+                        win::log(&format!(
+                            "bar-away: 指针移动 ≥6px —— 开始判距离（阈值 {away}px）"
+                        ));
+                    }
+                }
+            }
+            if !armed {
+                away_since = None;
+                continue;
+            }
             // 指针到**可见横条**的最短距离（在矩形内 / 贴边 = 0）
             let dx = if c.x < inner.0 {
                 (inner.0 - c.x) as i64
