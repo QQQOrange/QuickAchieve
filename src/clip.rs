@@ -1016,15 +1016,43 @@ pub fn read_files_open() -> Vec<String> {
 /// `read_files_open` 的自带开关版本（自己开/关剪贴板）。
 ///
 /// 和文本读取一样只做**短重试**：这个动作是用户点一下才发生一次，不是轮询。
-pub fn read_files_any(tries: u32) -> Vec<String> {
+
+/// v2.23.81：智能直达用的**一次性快照** —— 只开一次剪贴板，同时取文件列表和文本。
+///
+/// 为什么不沿用「先读文件、再读文本」那套两次独立开门的写法：
+/// 两次开门之间，目标程序完全可能正好在写剪贴板（复制动作分几段提交），
+/// 于是出现「文件没读到、文本也没有」的窗口 —— 用户点那一格就看到
+/// 「不是 文件、文件夹、网址」，过一会儿再点又好了。这正是用户报的
+/// 「有时候不能实现」。一次开门读全，窗口从两次缩到一次。
+///
+/// `opened=false` 表示 10ms×tries 内没抢到剪贴板（被别的程序握着），
+/// 调用方可以据此做一次延迟重试，并把格式表写进日志。
+pub struct DirectContent {
+    pub files: Vec<String>,
+    pub text: Option<String>,
+    pub opened: bool,
+}
+
+pub fn read_direct_content(tries: u32) -> DirectContent {
     if !open_clipboard_within(tries) {
-        return Vec::new();
+        return DirectContent {
+            files: Vec::new(),
+            text: None,
+            opened: false,
+        };
     }
-    let out = read_files_open();
+    /* ⚠ 先读文件、再读文本：`read_text_open` 在 CF_HDROP 的场景里
+     * 往往还会顺带读到「文件名文本」，先读文本会把文件误当成路径文字。 */
+    let files = read_files_open();
+    let text = read_text_open();
     unsafe {
         let _ = CloseClipboard();
     }
-    out
+    DirectContent {
+        files,
+        text,
+        opened: true,
+    }
 }
 
 #[cfg(test)]
@@ -1088,6 +1116,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         }
         false
+    }
+
+    /// v2.23.81：智能直达的「一次开门读全」必须真能同时读到文本，
+    /// 不能因为改成和文件列表一起读就丢了 CF_UNICODETEXT。
+    #[test]
+    fn direct_content_reads_text_in_one_open() {
+        let _g = serial();
+        let mark = "https://example.com/qa-direct-content";
+        assert!(set_text_wait(mark), "本机拿不到剪贴板，无法验证智能直达读取");
+        let c = read_direct_content(40);
+        assert!(c.opened, "40 × 10ms 内应该能打开剪贴板");
+        assert!(c.files.is_empty(), "文本剪贴板不该读出文件列表");
+        assert_eq!(c.text.as_deref().map(str::trim), Some(mark));
     }
 
     /// 等剪贴板里出现图片（"写完了但还没落地"那段窗口，见 `enum_formats_settled`）。

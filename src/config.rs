@@ -1531,13 +1531,6 @@ pub struct Config {
     /// 保留字段只为兼容老配置（反序列化不报错、备份能来回倒）。
     /// 现在**没有任何代码**读它来决定要不要唤起；默认值也改成了 false。
     pub trigger_copy: bool,
-    /// **复制链接后弹直达条**（v2.23.77，默认开）。
-    ///
-    /// 和已废弃的 `trigger_copy` 不同：只有剪贴板里的新内容确实是网址时才弹，
-    /// 普通文字/图片的 Ctrl+C 完全不打扰。用户复制的是一条链接时，横条里
-    /// 应该直接出现「打开直达链接」，而不是什么都不发生。
-    #[serde(default = "default_true")]
-    pub copy_url_bar: bool,
     /// 开机自启
     pub auto_start: bool,
     /// 图标边长（CSS px）
@@ -2389,7 +2382,6 @@ impl Default for Config {
         notify_quiet_migrated: true,
             notify_seconds: 3,
             trigger_copy: false,
-            copy_url_bar: true,
             auto_start: false,
             icon_size: 30,
             alpha: 100,

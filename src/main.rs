@@ -247,8 +247,6 @@ static DISMISS_EPOCH: AtomicUsize = AtomicUsize::new(0);
 /// "明明选到了文字也不弹"（用户报的 bug）。现在改看这个：只有用户在取词期间
 /// **又松了一次鼠标**（点别处 / 重新划选）或**按了 Esc** 才作废。
 static INPUT_EPOCH: AtomicUsize = AtomicUsize::new(0);
-/// 复制链接触发的去抖（同一串 Ctrl+C 连发时只弹一次）。
-static COPY_URL_LAST: AtomicU64 = AtomicU64::new(0);
 
 /// 剪贴板操作的串行锁。
 ///
@@ -1530,6 +1528,20 @@ fn capture_selection(target_pid: u32, target_hwnd: Option<HWND>) -> Option<Strin
         win::log("capture: 当前前台是终端 —— 绝不发 Ctrl+C（会被当成中断信号）");
         return None;
     }
+    /* v2.23.81：**用户还按着修饰键时绝不模拟复制**。
+     *
+     * 真实场景：用户用 Ctrl+拖选 / Ctrl+Shift 选了一段文字，松手那一刻
+     * Ctrl 往往还没抬起；或者他刚划完选区就顺手按了 Ctrl+C。这时我们再
+     * 补一次合成 Ctrl+C，手感就是「Ctrl+C 被劫持」—— 在终端 / 游戏 /
+     * 远程桌面里还可能触发别的动作。把这次自动取词让给用户：横条已经
+     * 弹出来的保持原样，用户真的复制完，他自己的 Ctrl+C 会写入剪贴板。
+     *
+     * 只挡 Ctrl / Alt / Win：Shift 在划选收尾时经常还没松，挡它会让
+     * 正常的「Shift+拖选」永远取不到词。 */
+    if win::ctrl_down() || win::alt_down() || win::win_down() {
+        win::log("capture: 用户还按着 Ctrl/Alt/Win —— 不模拟复制（把 Ctrl+C 让给用户）");
+        return None;
+    }
     // 整段都必须在 CLIP_LOCK 里：中途要和 Ctrl+C 兜底那条线抢同一个剪贴板，
     // 交错的话 restore 的「先清空再写回」会把用户原本的复制内容冲掉。
     let _clip = lock_clip();
@@ -1957,6 +1969,12 @@ fn capture_selection_fast(
         std::thread::sleep(Duration::from_millis(5));
     }
     std::thread::sleep(Duration::from_millis(70));
+    /* v2.23.81：同上 —— 用户按着 Ctrl/Alt/Win 时把这次复核让给他，
+     * 绝不和用户自己的 Ctrl+C 抢时序。 */
+    if win::ctrl_down() || win::alt_down() || win::win_down() {
+        win::log("capture(exact): 用户还按着 Ctrl/Alt/Win —— 不模拟复制");
+        return None;
+    }
     let _clip = lock_clip();
     /* ⚠ 快照拿不到就**绝不能发 Ctrl+C**（2026-10-30 用户明确要求：
      *   "复制操作之后不能影响原来的剪贴板"）。
@@ -4121,48 +4139,6 @@ fn copy_trigger(before: u32) {
     }
 }
 
-/// 复制到的是**链接**时，弹一条带「打开直达链接」的横条。
-///
-/// 这是 v2.23.54「普通 Ctrl+C 不再打扰」和「复制链接后仍要能直达」的折中：
-/// 只有剪贴板里的新内容确实是网址/含网址才弹，普通文字、图片、文件一律不弹。
-/// 读剪贴板全在后台线程，钩子回调本身立刻返回。
-fn text_has_url(text: &str) -> bool {
-    let text = text.trim();
-    engines::text_to_url(text).is_some() || !engines::extract_links(text).is_empty()
-}
-
-fn copy_url_bar(before: u32) {
-    let fg_pid = win::window_pid(win::foreground_window());
-    let spawned = std::thread::Builder::new()
-        .name("qs-copyurl".into())
-        .spawn(move || {
-            let Got::Text(text) = read_current(before) else {
-                return;
-            };
-            let text = text.trim().to_string();
-            if text.is_empty() {
-                return;
-            }
-            if !clipboard_owned_by_pid(fg_pid) {
-                win::log("copy-url: 剪贴板归属不是刚才的前台程序 —— 不弹");
-                return;
-            }
-            if !text_has_url(&text) {
-                return; // 普通文字：保持 Ctrl+C 安静
-            }
-            let links = engines::extract_links(&text);
-            win::log(&format!(
-                "copy-url: 复制到链接 {} 条（{} 字）—— 弹直达条",
-                links.len().max(1),
-                text.chars().count()
-            ));
-            show_bar(text, true, true, None);
-        });
-    if spawned.is_err() {
-        win::log("copy-url: 起线程失败，本次不弹");
-    }
-}
-
 /// 剪贴板 owner 是不是「按下 Ctrl+C 那一刻的前台进程」。
 ///
 /// 判据与 fail-open 原则都在 `clipboard_owner_trusted` 里（取不到就放行：
@@ -5530,16 +5506,6 @@ fn __probe_copy_trigger(copy: Option<String>) -> u32 {
 }
 
 /// 探针：只走 v2.23.77 的“复制链接”分支（不弹普通文字）。
-#[crate::t::command]
-fn __probe_copy_url_bar(copy: Option<String>) -> bool {
-    let before = clip::seq();
-    if let Some(t) = copy {
-        clip::set_text(&t);
-    }
-    copy_url_bar(before);
-    true
-}
-
 /// `show_bar` 的实体，多一个 `sel`：这次拖选的矩形（按下点 → 抬起点，
 /// 屏幕物理 px），只有划词那条路拿得到。它只用来**兜底决定上下侧**，
 /// 见 [`selection_box_from_drag`] 里的长注释。
@@ -6745,33 +6711,13 @@ fn spawn_detector() {
                          * "普通复制"也弹出横条，属于打扰。整段删掉；`trigger_copy`
                          * 配置项只为兼容老配置保留（默认已改 false，没有任何代码再读它唤起）。
                          *
+                         * v2.23.77 曾短暂加回「复制到链接就弹一条直达条」，但 v2.23.81
+                         * 按用户口径（「有时候会劫持 Ctrl+C」）**彻底移除**：
+                         * 按下 Ctrl+C 时这里**一个字节都不碰剪贴板、不发任何键**，
+                         * 复制完全交还系统和目标程序。想打开剪贴板里最新内容，
+                         * 用网格页那颗「智能直达」格子（点一下才读）。
+                         *
                          * 取词仍有两条路：鼠标拖选（钩子）、以及自定义快捷键 / 托盘 / 收藏夹。 */
-                        /* v2.23.77：普通 Ctrl+C 仍然不弹；但**复制到的是一条链接**时，
-                         * 横条应该直接给出「打开直达链接」。这条只读剪贴板、不发按键，
-                         * 对普通文字/图片零打扰。 */
-                        if vk == VK_C.0 as u32 && win::trace_on() {
-                            win::trace(&format!(
-                                "copy-url: 条件 ctrl={ctrl} alt={alt} shift={shift} ours={ours} paused={} cfg={}",
-                                is_paused(),
-                                cfg_with(|c| c.copy_url_bar)
-                            ));
-                        }
-                        if vk == VK_C.0 as u32
-                            && ctrl
-                            && !alt
-                            && !shift
-                            && !ours
-                            && !is_paused()
-                            && cfg_with(|c| c.copy_url_bar)
-                        {
-                            let now = mono_ms();
-                            if now.saturating_sub(COPY_URL_LAST.load(Ordering::Relaxed)) > 400 {
-                                COPY_URL_LAST.store(now, Ordering::Relaxed);
-                                win::trace("copy-url: Ctrl+C 命中，读剪贴板判断是不是链接");
-                                let before = clip::seq();
-                                copy_url_bar(before);
-                            }
-                        }
                     }
                 }
             }
@@ -6882,7 +6828,6 @@ fn config_view() -> Value {
         "selftest": std::env::var("QS_SELFTEST").map(|v| v == "1").unwrap_or(false),
         "triggerSelect": cfg.trigger_select,
         "triggerCopy": cfg.trigger_copy,
-        "copyUrlBar": cfg.copy_url_bar,
         "notifyFeature": cfg.notify_feature,
         // 右下角提示显示几秒（v2.6.8：内置提示，时长自己做主）
         "notifySeconds": cfg.notify_seconds,
@@ -7171,7 +7116,6 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     }
     if let Some(x) = b("triggerSelect") { cfg.trigger_select = x; }
     if let Some(x) = b("triggerCopy") { cfg.trigger_copy = x; }
-    if let Some(x) = b("copyUrlBar") { cfg.copy_url_bar = x; }
     // 网格页：备份/导入恢复。夹取到合法范围，避免手改过的备份把界面弄崩
     if let Some(x) = s("gridHotkey") {
         // v2.12.6：老备份里可能是 ctrl+c —— 那是系统复制，导入时直接丢掉
@@ -7772,7 +7716,6 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
     match key {
         "triggerSelect" => cfg.trigger_select = value.as_bool().unwrap_or(true),
         "triggerCopy" => cfg.trigger_copy = value.as_bool().unwrap_or(false),
-        "copyUrlBar" => cfg.copy_url_bar = value.as_bool().unwrap_or(true),
         // 右下角"正在使用什么功能"的通知（默认开）
         "notifyFeature" => cfg.notify_feature = value.as_bool().unwrap_or(true),
         // 提示显示几秒（1~15，默认 3）
@@ -14148,7 +14091,7 @@ fn open_file(path: String) -> String {
     msg
 }
 
-/// v2.23.80：**智能直达 · 最近剪贴板**（网格页那一格点下去走这里）。
+/// v2.23.80：**智能直达**（网格页那一格点下去走这里）。
 ///
 /// 用户原话：「点击之后，它就会自动把最近的一条剪切板记录以相应的方式来
 /// 打开。当然，也会检测它是不是网址、网页、文件夹或者文件。如果是的话，
@@ -14171,9 +14114,37 @@ fn open_file(path: String) -> String {
 fn open_clipboard_target() -> Result<String, String> {
     let bad = || "不是 文件、文件夹、网址，无法打开".to_string();
 
+    /* v2.23.81：**一次开门读全**（文件 + 文本），并允许一次延迟重试。
+     *
+     * 以前是 `read_files_any` + `read_text_any_within` 两次开门；中间目标
+     * 程序刚好在分段写剪贴板时，就会出现"文件没读到、文本也没有"的窗口，
+     * 用户看到的是「有时候点了没反应，再点一次又好了」。 */
+    let mut c = clip::read_direct_content(25); // 25 × 10ms ≈ 250ms
+    let text_empty = c
+        .text
+        .as_deref()
+        .map(|t| t.trim().is_empty())
+        .unwrap_or(true);
+    if c.opened && c.files.is_empty() && text_empty {
+        /* 再读一次：有些宿主先写一个占位、过一会儿才换成真正内容。
+         * 不在这里 sleep —— 同步命令跑在主线程上（见
+         * `sync_commands_must_not_block_the_main_thread`），重试窗口交给
+         * `read_direct_content` 自己的 10ms 开门重试。 */
+        let again = clip::read_direct_content(15);
+        if again.opened {
+            c = again;
+        }
+    }
+    if !c.opened {
+        win::log(&format!(
+            "clip-direct: 剪贴板一直打不开（{}）",
+            clip::describe_formats()
+        ));
+        return Err("剪贴板被别的程序占着，稍等一下再点这一格".into());
+    }
+
     // ① 资源管理器里复制的是文件 / 文件夹
-    let files = clip::read_files_any(8);
-    if let Some(first) = files.first() {
+    if let Some(first) = c.files.first() {
         let p = std::path::Path::new(first);
         if !p.exists() {
             win::log(&format!("clip-direct: 剪贴板里的位置已不存在 -> {first}"));
@@ -14186,14 +14157,17 @@ fn open_clipboard_target() -> Result<String, String> {
         };
         win::log(&format!(
             "clip-direct: 剪贴板文件 {} 个，打开第一个 -> {msg}",
-            files.len()
+            c.files.len()
         ));
-        return Ok(msg);
+        return if is_open_failure(&msg) { Err(msg) } else { Ok(msg) };
     }
 
     // ② / ③ 文本：先看真实存在的路径，再看网址
-    let Some(text) = clip::read_text_any_within(8) else {
-        win::log("clip-direct: 剪贴板里没有文件，也没有文本");
+    let Some(text) = c.text else {
+        win::log(&format!(
+            "clip-direct: 剪贴板里没有文件，也没有文本（{}）",
+            clip::describe_formats()
+        ));
         return Err(bad());
     };
     let text = text
@@ -14215,27 +14189,43 @@ fn open_clipboard_target() -> Result<String, String> {
                     paths::open_file(&p)
                 };
                 win::log(&format!("clip-direct: 剪贴板文本是本地路径 -> {msg}"));
-                return Ok(msg);
+                return if is_open_failure(&msg) { Err(msg) } else { Ok(msg) };
             }
         }
     }
 
     if let Some(u) = engines::text_to_url(&text) {
         let brief: String = u.chars().take(120).collect();
-        let logged = brief.clone();
-        // ShellExecuteW 会阻塞到浏览器进程起来 —— 放到后台线程，命令立刻返回
-        std::thread::spawn(move || {
-            win::log(&format!("clip-direct: 打开网址 {}", logged));
-            let _ = open::that_detached(u.as_str());
-        });
-        return Ok(format!("已在浏览器打开：{brief}"));
+        // `that_detached` 是"发起后立刻返回"的版本，不会卡住命令线程；
+        // 失败要把原因抛给前端，不能像以前那样静默吞掉。
+        match open::that_detached(u.as_str()) {
+            Ok(()) => {
+                win::log(&format!("clip-direct: 打开网址 {brief}"));
+                return Ok(format!("已在浏览器打开：{brief}"));
+            }
+            Err(e) => {
+                let why: String = e.to_string().chars().take(120).collect();
+                win::log(&format!("clip-direct: 打开网址失败（{brief}）：{why}"));
+                return Err(format!("打开网址失败：{why}"));
+            }
+        }
     }
 
     win::log(&format!(
-        "clip-direct: 剪贴板文本既不是路径也不是网址（{} 字）",
-        text.chars().count()
+        "clip-direct: 剪贴板文本既不是路径也不是网址（{} 字，格式 {}）",
+        text.chars().count(),
+        clip::describe_formats()
     ));
     Err(bad())
+}
+
+/// `paths::open` / `paths::open_file` 返回的是"给人看的文案"，不是 Result。
+/// 这里按它们的失败前缀判一下，把失败变成 `Err` —— 否则前端会当成打开成功、
+/// 收起网格，用户看到的就是"点了没反应"。
+fn is_open_failure(msg: &str) -> bool {
+    ["打开失败", "找不到这个路径", "找不到这个文件", "这个文件没有关联程序", "这不像"]
+        .iter()
+        .any(|p| msg.starts_with(p))
 }
 
 /// r97：**这条路径解析出来是文件还是目录**（前端据此决定显示哪颗按钮）。
@@ -22557,7 +22547,6 @@ fn main() {
             show_bar,
             // v1.5.6：Ctrl+C 真路径（探针用，模拟"按了 Ctrl+C 但没复制到东西"）
             __probe_copy_trigger,
-            __probe_copy_url_bar,
             __probe_post_copy,
             __probe_clip_restore,
             __probe_bar_stays,
@@ -22633,7 +22622,7 @@ fn main() {
     open_path,
     // r97：选中文件 → 用系统默认程序打开（与 open_path 分工见那边注释）
     open_file,
-    // v2.23.80：智能直达 · 最近剪贴板（文件 / 文件夹 / 网址，否则报错）
+    // v2.23.80：智能直达（文件 / 文件夹 / 网址，否则报错）
     open_clipboard_target,
     path_kind,
     // r54 需求 3：明文配置的按项导出 / 导入
@@ -23259,6 +23248,24 @@ mod tests {
 
 
     use super::*;
+
+    /// v2.23.81：`open_clipboard_target` 把 `paths::open*` 的返回文案分成
+    /// 成功 / 失败两种。分错的话，打不开的文件会被前端当成成功、收起网格，
+    /// 用户看到的就是「点了没反应」——
+    /// 所以这几个前缀必须与 `paths.rs` 里的 return 语句保持一致。
+    #[test]
+    fn open_failure_messages_are_detected() {
+        assert!(is_open_failure("打开失败：拒绝访问"));
+        assert!(is_open_failure("找不到这个路径：C:\\nope"));
+        assert!(is_open_failure("找不到这个文件：C:\\nope.txt"));
+        assert!(is_open_failure(
+            "这个文件没有关联程序：a.xyz —— 右键它选「打开方式」设一个"
+        ));
+        assert!(!is_open_failure("已在文件管理器中打开"));
+        assert!(!is_open_failure("已在文件管理器中定位"));
+        assert!(!is_open_failure("已用默认程序打开：a.txt"));
+        assert!(!is_open_failure("已在浏览器打开：https://example.com"));
+    }
 
     /// 标点全角/半角互转：**引号必须成对**，不能一对一查表。
     ///
@@ -27184,15 +27191,3 @@ mod wechat_name_tests {
     }
 }
 
-#[cfg(test)]
-mod copy_url_tests {
-    use super::text_has_url;
-
-    #[test]
-    fn only_links_count_for_the_copy_url_bar() {
-        assert!(text_has_url("https://v.douyin.com/70NAaFJGzWg/"));
-        assert!(text_has_url("7.43 复制打开抖音 https://v.douyin.com/70NAaFJGzWg/ 看看"));
-        assert!(!text_has_url("这是一段普通文字，没有链接"));
-        assert!(!text_has_url("版本 1.2.3 更新说明"));
-    }
-}

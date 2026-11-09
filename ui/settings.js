@@ -3162,7 +3162,6 @@ function renderAiList() {
 const SWITCHES = [
     ['s-triggerSelect', 'triggerSelect'],
     ['s-triggerCopy', 'triggerCopy'],
-    ['s-copyUrlBar', 'copyUrlBar'],
     // v2.6.7：右下角"正在使用什么功能"的通知（默认开，见 config.rs default_true）
     ['s-notifyFeature', 'notifyFeature'],
     // 2026-10-23：没取到文字就不弹（误触乱弹的主要来源，默认开）
@@ -3236,7 +3235,6 @@ const SWITCH_DEFAULT = {
     ocrCleanUnwrap: false,
     triggerSelect: true,
     triggerCopy: true,
-    copyUrlBar: true,
     // 2026-10-23：划选没取到文字就不弹（与 config.rs 的 serde 默认值一致）
     barNeedText: true,
     favQuickShow: true,
@@ -5570,7 +5568,7 @@ function gridItemDesc(name) {
             return '框选屏幕上的二维码 → 解出里面的链接或文字';
         case '@qrmake':
             return '把当前选中的文字 / 链接变成二维码（弹出窗口里可直接复制）';
-        /* v2.23.80：智能直达 · 最近剪贴板。说明必须写清"打开的是什么"，
+        /* v2.23.80：智能直达。说明必须写清"打开的是什么"，
          * 否则用户会以为它像搜索引擎一样需要一段选中文字。 */
         case '@clipgo':
             return '点一下打开剪贴板里最新那条内容：网址 → 浏览器、文件夹 → 资源管理器、文件 → 默认程序';

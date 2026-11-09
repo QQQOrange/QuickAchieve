@@ -121,7 +121,6 @@ pub static GROUPS: &[Group] = &[
         keys: &[
             "triggerSelect",
             "triggerCopy",
-            "copyUrlBar",
             "anchorAtMouse",
             "autoStart",
             "autoElevate",
