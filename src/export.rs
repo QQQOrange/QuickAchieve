@@ -253,6 +253,7 @@ pub static GROUPS: &[Group] = &[
         desc: "翻译引擎、目标语言、多引擎名单与凭据",
         keys: &[
             "transEnable",
+            "transAddToBar",
             "transEngine",
             "transMulti",
             "transTarget",

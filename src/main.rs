@@ -7052,6 +7052,10 @@ fn config_view() -> Value {
         // webdavPass 一样"回显给本人改"—— 页面是本机文件、config.json 整体加密，
         // 但它**不进日志**。
         "transEnable": cfg.trans_enable,
+        // v2.23.80：翻译按钮在不在横条上（用户移出过 = false）。
+        // 前端不需要它也能工作（成员资格看 barList），发出来是为了让
+        // 「加进横条」那颗按钮的判断和导出/导入口径一致。
+        "transAddToBar": cfg.trans_add_to_bar,
         "transEngine": cfg.trans_engine,
         "transMulti": cfg.trans_multi,
         "transCreds": trans_creds_view(&cfg),
@@ -7398,6 +7402,9 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     // v1.5.16：翻译跟着备份走（换了电脑不用重填 Key）。口径同 OCR 凭据：
     // 空值不覆盖 —— 备份可能是在还没配翻译时导出的，照单全收会抹掉已填的 Key。
     if let Some(x) = b("transEnable") { cfg.trans_enable = x; }
+    // v2.23.80：翻译按钮在不在横条上也要跟着备份走 —— 否则换台电脑导入后
+    // 「移出过」这件事丢了，下次启动又会被补回横条。
+    if let Some(x) = b("transAddToBar") { cfg.trans_add_to_bar = x; }
     if let Some(x) = s("transEngine") {
         if trans_engines::find(x.trim()).is_some() {
             cfg.trans_engine = x.trim().to_string();
@@ -8029,7 +8036,20 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
          * `trans_set_cred` 那个专门命令（和 OCR 的 ocr_set_cred 一样：
          * 空串 = 删掉这一项，"清空密钥"才能正常工作），这里只留
          * 开关 / 默认引擎 / 目标语言这三个单值。 */
-        "transEnable" => cfg.trans_enable = value.as_bool().unwrap_or(true),
+        "transEnable" => {
+            let on = value.as_bool().unwrap_or(true);
+            cfg.trans_enable = on;
+            /* v2.23.80：总开关和 `@trans` 哨兵是同一件事的两面（和 imgEnable
+             * 那段同一个口径）。关掉 → 横条上不该再画翻译；打开 → 只有用户
+             * 没把它移出过（`trans_add_to_bar`）才补回去，绝不能把用户主动
+             * 移出的按钮又塞回横条。 */
+            let has = cfg.bar_list.iter().any(|n| n == config::BAR_TRANS);
+            if !on && has {
+                cfg.bar_list.retain(|n| n != config::BAR_TRANS);
+            } else if on && !has && cfg.trans_add_to_bar {
+                cfg.bar_list.push(config::BAR_TRANS.to_string());
+            }
+        }
         "transEngine" => {
             let e = value.as_str().unwrap_or("siliconflow").trim().to_string();
             if trans_engines::find(&e).is_some() {
@@ -14128,6 +14148,96 @@ fn open_file(path: String) -> String {
     msg
 }
 
+/// v2.23.80：**智能直达 · 最近剪贴板**（网格页那一格点下去走这里）。
+///
+/// 用户原话：「点击之后，它就会自动把最近的一条剪切板记录以相应的方式来
+/// 打开。当然，也会检测它是不是网址、网页、文件夹或者文件。如果是的话，
+/// 它才能够直接打开。如果不是的话，那就会提示。不是 文件、文件夹、网址
+/// 无法打开。」
+///
+/// # 判据顺序（先"真实存在的东西"，再"看起来像网址"）
+///
+/// ① `CF_HDROP`：用户在资源管理器里复制了文件 / 文件夹 —— 最明确的意图，
+///    **不走文本判据**（这类剪贴板常常连文本格式都没有）；
+/// ② 文本是一条**真实存在的**路径（文件 → 默认程序打开；文件夹 → 打开目录）；
+/// ③ 文本是一条网址（`engines::text_to_url`，带协议或已知 TLD 的裸域名）；
+/// ④ 其它一律拒绝，报那句用户指定的提示。
+///
+/// ⚠ ② 必须在 ③ 之前：`report.final.txt` 这种文件名在裸域名那条路上本来
+///   就认不出来，但 `C:\a\b.com` 会同时满足"路径"和"网址"两种形状 ——
+///   磁盘上真实存在的路径优先，否则用户复制一个叫 `b.com` 的本地文件，
+///   点下去却被浏览器打开（打不开、还找不到原因）。
+#[crate::t::command]
+fn open_clipboard_target() -> Result<String, String> {
+    let bad = || "不是 文件、文件夹、网址，无法打开".to_string();
+
+    // ① 资源管理器里复制的是文件 / 文件夹
+    let files = clip::read_files_any(8);
+    if let Some(first) = files.first() {
+        let p = std::path::Path::new(first);
+        if !p.exists() {
+            win::log(&format!("clip-direct: 剪贴板里的位置已不存在 -> {first}"));
+            return Err(bad());
+        }
+        let msg = if p.is_dir() {
+            paths::open(first)
+        } else {
+            paths::open_file(first)
+        };
+        win::log(&format!(
+            "clip-direct: 剪贴板文件 {} 个，打开第一个 -> {msg}",
+            files.len()
+        ));
+        return Ok(msg);
+    }
+
+    // ② / ③ 文本：先看真实存在的路径，再看网址
+    let Some(text) = clip::read_text_any_within(8) else {
+        win::log("clip-direct: 剪贴板里没有文件，也没有文本");
+        return Err(bad());
+    };
+    let text = text
+        .trim()
+        .trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace())
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Err(bad());
+    }
+
+    if paths::looks_like_path(&text).is_some() {
+        if let Some(p) = paths::resolve(&text) {
+            let pb = std::path::Path::new(&p);
+            if pb.exists() {
+                let msg = if pb.is_dir() {
+                    paths::open(&p)
+                } else {
+                    paths::open_file(&p)
+                };
+                win::log(&format!("clip-direct: 剪贴板文本是本地路径 -> {msg}"));
+                return Ok(msg);
+            }
+        }
+    }
+
+    if let Some(u) = engines::text_to_url(&text) {
+        let brief: String = u.chars().take(120).collect();
+        let logged = brief.clone();
+        // ShellExecuteW 会阻塞到浏览器进程起来 —— 放到后台线程，命令立刻返回
+        std::thread::spawn(move || {
+            win::log(&format!("clip-direct: 打开网址 {}", logged));
+            let _ = open::that_detached(u.as_str());
+        });
+        return Ok(format!("已在浏览器打开：{brief}"));
+    }
+
+    win::log(&format!(
+        "clip-direct: 剪贴板文本既不是路径也不是网址（{} 字）",
+        text.chars().count()
+    ));
+    Err(bad())
+}
+
 /// r97：**这条路径解析出来是文件还是目录**（前端据此决定显示哪颗按钮）。
 ///
 /// 返回 `"file"` / `"dir"` / `"missing"` / `"notpath"` 四个字符串之一。
@@ -18569,6 +18679,18 @@ fn toggle_bar_engine_impl(cfg: &mut Config, engine: &str, on: bool) {
         cfg.img_add_to_bar = on;
         changed = true;
     }
+    /* v2.23.80：翻译按钮（`@trans`）和识图同一个坑 —— `ensure_trans_bar_sentinel`
+     * 每次启动都会补哨兵，所以「移出」必须记进 `trans_add_to_bar`，否则重启
+     * 之后它又回到横条上（用户报的原话）。
+     * 同时把迁移标记置上：老配置的推断已经跑过（或这是全新配置），
+     * 之后的成员资格**只**听用户。 */
+    if engine == config::BAR_TRANS {
+        cfg.trans_bar_migrated = true;
+        if cfg.trans_add_to_bar != on {
+            cfg.trans_add_to_bar = on;
+            changed = true;
+        }
+    }
     /* v2.23.75：`@favquick` 的成员资格历史上由 `fav_quick_show` 控制。
      * 两处必须同步，否则移出后下次启动又被 `load()` 的兼容迁移补回来。 */
     if engine == config::BAR_FAVQUICK && cfg.fav_quick_show != on {
@@ -21644,6 +21766,14 @@ fn init_state() {
         win::log("config: 给老配置补上横条识图哨兵 @img");
         config::save(&cfg);
     }
+    /* v2.23.80：老配置一次性推断「翻译是不是被用户移出过」——
+     * 必须在 `ensure_trans_bar_sentinel` **之前**跑，否则后者会先把它补回去。
+     * 全新安装不走这条（`trans_bar_migrated` 在 `Config::default()` 里就是 true，
+     * 全新配置本来就该带翻译按钮）。 */
+    if config::infer_trans_bar_preference(&mut cfg) {
+        win::log("config: 迁移 —— 记下「翻译是否被移出过」（transAddToBar）");
+        config::save(&cfg);
+    }
     // v1.5.16：翻译按钮同样并进 bar_list（@trans 哨兵）—— 拖位置 / 换图标 /
     // 移出全靠这张表，和 @img 完全同一套机制。
     if config::ensure_trans_bar_sentinel(&mut cfg) {
@@ -22503,6 +22633,8 @@ fn main() {
     open_path,
     // r97：选中文件 → 用系统默认程序打开（与 open_path 分工见那边注释）
     open_file,
+    // v2.23.80：智能直达 · 最近剪贴板（文件 / 文件夹 / 网址，否则报错）
+    open_clipboard_target,
     path_kind,
     // r54 需求 3：明文配置的按项导出 / 导入
     export_groups_list,
@@ -24677,6 +24809,47 @@ mod tests {
         // 想拿下去也得拿得掉
         toggle_bar_engine_impl(&mut cfg, config::BAR_ANY, false);
         assert!(!cfg.bar_list.iter().any(|n| n == config::BAR_ANY), "@any 要能移出");
+    }
+
+    /// v2.23.80：翻译「移出横条」必须**持久** —— 重启后不能被迁移补回来。
+    ///
+    /// 对应用户报的：「我把它移出之后，软件重启它竟然又会出现在横条上」。
+    /// 这里把「移出 → 模拟重启（再跑一次迁移） → 加回」整条链走一遍。
+    #[test]
+    fn trans_removal_from_bar_sticks() {
+        let _serial = disk_lock();
+        let _env_lock = config::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _appdata = AppDataTemp::new();
+
+        let mut cfg = config::Config::default();
+        cfg.trans_bar_migrated = true;
+        cfg.trans_enable = true;
+        cfg.trans_add_to_bar = true;
+        if !cfg.bar_list.iter().any(|n| n == config::BAR_TRANS) {
+            cfg.bar_list.push(config::BAR_TRANS.to_string());
+        }
+
+        // 移出
+        toggle_bar_engine_impl(&mut cfg, config::BAR_TRANS, false);
+        assert!(
+            !cfg.bar_list.iter().any(|n| n == config::BAR_TRANS),
+            "移出要真的从 bar_list 摘掉"
+        );
+        assert!(!cfg.trans_add_to_bar, "移出要记进 trans_add_to_bar");
+
+        // 模拟重启：启动时的迁移不许再补回来
+        assert!(
+            !config::ensure_trans_bar_sentinel(&mut cfg),
+            "移出过之后重启不该再补 @trans"
+        );
+        assert!(!cfg.bar_list.iter().any(|n| n == config::BAR_TRANS));
+
+        // 用户又想加回来 → 记忆同步成 true，下一次重启也不会再被摘掉
+        toggle_bar_engine_impl(&mut cfg, config::BAR_TRANS, true);
+        assert!(cfg.bar_list.iter().any(|n| n == config::BAR_TRANS));
+        assert!(cfg.trans_add_to_bar);
+        assert!(!config::ensure_trans_bar_sentinel(&mut cfg));
+        assert!(cfg.bar_list.iter().any(|n| n == config::BAR_TRANS));
     }
 
     /// engines.json 的数据不变量（管线 tools/add-engines.py 的产出质量在这兜底）：

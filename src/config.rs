@@ -1230,14 +1230,41 @@ pub fn ensure_img_bar_sentinel(cfg: &mut Config) -> bool {
 /// 能移出，就必须是 bar_list 的一员。老配置里没有这根哨兵，启动时补一根
 /// （追加到末尾）；「翻译」总开关关着时不补 —— 用户主动关掉的功能，
 /// 不该在升级时又把按钮塞回横条。
+///
+/// ⚠ v2.23.80：还必须看 `trans_add_to_bar`。以前只看总开关，于是用户在设置里
+///   点「移出」之后，**每次启动都被补回来**（用户报的「重启又出现在横条上」）。
+///   移出时 `toggle_bar_engine_impl` 会把这一位记成 false，这里就不补了；
+///   用户再点「加进横条」时又记回 true。
 pub fn ensure_trans_bar_sentinel(cfg: &mut Config) -> bool {
-    if !cfg.trans_enable {
+    if !cfg.trans_enable || !cfg.trans_add_to_bar {
         return false;
     }
     if cfg.bar_list.iter().any(|n| n == BAR_TRANS) {
         return false;
     }
     cfg.bar_list.push(BAR_TRANS.to_string());
+    true
+}
+
+/// v2.23.80：**一次性**把「用户以前就移出过翻译」这件事补进配置。
+///
+/// 什么时候需要：升级到本版本之前，`trans_add_to_bar` 这个键根本不存在，
+/// 而旧代码每次启动都会把 `@trans` 补回横条。所以只凭 serde 默认值（true）
+/// 无法区分两种人：
+///   · 从 v1.5.16 之前一路用上来、横条上一直没有翻译按钮的老配置；
+///   · **主动把翻译移出过**的配置（用户报的就是这个）。
+/// 两种人在本版本里的期望其实一样：**别再自动替我加**。
+/// 设置页「把翻译加进横条」那颗按钮一直都在，想加回来随时能点。
+///
+/// 返回 true 表示改过配置（调用方负责落盘）。
+pub fn infer_trans_bar_preference(cfg: &mut Config) -> bool {
+    if cfg.trans_bar_migrated {
+        return false;
+    }
+    cfg.trans_bar_migrated = true;
+    if !cfg.bar_list.iter().any(|n| n == BAR_TRANS) {
+        cfg.trans_add_to_bar = false;
+    }
     true
 }
 
@@ -1995,6 +2022,34 @@ pub ocr_accurate: bool,
     /// 横条才会看见按钮，所以这里开着的默认值不会凭空多出个按钮。
     #[serde(default = "default_true")]
     pub trans_enable: bool,
+    /// 翻译按钮要不要待在横条上（默认 **true**）。
+    ///
+    /// 和 `img_add_to_bar` 完全同一套：横条上的成员资格以 `bar_list` 里有没有
+    /// `@trans` 为准，这份字段只是**"用户自己把它移出过"的记忆**。
+    ///
+    /// # 为什么必须有（v2.23.80 修的真 bug）
+    ///
+    /// `ensure_trans_bar_sentinel`（v1.5.16 的升级迁移）在**每次启动**都跑：
+    /// 只要 `trans_enable` 开着、`bar_list` 里没有 `@trans`，就补一根回去。
+    /// 于是用户在设置里点「移出」之后，重启一次它又回到横条上 —— 用户报的
+    /// 正是这个（「我把它移出之后，软件重启它竟然又会出现在横条上」）。
+    ///
+    /// `@img` 早就有 `img_add_to_bar` 挡着这一手，`@trans` 当年漏了。
+    /// 现在两边同构：**移出 = 记下 false；加回 = 记下 true**，
+    /// 迁移函数只在这位是 true 时才补哨兵。
+    #[serde(default = "default_true")]
+    pub trans_add_to_bar: bool,
+    /// v2.23.80：`trans_add_to_bar` 的**一次性迁移标记**。
+    ///
+    /// 老配置里没有 `transAddToBar` 这个键（serde 会按 `default_true` 给 true），
+    /// 但用户可能早就把翻译从横条上移出了 —— 直接读默认值会在升级后的第一次
+    /// 启动里把它又塞回去，用户看到的就是「修了个寂寞」。
+    ///
+    /// 所以启动时（`init_state`，且**不是全新安装**）跑一次推断：
+    /// 横条上没有 `@trans` ⇒ 用户移出过 ⇒ 把 `trans_add_to_bar` 记成 false。
+    /// 只跑一次，之后完全听用户的（见 `infer_trans_bar_preference`）。
+    #[serde(default)]
+    pub trans_bar_migrated: bool,
     /// 默认翻译引擎（`trans_engines::ENGINES` 里的 id）。任何一次翻译它一定参与。
     pub trans_engine: String,
     /// **同时翻译**的引擎（v1.5.16，语义同 `ocr_multi`）：
@@ -2439,6 +2494,8 @@ impl Default for Config {
             ocr_bases: HashMap::new(),
             ocr_models: HashMap::new(),
             trans_enable: true,
+            trans_add_to_bar: true,
+            trans_bar_migrated: true,
             trans_engine: "siliconflow".to_string(),
             trans_multi: Vec::new(),
             trans_keys: HashMap::new(),
@@ -3558,7 +3615,22 @@ pub fn load_from(path: &std::path::Path) -> Config {
     let before = parsed
         .as_ref()
         .map(|c| serde_json::to_value(c).unwrap_or_default());
-    let raw = parsed.map(sanitize).unwrap_or_default();
+    let raw = parsed.map(sanitize).unwrap_or_else(|| {
+        /* v2.23.80：**全新安装也要过一遍 sanitize**。
+         *
+         * 以前这里是无文件时直接 `Config::default()`。代价很具体：
+         * `grid_pages` 的播种（`grid_seeded` → 把横条成员抄成第一页）写在
+         * `sanitize` 里，跳过它就意味着新装用户的网格页**一页都没有** ——
+         * 第一次按 Ctrl+Shift+G 打开网格、点空格子加内容时，
+         * `set_grid_items` 找不到可写的页，命令静默成功但什么都没存
+         * （用户看到的是「点了添加，格子还是空的」），要等第二次启动
+         * 才被播种修好。
+         *
+         * 只对「真的没有配置文件」走这条；文件存在但解不开（`LOCKED`）时
+         * `parsed` 也是 None，但那种情况写回会被 `main_file_usable` 拦住，
+         * 这里播种的只是内存里的默认配置，不会覆盖用户的密文。 */
+        sanitize(Config::default())
+    });
     /* 老用户的配置里可能早就设了自定义备份目录，但 sidecar 是这一版才加的。
      * 正常启动（配置可读）时补写一次；主文件解不开时**绝不能**写 —— 那时
      * raw 是默认配置，会把仅存的 backup-dir 提示抹掉。 */
@@ -5392,6 +5464,22 @@ mod tests {
         }
     }
 
+    /// v2.23.80：全新安装也要播种网格页。
+    ///
+    /// 不加这一条时，新装的第一次启动 `load_from` 直接返回 `Config::default()`
+    /// （不过 sanitize），`grid_pages` 是空数组 —— 用户按 Ctrl+Shift+G 打开网格、
+    /// 点空格子添加内容，`set_grid_items` 找不到可写的页，命令静默成功但什么都没存，
+    /// 格子还是空的。第二次启动被 sanitize 播种后才恢复正常。
+    #[test]
+    fn fresh_config_gets_a_seeded_grid_page() {
+        let _serial = big_lock();
+        let t = TempDir::new("freshgrid");
+        let c = load_from(&t.file());
+        assert!(!c.grid_pages.is_empty(), "全新配置也要有第一页");
+        assert!(!c.grid_list.is_empty(), "第一页应从默认横条播种");
+        assert!(c.grid_seeded, "播种标记要落上，避免下次再播一遍");
+    }
+
     /// 把 `data_dir()` 临时指到某个目录（v1.4.0 起走 `QS_DATA_DIR`）。
     ///
     /// 为什么不再用 `APPDATA`：便携模式的数据目录在 exe 旁边，`data_dir()`
@@ -6436,6 +6524,57 @@ mod sanitize_tests {
         assert_eq!(c.grid_default_page, "p1", "默认页失效要回落到第一页");
         assert_eq!(c.grid_app_pages.len(), 1, "悬空/空名/重复绑定都要清掉");
         assert_eq!(c.grid_app_pages[0].app, "a.exe");
+    }
+
+    /// v2.23.80：`@trans` 的成员资格必须听用户的 —— 移出之后重启不能又被补回。    ///
+    /// 用户原话：「我在设置引擎，横条上的引擎这一部分，我把它移出之后，软件
+    /// 重启它竟然又会出现在横条上。」根因是 `ensure_trans_bar_sentinel` 只看
+    /// `trans_enable`，每次启动都往 `bar_list` 里补 `@trans`。`@img` 早就有
+    /// `img_add_to_bar` 挡着这一手，`@trans` 当年漏了。
+    #[test]
+    fn trans_bar_sentinel_respects_user_removal() {
+        let _serial = big_lock();
+        let mut c = Config::default();
+        c.bar_list.retain(|n| n != BAR_TRANS);
+
+        // 用户移出过 → 不许补
+        c.trans_add_to_bar = false;
+        assert!(!ensure_trans_bar_sentinel(&mut c), "移出过就不该补");
+        assert!(!c.bar_list.iter().any(|n| n == BAR_TRANS));
+
+        // 没移出过（老配置 / 新装）→ 照旧补一根
+        c.trans_add_to_bar = true;
+        assert!(ensure_trans_bar_sentinel(&mut c), "没移出过就该补");
+        assert!(c.bar_list.iter().any(|n| n == BAR_TRANS));
+
+        // 总开关关着时，怎么都不补
+        let mut off = Config::default();
+        off.bar_list.retain(|n| n != BAR_TRANS);
+        off.trans_enable = false;
+        off.trans_add_to_bar = true;
+        assert!(!ensure_trans_bar_sentinel(&mut off));
+    }
+
+    /// v2.23.80：老配置里没有 `transAddToBar` 这个键，得靠一次性推断补上
+    /// 「用户早就移出过」这件事 —— 而且**只跑一次**，之后完全听用户的。
+    ///
+    /// 不这么做的话，升级后的第一次启动会把用户之前移出的翻译按钮又塞回去，
+    /// 用户看到的仍然是「重启又出现了」。
+    #[test]
+    fn infer_trans_bar_preference_runs_once() {
+        let _serial = big_lock();
+        let mut c = Config::default();
+        c.trans_bar_migrated = false;
+        c.bar_list.retain(|n| n != BAR_TRANS);
+
+        assert!(infer_trans_bar_preference(&mut c));
+        assert!(!c.trans_add_to_bar, "老配置里没有 @trans = 用户移出过");
+        assert!(c.trans_bar_migrated);
+
+        // 用户手动加回来之后再跑迁移，不能把偏好改回去
+        c.trans_add_to_bar = true;
+        assert!(!infer_trans_bar_preference(&mut c));
+        assert!(c.trans_add_to_bar, "迁移只跑一次，之后完全听用户的");
     }
 
     #[test]

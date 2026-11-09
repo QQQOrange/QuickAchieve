@@ -15,6 +15,7 @@ use windows::Win32::System::DataExchange::{
 use windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
 };
+use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 use windows::Win32::Globalization::{
     MultiByteToWideChar, CP_ACP, CP_OEMCP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS,
 };
@@ -962,6 +963,64 @@ pub fn read_text_any_within(tries: u32) -> Option<String> {
         return None;
     }
     let out = read_text_open();
+    unsafe {
+        let _ = CloseClipboard();
+    }
+    out
+}
+
+/* ---------------- 剪贴板里的文件 / 文件夹（CF_HDROP） ---------------- */
+
+/// 资源管理器里 Ctrl+C 复制文件 / 文件夹时放的格式。
+///
+/// 它存的不是 HGLOBAL 文本，而是一个 `DROPFILES` 结构 + 若干 NUL 结尾的
+/// 宽字符串。直接按字节读会得到一堆乱码，必须走 `DragQueryFileW`。
+pub const CF_HDROP: u32 = 15;
+
+/// 剪贴板里被复制的文件 / 文件夹列表（**剪贴板必须已经打开**）。
+///
+/// 返回的是用户 Ctrl+C 的那一批（多选时按资源管理器给的顺序）。
+pub fn read_files_open() -> Vec<String> {
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(h) = GetClipboardData(CF_HDROP) else {
+            return out;
+        };
+        if h.is_invalid() {
+            return out;
+        }
+        let drop = HDROP(h.0);
+        // `ifile = 0xFFFF_FFFF` 是 Win32 的约定：返回"一共有几个文件"
+        let n = DragQueryFileW(drop, 0xFFFF_FFFF, None);
+        for i in 0..n {
+            let len = DragQueryFileW(drop, i, None);
+            if len == 0 {
+                continue;
+            }
+            let mut buf = vec![0u16; len as usize + 1];
+            let got = DragQueryFileW(drop, i, Some(buf.as_mut_slice()));
+            if got == 0 {
+                continue;
+            }
+            buf.truncate(got as usize);
+            let p = String::from_utf16_lossy(&buf);
+            let p = p.trim().to_string();
+            if !p.is_empty() {
+                out.push(p);
+            }
+        }
+    }
+    out
+}
+
+/// `read_files_open` 的自带开关版本（自己开/关剪贴板）。
+///
+/// 和文本读取一样只做**短重试**：这个动作是用户点一下才发生一次，不是轮询。
+pub fn read_files_any(tries: u32) -> Vec<String> {
+    if !open_clipboard_within(tries) {
+        return Vec::new();
+    }
+    let out = read_files_open();
     unsafe {
         let _ = CloseClipboard();
     }

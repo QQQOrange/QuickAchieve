@@ -3748,6 +3748,10 @@ const GRID_SENTINELS = {
     /* v2.12.2：二维码生成。点击走 qrgen_show（拿当前选区直接弹一个带二维码的小窗），
      * 和解析那格完全两条路 —— 一格"读码"、一格"造码"。 */
     '@qrmake': { label: '二维码生成' },
+    /* v2.23.80：智能直达 · 最近剪贴板。点一下把剪贴板里最新那条内容
+     * **按类型打开**（网址 → 浏览器；文件夹 → 资源管理器；文件 → 默认程序）；
+     * 不是这三类就明确提示，不假装成功。 */
+    '@clipgo': { label: '最近剪贴板' },
 };
 
 /** 三类「模型」：文字识别 / 识图 / 翻译各自的引擎清单。
@@ -3941,6 +3945,18 @@ function runGridFunc(key) {
             '翻译', { ready: 'self' });
         return;
     }
+    if (base === '@clipgo') {
+        /* v2.23.80：智能直达 · 最近剪贴板。
+         *
+         * 后端 `open_clipboard_target` 自己按「CF_HDROP 文件 → 存在的路径 →
+         * 网址」的顺序判定；三类都不是就回 Err，这里会把那句
+         * 「不是 文件、文件夹、网址，无法打开」显示出来，并**保留网格**
+         * 让用户重试（`gridOpenThenClose` 失败分支的既有行为）。 */
+        gridOpenThenClose(
+            () => invoke('open_clipboard_target'),
+            '最近剪贴板', { ready: 'foreign' });
+        return;
+    }
     if (base === '@wrap') {
         /* v2.11.0：绑定到某一组符号的格子（`@wrap:title`）点下去**直接套用**，
          * 和 @txt:<op> 一致；没绑定的整颗 `@wrap` 才弹 12 组菜单。
@@ -4096,8 +4112,22 @@ function gridPickSections() {
         out.push({ key: 'txt', title: '文本处理', desc: '就地改写选中的文字', items: txtItems });
     }
 
-    /* ② 智能直达（备注优先，和横条/格子上的叫法一致） */
-    const goItems = [];
+    /* ② 智能直达
+     *
+     * v2.23.80：**这一组永远出现**，而且第一项固定是「最近剪贴板」。
+     * 用户口径：「在智能直达这一框里面也要有一个选项，我能够添加到网格页里面 ——
+     * 点击之后，它就会自动把最近的一条剪切板记录以相应的方式来打开」。
+     *
+     * 以前这里只在用户**已经建过**智能直达入口时才出现整组；新用户打开
+     * 「添加到这一格」根本看不到「智能直达」四个字，自然也不会知道有这件功能。 */
+    const goItems = [{
+        name: '@clipgo',
+        label: '最近剪贴板 · 点开最新的复制内容',
+        desc: '自动判断是网址 / 文件夹 / 文件，不是就提示',
+        added: inGrid.has('@clipgo'),
+        node: () => (window.qsClipGoIconNode ? window.qsClipGoIconNode()
+            : document.createTextNode('•')),
+    }];
     for (const it of ((window.CONF && window.CONF.shortcuts) || [])) {
         if (!it || !it.id) continue;
         const sentinel = window.QS_GO_PREFIX + it.id;
@@ -4108,7 +4138,7 @@ function gridPickSections() {
             node: () => (window.qsGoIconNode ? window.qsGoIconNode(sentinel) : document.createTextNode('•')),
         });
     }
-    if (goItems.length) out.push({ key: 'go', title: '智能直达', desc: '网址、软件与自定义目标', items: goItems });
+    out.push({ key: 'go', title: '智能直达', desc: '网址、软件与自定义目标', items: goItems });
 
     /* ③ 收藏夹：一格 = 一个目录（`@fav:<id>` 哨兵），子目录用缩进表示层级 */
     const favItems = [];

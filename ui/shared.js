@@ -193,7 +193,7 @@ window.qsGoLabel = function (it) {
  *    · 列表里出现 `@qr` / `@qrmake` 这种内部代号（用户报的"qr qrmake"）；
  *    · 网格条目行 / 实时预览里画出一个字母徽标「Q」而不是那颗二维码图标。
  *  收成一份之后，上述三处都改成问 `qsIsFuncSentinel()`，不会再各写一遍。 */
-window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@any', '@wrap', '@txt', '@qr', '@qrmake', '@favquick'];
+window.QS_FUNC_BASES = ['@ocr', '@trans', '@img', '@any', '@wrap', '@txt', '@qr', '@qrmake', '@favquick', '@clipgo'];
 
 /** 这一项是不是内置功能（`@ocr`、`@wrap`、`@qr`、绑定模型的 `@ocr:<id>` …）。
  *  `@go:` / `@app:` / `@fav:` 不在这里 —— 它们是"用户数据"，各有各的图标与名字来源。 */
@@ -329,6 +329,10 @@ window.qsDisplayName = function (name) {
          * （同 @wrap 早年那个坑）。 */
         qr: '二维码',
         qrmake: '二维码生成',
+        /* v2.23.80：智能直达 · 最近剪贴板。点一下把剪贴板里最新那条内容
+         * 按类型打开（网址 → 浏览器；文件夹 → 资源管理器；文件 → 默认程序），
+         * 不是这三类就明确提示，绝不假装成功。 */
+        clipgo: '最近剪贴板',
         '|': '分隔线',
     };
     if (Object.prototype.hasOwnProperty.call(FIXED, key)) return qsI18nText(FIXED[key]);
@@ -562,6 +566,9 @@ window.qsFuncIcon = function (name) {
         sp.textContent = '★';
         sp.setAttribute('data-i18n-skip', '');
         return sp;
+    }
+    if (name === window.QS_CLIPGO && window.qsClipGoIconNode) {
+        return window.qsClipGoIconNode();
     }
     if (name === window.QS_ANY && window.qsAnyIconNode) {
         return window.qsAnyIconNode();
@@ -825,6 +832,61 @@ window.qsAnyIconNode = function () {
         + '</g>'
         + '<g stroke="currentColor" stroke-width="2" stroke-linecap="round">'
         + '<path d="M9 11h6"/><path d="M9 14.2h3.6"/>'
+        + '</g></svg>';
+    return box;
+};
+
+/* ------------------------------------------------------------------ */
+/* 智能直达 · 最近剪贴板（@clipgo）的图标                              */
+/* ------------------------------------------------------------------ */
+
+/** 「最近剪贴板」这一格的哨兵名。
+ *
+ *  Rust 侧没有同名常量：它只出现在网格内容（`grid_list` / `grid_pages`）里，
+ *  不进横条、也没有后端分支 —— 点击由前端发 `open_clipboard_target`。
+ *  以后要把它升成横条成员时，记得同步 config::is_bar_sentinel。 */
+window.QS_CLIPGO = '@clipgo';
+
+/**
+ * 最近剪贴板：**一块剪贴板 + 右上角一个"打开"箭头**。
+ *
+ * 为什么和 @any（框选四角）一样画线稿 + currentColor：横条/网格/设置/预览
+ * 四个页面各引各的 CSS，内联 SVG + currentColor 是唯一能保证"亮暗主题都清楚、
+ * 又不用在四处各加一条规则"的画法。
+ *
+ * 优先级：用户换过的图（`overrideIcons['@clipgo']`）→ 内置线稿。
+ */
+window.qsClipGoIconNode = function () {
+    const conf = window.CONF || {};
+    const custom = conf.overrideIcons ? conf.overrideIcons[window.QS_CLIPGO] : null;
+    if (custom) {
+        const img = document.createElement('img');
+        img.src = custom;
+        img.alt = '';
+        img.draggable = false;
+        if (window.qsApplyOpticalScale) {
+            window.qsApplyOpticalScale(img, conf.unifyIcons !== false);
+        }
+        return img;
+    }
+    const box = document.createElement('span');
+    box.className = 'qs-clipgo-tag';
+    box.setAttribute('data-i18n-skip', '');
+    box.style.cssText = 'display:inline-flex;width:100%;height:100%;min-width:14px;min-height:14px;'
+        + 'align-items:center;justify-content:center;';
+    box.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"'
+        + ' style="display:block;width:100%;height:100%">'
+        // 剪贴板本体（上方夹子 + 板身）
+        + '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+        + '<path d="M8.5 5.5H7.2A1.7 1.7 0 0 0 5.5 7.2v10.6a1.7 1.7 0 0 0 1.7 1.7h6.1"/>'
+        + '<path d="M13.5 5.5h1.3a1.7 1.7 0 0 1 1.7 1.7v4.1"/>'
+        + '<path d="M9.4 5.5h3.2a1.3 1.3 0 0 1 1.3 1.3v.6a1.3 1.3 0 0 1-1.3 1.3H9.4A1.3 1.3 0 0 1 8.1 7.4v-.6a1.3 1.3 0 0 1 1.3-1.3z"/>'
+        + '</g>'
+        // 右下角"打开"箭头：从板子里指向外面
+        + '<g stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        + '<path d="M13 18.5h6.5V12"/>'
+        + '<path d="M19.2 12.3 13.4 18.1"/>'
         + '</g></svg>';
     return box;
 };
