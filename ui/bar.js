@@ -3576,6 +3576,25 @@ btnMore.addEventListener('click', (e) => {
 barEl.addEventListener('mouseenter', () => { barHovered = true; syncDim(); if (idleTimer) armIdle(); });
 barEl.addEventListener('mouseleave', () => { barHovered = false; syncDim(); });
 
+/* v2.23.82：**指针在横条上移动也算操作**。
+ *
+ * v2.23.79 把 `pointermove` 从"重置无操作计时"里拿掉了，本意是"鼠标只是从
+ * 横条旁边划过去不算用它"—— 但把「指针压在横条上找按钮」也一起误伤了：
+ * 用户指着横条来回移动、还没点下去，5 秒一到照样收走。这正是用户报的
+ * 「鼠标移动一定范围内，横条自动消失」。
+ *
+ * 这里只在指针**确实在横条上**时重置；全局 pointermove 仍然不算（保留
+ * v2.23.79 的意图）。150ms 节流：pointermove 一帧能来好几次，没必要每次
+ * 都清/建定时器。 */
+let idleMoveAt = 0;
+barEl.addEventListener('pointermove', () => {
+    if (!idleTimer) return;
+    const now = Date.now();
+    if (now - idleMoveAt < 150) return;
+    idleMoveAt = now;
+    armIdle();
+}, { passive: true });
+
 function togglePanel(force) {
     const want = force === undefined ? panelEl.hidden : force;
     panelEl.hidden = !want;

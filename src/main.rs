@@ -6059,10 +6059,11 @@ fn spawn_bar_away_guard() {
         .spawn(move || {
             /* 连续离开多久才收。以前是"这一帧离得远就收"—— 用户刚划完字、
              * 手一抬甩到几百像素外，横条 600ms 宽限期一到就消失，看上去
-             * 和"根本没弹"一样。现在要求**连续**超过 0.9s 才收（600ms 首屏
-             * 宽限之后）；中途回来一次就清零。补字成功、横条内容变化也会
-             * 重置计时（`BAR_ACTIVITY`）。 */
-            const AWAY_HOLD_MS: u64 = 900;
+             * 和"根本没弹"一样。v2.23.79 把"连续离开"加到 0.9s；v2.23.82
+             * 收到 0.6s：实测 0.9s 在"故意把鼠标移开"时已经明显偏慢，
+             * 用户会以为这条逻辑没生效。中途回来一次仍然清零；补字成功、
+             * 横条内容变化也会重置计时（`BAR_ACTIVITY`）。 */
+            const AWAY_HOLD_MS: u64 = 600;
             let mut away_since: Option<std::time::Instant> = None;
             let mut last_gen = 0usize;
             let mut last_activity = 0usize;
@@ -6125,8 +6126,8 @@ fn spawn_bar_away_guard() {
             }
             /* ⚠ 两道保护，都是为了躲开"窗口还在屏外、坐标是上一轮的"那个空档。
              * 没有它们，横条会在弹出的同一帧里被判成"指针离它 29028px"收掉。 */
-            // ① 刚显示的头 600ms 不判断（等 SetWindowPos 落地）
-            const GRACE_MS: u64 = 600;
+            // ① 刚显示的头 400ms 不判断（等 SetWindowPos 落地）
+            const GRACE_MS: u64 = 400;
             let since = mono_ms().saturating_sub(BAR_SHOWN_MS.load(std::sync::atomic::Ordering::SeqCst));
             if since < GRACE_MS {
                 continue;
@@ -6138,6 +6139,15 @@ fn spawn_bar_away_guard() {
             if offscreen {
                 win::log("bar-away: 读到屏外坐标（窗口还没挪到位）—— 本次不收起");
                 continue;
+            }
+            /* 第一次越过阈值：留一行日志，排查"为什么没收"时能直接看出
+             * 是没开始计时、还是被别的东西一直重置。 */
+            if away_since.is_none() {
+                win::log(&format!(
+                    "bar-away: 指针离横条 {:.0}px（阈值 {away}px）—— 开始计时，连续 {}ms 后收起",
+                    (d2 as f64).sqrt(),
+                    AWAY_HOLD_MS
+                ));
             }
             let started = *away_since.get_or_insert_with(std::time::Instant::now);
             if started.elapsed() < Duration::from_millis(AWAY_HOLD_MS) {
