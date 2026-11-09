@@ -1063,10 +1063,13 @@ function syncBarBg() {
      *     里面有文字和按钮，透底会看不清。
      * 图标不受影响：它们的浓淡仍由 --qs-alpha（「横条不透明度」）管。 */
     const frost = Math.max(0, Math.min(32, Number(CONF && CONF.barBlur) || 0)) > 0;
-    const bgPct = frost
-        ? Math.max(0, Math.min(100, Number(CONF && CONF.barBgAlpha) || 55))
-        : 100;
-    const barA = a * (bgPct / 100);
+    /* v2.23.84：真磨砂改由 glass.js 抓桌面 + 着色器模糊，横条自己不再叠
+     * 半透明底板（叠了就是"磨砂上再蒙一层"，桌面反而更清楚）。
+     *   · 画布就绪：底板透明，磨砂层的浓淡由 shader 的 u_bgMix 管；
+     *   · WebGL2 不可用：底板保持实色（宁可看不到桌面，也不露出**清晰**的
+     *     桌面 —— 那正是用户报的「磨砂跟没开一样」）。 */
+    const canvasOn = !!(frost && window.QSGlass && window.QSGlass.ready);
+    const barA = canvasOn ? 0 : a;
     stage.style.setProperty('--qs-bar-fill',
         'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + barA.toFixed(3) + ')');
 }

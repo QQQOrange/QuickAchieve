@@ -197,7 +197,7 @@ window.QS_I18N.add({
     "100 % · 横条整体浓淡（图标跟着一起淡），100% = 实色": "100 % · Overall opacity (icons fade with the bar); 100% = solid",
     "悬停前透明度": "Idle opacity",
     "底板透明度": "Background opacity",
-    "% · 只改横条底板（非图标部分）；图标浓淡仍由「横条不透明度」控制 · 100 = 实色 · 0 = 完全透明": "% · Only the bar backing (not the icons); icon strength still follows “Bar opacity” · 100 = solid · 0 = fully clear",
+    "% · 只改横条底板（非图标部分）；图标浓淡仍由「横条不透明度」控制 · 100 = 完全透出磨砂背景 · 0 = 实色底板": "% · Only the bar backing (not the icons); icon strength still follows “Bar opacity” · 100 = full frosted backdrop · 0 = solid backing",
     "45 % · 鼠标没移上去时的淡度；100% = 关掉这套行为": "45 % · Opacity while the pointer is away; 100% turns this behaviour off",
     "界面动画": "Animations",
     "关闭后横条不再有浮现动画": "Turning this off removes the bar's fade-in animation",

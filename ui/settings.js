@@ -3786,8 +3786,10 @@ function renderPreview() {
          * 下吃 barBgAlpha，其它样式 100%）。 */
         const pvBg = blur > 0
             ? Math.max(0, Math.min(100, Number(CONF.barBgAlpha) || 55))
-            : 100;
-        box.style.setProperty('--pv-bg-alpha', pvBg + '%');
+            : 0;
+        /* v2.23.84：语义是「透明度」——100 = 完全透出磨砂背景，所以这里
+         * 卡片底色的**不透明度**要反过来（100 - 透明度）。 */
+        box.style.setProperty('--pv-bg-alpha', (100 - pvBg) + '%');
 
         /* 液态玻璃预览（#137）。
          *

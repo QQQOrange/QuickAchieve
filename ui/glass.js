@@ -138,6 +138,13 @@ var barGhost = false;
         '              u_frost, u_radius, u_magnify, u_time, u_specStrength,',
         '              u_rimStrength, u_reveal;',
         'uniform vec4 u_tint;',                 // rgb=染色, a=强度
+        // v2.23.84：磨砂样式复用这条玻璃管线时，底板不再是"透明层"——
+        // 而是把桌面抓下来、糊掉、再按 u_bgMix 从主题底色过渡过去。
+        // u_bgMix=1 → 纯磨砂背景；0 → 纯主题底色（不透明）。这样既不会
+        // 透出**清晰的**桌面（CSS backdrop-filter 做不到桌面模糊），
+        // 又能让「底板透明度」滑块真的有用。
+        'uniform vec3 u_base;',
+        'uniform float u_bgMix;',
         'uniform bool u_specular;',
         'uniform vec2 u_pointer;',              // 归一化指针（左上原点），(-1,-1)=不在条上
 
@@ -202,11 +209,15 @@ var barGhost = false;
         '  vec4 baseCol=sampleSource(mapped);',
         '  vec2 texel=1.0/u_textureResolution; vec2 chroma=offset*u_aberration;',
         '  vec4 refrCol;',
-        '  if(u_frost>0.0){',                      // 磨砂：16-tap 随机模糊
+        '  if(u_frost>0.0){',                      // 磨砂：黄金角螺旋采样（v2.23.84）
+        // 原来是 16 个**随机**采样：半径大时点分布太稀，画面上会出现一片
+        // 细密噪点（用户侧看就是"磨砂像雪花屏"）。改成固定的黄金角螺旋，
+        // 同半径下覆盖更均匀，观感是平滑的雾面而不是噪点；采样数提到 20。
         '    vec4 sum=vec4(0.0); float radius=u_frost*3.0;',
-        '    for(int i=0;i<16;i++){',
-        '      float ang=random(v_uv+float(i))*6.283185;',
-        '      float dist=sqrt(random(v_uv-float(i)))*radius;',
+        '    for(int i=0;i<20;i++){',
+        '      float fi=float(i)+0.5;',
+        '      float ang=fi*2.39996323;',
+        '      float dist=sqrt(fi/20.0)*radius;',
         '      vec2 foff=vec2(cos(ang),sin(ang))*texel*dist;',
         '      if(u_aberration>0.0){',
         '        sum.r+=sampleSource(sampleUV+foff-chroma).r;',
@@ -215,8 +226,8 @@ var barGhost = false;
         '        sum.a+=sampleSource(sampleUV+foff).a;',
         '      } else sum+=sampleSource(sampleUV+foff);',
         '    }',
-        '    if(u_aberration>0.0) refrCol=vec4(sum.r/16.0,sum.g/16.0,sum.b/16.0,1.0);',
-        '    else refrCol=sum/16.0;',
+        '    if(u_aberration>0.0) refrCol=vec4(sum.r/20.0,sum.g/20.0,sum.b/20.0,1.0);',
+        '    else refrCol=sum/20.0;',
         '  } else {',                              // 清晰：5-tap 去锯齿 + 色差
         '    refrCol=sampleSource(sampleUV)',
         '      +sampleSource(sampleUV+vec2(texel.x,0.0))+sampleSource(sampleUV-vec2(texel.x,0.0))',
@@ -247,6 +258,10 @@ var barGhost = false;
         '  float ny=abs(p_px.y/b_px.y);',
         '  float vw_=smoothstep(0.30,0.90,ny);',
         '  finalCol.rgb+=pow(edge,3.0)*u_rimStrength*(0.30+0.70*vw_);',
+
+        // v2.23.84：磨砂模式的底色混合（玻璃模式 u_bgMix=1，等于原样）。
+        '  finalCol.rgb = mix(u_base, finalCol.rgb, u_bgMix);',
+        '  finalCol.a = inShape;',
 
         '  finalCol*=u_reveal;',
         '  finalCol.rgb*=inShape; finalCol.a=inShape;',
@@ -295,7 +310,7 @@ var barGhost = false;
         ['u_tex', 'u_resolution', 'u_boxSize', 'u_textureResolution', 'u_subpixel', 'u_bounds',
             'u_refraction', 'u_aberration', 'u_bevelDepth', 'u_bevelWidth', 'u_frost', 'u_radius',
             'u_magnify', 'u_time', 'u_specStrength', 'u_rimStrength', 'u_reveal', 'u_tint',
-            'u_specular', 'u_pointer'].forEach(function (n) {
+            'u_specular', 'u_pointer', 'u_base', 'u_bgMix'].forEach(function (n) {
                 uni[n] = gl.getUniformLocation(prog, n);
             });
         // 全屏四边形（两个三角形）
@@ -380,8 +395,18 @@ var barGhost = false;
         return [r.left / vw, r.top / vh, r.width / vw, r.height / vh];
     }
 
+    /** v2.23.84：磨砂样式（barGlass=false + barBlur>0）也走这条玻璃管线。
+     *
+     * 为什么：CSS backdrop-filter 在透明悬浮窗里取样的是「页面自己的背后」
+     * （空的），根本糊不到桌面 —— 用户看到的"磨砂强度调了没区别、下面
+     * 内容依然清晰"就是它。桌面背景必须由 Rust 抓，玻璃管线已经全套做好
+     * 了（抓屏 / 隐身 / 上传 / 绘制），磨砂只需要换一组 uniform。 */
+    function isFrost(c) {
+        return !!c && c.barGlass === false && (Number(c.barBlur) || 0) > 0;
+    }
+
     function glassOn(c) {
-        return !!c && c.barGlass !== false;
+        return !!c && (c.barGlass !== false || isFrost(c));
     }
 
     /** 明暗判定：复用横条自己的 qs-dark（WCAG 那套，applyThemePayload 挂的）。 */
@@ -434,27 +459,48 @@ var barGhost = false;
         }
         syncSize();
         var c = conf || {};
+        var frostMode = isFrost(c);
         gl.uniform2f(uni.u_textureResolution, texW, texH);
         gl.uniform2f(uni.u_subpixel, 0, 0);
-        gl.uniform1f(uni.u_refraction, (Number(c.barGlassRefraction) || 0) / 1000);
-        gl.uniform1f(uni.u_aberration, (Number(c.barGlassAberration) || 0) / 100);
+        // v2.23.84：磨砂模式只留"模糊"，折射 / 色差 / 倒角 / 高光全部归零，
+        // 观感就是一块真正的磨砂玻璃；玻璃模式仍是原来那套。
+        gl.uniform1f(uni.u_refraction,
+            frostMode ? 0 : (Number(c.barGlassRefraction) || 0) / 1000);
+        gl.uniform1f(uni.u_aberration,
+            frostMode ? 0 : (Number(c.barGlassAberration) || 0) / 100);
         // 倒角深度：和折射强度一样是 ‰（设置页两个滑块都标 ‰，量程 0..30）——
         // 曾经写成 /100，默认 12 被放大 10 倍成 0.12 UV（≈92px）：极缘处
         // 位移直接越过纹理边界被 oob 整段裁掉（边缘一条死区），而色差
         // chroma=offset*aberration 不吃那套裁剪，于是同一位置爆出 75px 的
         // 红蓝分离 —— 又假又脏。改回 ‰ 后默认 0.012 UV（≈9px），边缘是一条
         // 平滑衰减的厚玻璃折射。
-        gl.uniform1f(uni.u_bevelDepth, (Number(c.barGlassBevel) || 0) / 1000);
+        gl.uniform1f(uni.u_bevelDepth,
+            frostMode ? 0 : (Number(c.barGlassBevel) || 0) / 1000);
         gl.uniform1f(uni.u_bevelWidth, BEVEL_W);           // 逐块再按矮边校正，见 bevelWidthFor
-        gl.uniform1f(uni.u_frost, Number(c.barGlassFrost) || 0);
-        gl.uniform1f(uni.u_magnify, 1.05);
-        var spec = Math.max(0, (Number(c.barGlassSpec) === undefined ? 100 : c.barGlassSpec)) / 100;
+        /* 磨砂半径直接吃「磨砂强度」滑块（走 qsBlurPx，和 CSS / 设置页标签
+         * 同一个口径）；玻璃模式仍吃「玻璃磨砂」。 */
+        var frostPx = frostMode
+            ? (window.qsBlurPx ? window.qsBlurPx(Number(c.barBlur) || 0)
+                : Math.min(24, (Number(c.barBlur) || 0) * 0.75))
+            : (Number(c.barGlassFrost) || 0);
+        gl.uniform1f(uni.u_frost, frostPx);
+        gl.uniform1f(uni.u_magnify, frostMode ? 1.0 : 1.05);
+        var spec = frostMode ? 0
+            : Math.max(0, (Number(c.barGlassSpec) === undefined ? 100 : c.barGlassSpec)) / 100;
         gl.uniform1f(uni.u_specStrength, spec);
         gl.uniform1f(uni.u_rimStrength, spec * 0.09);
         gl.uniform1f(uni.u_reveal, reveal);
-        var t = tintOf(c);
+        var t = frostMode ? [1, 1, 1, 0] : tintOf(c);
         gl.uniform4f(uni.u_tint, t[0], t[1], t[2], t[3]);
         gl.uniform1i(uni.u_specular, spec > 0.01 ? 1 : 0);
+        // v2.23.84：「底板透明度」= 磨砂背景的浓度。100 → 纯磨砂桌面，
+        // 0 → 纯主题底色；中间是两者过渡（不会露出清晰的桌面）。
+        var bgMix = frostMode
+            ? Math.max(0, Math.min(100, Number(c.barBgAlpha) || 0)) / 100
+            : 1;
+        gl.uniform1f(uni.u_bgMix, bgMix);
+        var base = isDark() ? [0.118, 0.122, 0.141] : [1, 1, 1];
+        gl.uniform3f(uni.u_base, base[0], base[1], base[2]);
         stats.draws++;
 
         /* 只画**横条胶囊**这一块。
@@ -600,7 +646,11 @@ var barGhost = false;
          *   · 实时模式 → **只有抓到新纹理时才画**（`dirty`）。
          *     抓屏是异步的，多数帧并没有新纹理；每帧都画一遍相同的纹理
          *     就是 r84 里那 26% CPU 的来源。 */
-        var want = reveal < 1 || pointer[0] >= 0 || (liveOn && dirty);
+        /* v2.23.84：`dirty` 必须**单独**参与判据，不能只在实时模式下才算。
+         * 否则非实时（默认）时，主题切换 / 配置广播里的 kick() 只是置了
+         * dirty，这一帧不画、之后也没有循环 —— 用户拖「磨砂强度」或
+         * 「底板透明度」时画布永远停在第一帧，看起来就是"调了没反应"。 */
+        var want = reveal < 1 || pointer[0] >= 0 || dirty;
         if (want) {
             draw(now);
             dirty = false;
@@ -746,6 +796,10 @@ var barGhost = false;
             // 实时模式的起停跟着配置走（配置可能在横条开着时被改）
             if (on && this.ready && conf.barGlassLive === true) this.startLive();
             else this.stopLive();
+            /* v2.23.84：配置广播不只会开关玻璃，还会改磨砂半径 / 底板浓度。
+             * 不重画的话，用户拖滑块时画布停在上一帧 —— 看起来又是
+             * 「调了跟没调一样」。这里补一帧（只画一次，不是常驻循环）。 */
+            if (on && this.ready && shown) kick();
             return on && this.ready;
         },
 
@@ -918,6 +972,11 @@ var barGhost = false;
         debugInfo: function () {
             return {
                 ready: this.ready, on: glassOn(conf), shown: shown,
+                /* v2.23.84：探针要看得出当前走的是哪条路线、以及磨砂参数
+                 * 到底有没有跟着配置走（曾经"画布停在第一帧"就是靠这个查出来的）。 */
+                mode: isFrost(conf) ? 'frost' : (glassOn(conf) ? 'glass' : 'off'),
+                blur: conf && conf.barBlur,
+                bgAlpha: conf && conf.barBgAlpha,
                 texW: texW, texH: texH, bounds: boundsOf(),
                 params: {
                     refraction: conf && conf.barGlassRefraction,
