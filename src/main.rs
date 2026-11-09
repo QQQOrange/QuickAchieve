@@ -4310,18 +4310,18 @@ fn bar_auto_state() -> serde_json::Value {
     let rect = bar_rects();
     let c = win::cursor_pos();
     let (dist, away, capture, drag, activity, since) = match rect {
-        Some((outer, _)) => {
-            let dx = if c.x < outer.0 {
-                (outer.0 - c.x) as i64
-            } else if c.x > outer.2 {
-                (c.x - outer.2) as i64
+        Some((_outer, inner)) => {
+            let dx = if c.x < inner.0 {
+                (inner.0 - c.x) as i64
+            } else if c.x > inner.2 {
+                (c.x - inner.2) as i64
             } else {
                 0
             };
-            let dy = if c.y < outer.1 {
-                (outer.1 - c.y) as i64
-            } else if c.y > outer.3 {
-                (c.y - outer.3) as i64
+            let dy = if c.y < inner.1 {
+                (inner.1 - c.y) as i64
+            } else if c.y > inner.3 {
+                (c.y - inner.3) as i64
             } else {
                 0
             };
@@ -6074,7 +6074,14 @@ fn spawn_bar_away_guard() {
             std::thread::sleep(Duration::from_millis(
                 if shown { TICK_SHOWN_MS } else { TICK_HIDDEN_MS },
             ));
-            let Some((outer, _)) = bar_rects() else {
+            /* v2.23.86：距离要按**看得见的横条**（inner）算，不能按窗口
+             * 外框（outer）。窗口四周有一圈透明的投影/留白：实测
+             * 「win 298x162 / inner 202x66」—— 外框比胶囊每边大 48px。
+             * 用户把阈值设成 40px 时，按外框算等于要离开胶囊 88px 才算
+             * "移远"，身边那一段怎么挪都不会收 —— 用户报的
+             * 「鼠标移远就自动收起没有生效」就是这条。
+             * 面板展开时 inner 会跟着包含面板，指针在面板里仍然不算走开。 */
+            let Some((outer, inner)) = bar_rects() else {
                 away_since = None;
                 continue;
             };
@@ -6106,18 +6113,18 @@ fn spawn_bar_away_guard() {
                 continue;   // 用户把这条关了
             }
             let c = win::cursor_pos();
-            // 指针到矩形的最短距离（在矩形内 / 贴边 = 0）
-            let dx = if c.x < outer.0 {
-                (outer.0 - c.x) as i64
-            } else if c.x > outer.2 {
-                (c.x - outer.2) as i64
+            // 指针到**可见横条**的最短距离（在矩形内 / 贴边 = 0）
+            let dx = if c.x < inner.0 {
+                (inner.0 - c.x) as i64
+            } else if c.x > inner.2 {
+                (c.x - inner.2) as i64
             } else {
                 0
             };
-            let dy = if c.y < outer.1 {
-                (outer.1 - c.y) as i64
-            } else if c.y > outer.3 {
-                (c.y - outer.3) as i64
+            let dy = if c.y < inner.1 {
+                (inner.1 - c.y) as i64
+            } else if c.y > inner.3 {
+                (c.y - inner.3) as i64
             } else {
                 0
             };
