@@ -1653,6 +1653,17 @@ pub struct Config {
     /// 磨砂必须**配上半透明背景**才看得出效果：把「不透明度」调低即可
     /// （alpha 滑块是唯一的透明度控制，前后端一个口径）。
     pub bar_blur: u32,
+    /// v2.23.83：**横条底板（非图标部分）的不透明度**（0-100，默认 55）。
+    ///
+    /// 「磨砂」的 blur 只负责"糊"，底板透不透明由这颗滑块**单独**控制：
+    ///   · 100 = 实色底板（老观感）；
+    ///   · 55（默认）= 透明磨砂，背后透出来一截；
+    ///   · 0 = 完全透明，只剩图标（深色桌面下可能看不清，自己权衡）。
+    ///
+    /// 只在磨砂样式（`bar_blur > 0`）下生效；图标本身的浓淡仍由 `alpha` 管，
+    /// 两颗滑块互不干扰 —— 这正是用户要的"非图标部分单独调"。
+    #[serde(default = "default_bar_bg_alpha")]
+    pub bar_bg_alpha: u32,
     /// 横条固定出现在鼠标指针位置。
     ///
     /// false（默认）= 贴着选中的文字弹（文字下方放不下就自动翻到上方）；
@@ -2412,6 +2423,7 @@ impl Default for Config {
             animations: true,
             shadow: false,
             bar_blur: 0,
+            bar_bg_alpha: default_bar_bg_alpha(),
             anchor_at_mouse: false,
             bar_pos: default_bar_pos(),
             favorites: Vec::new(),
@@ -3728,6 +3740,11 @@ fn default_bar_idle_sec() -> u32 {
 
 /// 鼠标离开多远自动收起的默认像素（400 —— 大约是 1080p 屏宽的 1/5，够区分
 /// "顺手挪一下"和"人已经去干别的了"）。
+/// v2.23.83：磨砂样式下横条底板的默认不透明度（55% = 透明磨砂）。
+fn default_bar_bg_alpha() -> u32 {
+    55
+}
+
 fn default_bar_away_px() -> i32 {
     400
 }
@@ -4118,6 +4135,9 @@ pub(crate) fn sanitize(mut c: Config) -> Config {
             c.bar_idle_sec
         ));
         c.bar_idle_sec = 300;
+    }
+    if c.bar_bg_alpha > 100 {
+        c.bar_bg_alpha = default_bar_bg_alpha();
     }
     if !(0..=4000).contains(&c.bar_away_px) {
         crate::win::log(&format!(
@@ -7325,6 +7345,22 @@ mod sanitize_tests {
     /// `bar_idle_sec: 99999`（永远不收）和 `bar_away_px: -20`（一动就收）都得夹回去；
     /// 而 **0 是"关掉这条"的合法值**，不能被当成非法值改回默认。
     #[test]
+    /// v2.23.83：磨砂底板透明度的默认值与归一。
+    ///
+    /// 默认 **55**（透明磨砂）；超过 100 的脏值回到默认；0 是合法的
+    /// 「完全透明」—— 用户明确要求能单独调到只剩图标。
+    #[test]
+    fn bar_bg_alpha_defaults_to_translucent_and_clamps() {
+        let _serial = big_lock();
+        assert_eq!(Config::default().bar_bg_alpha, 55);
+        let mut dirty = Config::default();
+        dirty.bar_bg_alpha = 300;
+        assert_eq!(sanitize(dirty).bar_bg_alpha, 55, "超过 100 要回到默认 55");
+        let mut zero = Config::default();
+        zero.bar_bg_alpha = 0;
+        assert_eq!(sanitize(zero).bar_bg_alpha, 0, "0 是合法的完全透明");
+    }
+
     fn sanitize_clamps_bar_auto_hide_thresholds() {
         let _serial = big_lock();
         let c = Config::default();

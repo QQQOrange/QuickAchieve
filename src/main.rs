@@ -6918,6 +6918,8 @@ fn config_view() -> Value {
         "animations": cfg.animations,
         "shadow": cfg.shadow,
         "barBlur": cfg.bar_blur,
+        // v2.23.83：磨砂样式下横条底板（非图标部分）的不透明度。
+        "barBgAlpha": cfg.bar_bg_alpha,
         "anchorAtMouse": cfg.anchor_at_mouse,
         // v1.5.4：横条弹出位置（"above" = 文字上方 / "below" = 下方）。
         // 贴鼠标弹（anchorAtMouse / Ctrl+C 触发）时本项无效。
@@ -7263,6 +7265,7 @@ fn apply_view(v: &Value, cfg: &mut config::Config) {
     if let Some(x) = b("animations") { cfg.animations = x; }
     if let Some(x) = b("shadow") { cfg.shadow = x; }
     if let Some(x) = n("barBlur") { cfg.bar_blur = x.clamp(0, 32) as u32; }
+    if let Some(x) = n("barBgAlpha") { cfg.bar_bg_alpha = x.clamp(0, 100) as u32; }
     if let Some(x) = b("anchorAtMouse") { cfg.anchor_at_mouse = x; }
     if let Some(x) = n("delayMs") { cfg.delay_ms = x.clamp(0, 5000) as u32; }
     /* 恢复备份：老备份里没有这三个键 → 保持当前默认值（不要硬写 0，
@@ -7904,6 +7907,11 @@ fn apply_one_setting(cfg: &mut config::Config, key: &str, value: Value) -> Resul
         "shadow" => cfg.shadow = value.as_bool().unwrap_or(false),
         "barBlur" => {
             cfg.bar_blur = value.as_u64().unwrap_or(0).clamp(0, 32) as u32;
+        }
+        /* v2.23.83：横条底板（非图标部分）的不透明度。只在磨砂样式下生效，
+         * 但阈值本身任何时候都允许改（切回磨砂时立即按新值画）。 */
+        "barBgAlpha" => {
+            cfg.bar_bg_alpha = value.as_u64().unwrap_or(55).min(100) as u32;
         }
         "anchorAtMouse" => cfg.anchor_at_mouse = value.as_bool().unwrap_or(false),
         "delayMs" => {

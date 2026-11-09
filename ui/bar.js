@@ -1053,6 +1053,22 @@ function syncBarBg() {
     const a = c.a;
     stage.style.setProperty('--qs-bg-fill',
         'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + a.toFixed(3) + ')');
+    /* v2.23.83：**磨砂样式的横条底板**单独一条变量。
+     *
+     * 用户口径：「现在的磨砂改为透明磨砂，也可以单独调整非图标部分横条的
+     * 透明度」。所以：
+     *   · 只有磨砂样式（barBlur > 0）才把底板压到 barBgAlpha（默认 55%）；
+     *   · 普通样式仍然是实色（不改变原来的观感）；
+     *   · 面板 / 右键菜单继续用 --qs-bg-fill（实色），不跟着变透 ——
+     *     里面有文字和按钮，透底会看不清。
+     * 图标不受影响：它们的浓淡仍由 --qs-alpha（「横条不透明度」）管。 */
+    const frost = Math.max(0, Math.min(32, Number(CONF && CONF.barBlur) || 0)) > 0;
+    const bgPct = frost
+        ? Math.max(0, Math.min(100, Number(CONF && CONF.barBgAlpha) || 55))
+        : 100;
+    const barA = a * (bgPct / 100);
+    stage.style.setProperty('--qs-bar-fill',
+        'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + barA.toFixed(3) + ')');
 }
 
 /** 图标大小、不透明度、内边距、底板、动画这些外观项，统一落到 CSS 变量/类上 */

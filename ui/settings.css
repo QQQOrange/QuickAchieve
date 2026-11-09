@@ -2635,6 +2635,10 @@ body.idx-on .to-top { bottom: 56px; }
         saturate(var(--pv-blur-sat, 1.4)) brightness(var(--pv-blur-bright, 1));
     backdrop-filter: blur(var(--pv-blur, 0px))
         saturate(var(--pv-blur-sat, 1.4)) brightness(var(--pv-blur-bright, 1));
+    /* v2.23.83：磨砂样式的底板按「底板透明度」压透明，预览才和真身一致。
+       用 color-mix 直接吃百分比变量；不支持时自动落回上面 .qs-preview 的
+       实色 background-color（声明失效不改变已有背景）。 */
+    background-color: color-mix(in srgb, var(--pv-card, var(--card)) var(--pv-bg-alpha, 100%), transparent);
 }
 
 /* ==========================================================================

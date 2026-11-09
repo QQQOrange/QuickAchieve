@@ -157,6 +157,7 @@ pub static GROUPS: &[Group] = &[
             "animations",
             "shadow",
             "barBlur",
+            "barBgAlpha",
             "delayMs",
             "filterMode",
             "filterList",

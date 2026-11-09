@@ -654,7 +654,10 @@ button.fav-grp-head:focus-visible {
     /* 背景色：优先用 JS 算好的 --qs-bg-fill（磨砂时是半透明版）；
        JS 没跑到就退回纯色 --qs-bg。**兜底值必须是实色** —— 万一两个都没解析出来，
        宁可显示纯色也不能透明（用户报过"莫名透明"）。 */
-    background-color: var(--qs-bg-fill, var(--qs-bg));
+    /* v2.23.83：横条底板单独一颗变量 —— 磨砂样式下它才是半透明的，
+       面板 / 右键菜单仍然吃 --qs-bg-fill（实色，保证可读）。
+       兜底链最后仍然是纯色 --qs-bg，JS 没跑到也不会莫名全透明。 */
+    background-color: var(--qs-bar-fill, var(--qs-bg-fill, var(--qs-bg)));
     /* 投影：用户开「浮层阴影」时的两层（默认全透明占位，见 .stage）。 */
     box-shadow: var(--qs-shadow);
     opacity: var(--qs-alpha, 1);

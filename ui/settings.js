@@ -3568,6 +3568,8 @@ const SLIDERS = [
     // 2026-10-23：横条自己收起来的两条阈值（0 = 不收起）
     ['s-barIdle', 's-barIdleVal', 'barIdleSec', 5],
     ['s-barAway', 's-barAwayVal', 'barAwayPx', 400],
+    // v2.23.83：磨砂样式下横条底板（非图标部分）的透明度
+    ['s-barBgAlpha', 's-barBgAlphaVal', 'barBgAlpha', 55],
     // v2.6.8：右下角内置提示的显示时长（1~15 秒，后端 apply_one_setting 再夹一次）
     ['s-notifySeconds', 's-notifySecondsVal', 'notifySeconds', 3],
     ['s-barBlur', 's-barBlurVal', 'barBlur', 0],
@@ -3582,7 +3584,7 @@ const SLIDERS = [
 ];
 
 /** 这几项改了会让横条的样子变化，拖动时预览要跟着走 */
-const PREVIEW_KEYS = new Set(['iconSize', 'barPadding', 'itemRadius', 'alpha', 'barDimAlpha', 'barBlur',
+const PREVIEW_KEYS = new Set(['iconSize', 'barPadding', 'itemRadius', 'alpha', 'barDimAlpha', 'barBlur', 'barBgAlpha',
     // 液态玻璃六个（#137：切到玻璃样式后，拖这些滑块预览要立刻看到玻璃的变化）
     'barGlassRefraction', 'barGlassBevel', 'barGlassAberration', 'barGlassSpec', 'barGlassTint', 'barGlassFrost']);
 
@@ -3780,6 +3782,12 @@ function renderPreview() {
         box.style.setProperty('--pv-blur', qsBlurPx(blur) + 'px');
         box.style.setProperty('--pv-blur-sat', String(tone.sat));
         box.style.setProperty('--pv-blur-bright', String(tone.bright));
+        /* v2.23.83：磨砂预览的底板透明度（和真身同一个判据：只在磨砂样式
+         * 下吃 barBgAlpha，其它样式 100%）。 */
+        const pvBg = blur > 0
+            ? Math.max(0, Math.min(100, Number(CONF.barBgAlpha) || 55))
+            : 100;
+        box.style.setProperty('--pv-bg-alpha', pvBg + '%');
 
         /* 液态玻璃预览（#137）。
          *
