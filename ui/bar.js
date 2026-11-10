@@ -1781,14 +1781,6 @@ const PANEL_GROUP_FALLBACK = { web: '网页引擎', app: '软件引擎', hotkey:
 
 /** 子类元信息表（所属大类 / 大类标题 / 子类标题）。
  *  分节标题和锚点导航的胶囊文案都从这取 —— 两处各算各的迟早对不上。 */
-function panelSubMeta(groups) {
-    const m = {};
-    for (const g of groups) {
-        for (const s of g.subs) m[s.key] = { group: g.key, gtitle: g.title, title: s.title };
-    }
-    for (const k of PANEL_SUBS) if (!m[k]) m[k] = PANEL_SUB_FALLBACK[k];
-    return m;
-}
 
 /** 当前过滤下实际会出现的子类节（按 PANEL_SUBS 顺序）。
  *  锚点导航只给**有内容**的节发胶囊，空节点类一律不发。 */
@@ -1855,79 +1847,8 @@ let panelFillers = [];
 /* ------------------------------------------------------------------ */
 /* 「最近使用」一栏已拆到 bar-panel-lazy.js（v2.23.103）。 */
 
-function renderFlatBody(groups, filterKey) {
-    const rows = window.qsAllEngineRows(groups);
-    const meta = panelSubMeta(groups);
-    const bySub = {};
-    for (const r of rows) {
-        if (filterKey && r.group !== filterKey) continue;
-        // r53：胶囊里选中的二级 / 三级也要真的过滤内容（"选哪个就只显示哪个"）
-        if (panelSubFilter && r.sub !== panelSubFilter) continue;
-        if (panelCatFilter && (r.cat || '未分类') !== panelCatFilter) continue;
-        (bySub[r.sub] = bySub[r.sub] || []).push(r);
-    }
-    panelFillers = [];
-    for (const sub of PANEL_SUBS) {
-        const list = bySub[sub];
-        if (!list || !list.length) continue;
-        const m = meta[sub];
-        const t = document.createElement('div');
-        t.className = 'cat-title';
-        t.id = 'cat-' + sub;
-        t.dataset.cat = sub;
-        t.textContent = (m.gtitle || PANEL_GROUP_FALLBACK[m.group]) + ' · ' + m.title;
-        panelBody.appendChild(t);
-        /* r52：中类里面再按**小类**分小节（AI 工具 / 知识 / 开发 / 购物…）。
-         *  用户要求「网页搜索引擎里面再分，比如说 ai 工具、知识开发、搜索等等」，
-         *  并且横条这侧也要有 —— 所以小类的标题 + 单独的格子容器都在这儿建，
-         *  懒建的粒度也从"整个中类"细化成"一个小类"。 */
-        const byCat = new Map();
-        for (const r of list) {
-            const k = r.cat || '未分类';
-            if (!byCat.has(k)) byCat.set(k, []);
-            byCat.get(k).push(r);
-        }
-        for (const [cat, rowsOfCat] of byCat) {
-            const sh = document.createElement('div');
-            sh.className = 'cat-sub';
-            sh.dataset.sub = sub + '::' + cat;
-            sh.textContent = cat;
-            const sn = document.createElement('span');
-            sn.className = 'n';
-            sn.textContent = rowsOfCat.length + ' 个';
-            sh.appendChild(sn);
-            panelBody.appendChild(sh);
-            const grid = document.createElement('div');
-            grid.className = 'grid';
-            panelBody.appendChild(grid);
-            /* 格子**先不建**：挂进待填清单，滚到跟前（panelWatch）再说 */
-            panelFillers.push({ grid: grid, list: rowsOfCat, done: false });
-        }
-    }
-    /* ⚠ 第一个分类**必须同步建出来**：观察器是异步的（下一帧才回调），
-     * 全留给它的话，面板打开瞬间上面那一节是**空的** —— 实测要 350ms 才
-     * 冒出第一批格子，比改之前还难看。
-     *
-     * 2026-10-25：**从"填一节"改成"填够一屏"**。
-     *
-     * 只填一节的问题：一节通常 5~35 个格子，撑不满 .panel-body 那 344px 的
-     * 上限，于是面板先按"矮"的样子被量一次 → 窗口按矮尺寸摆好 → 观察器
-     * 补填下一节 → 面板长高 → 窗口再改一次尺寸。用户看到的就是
-     * 「点开更多引擎，画面跳两三次才稳定」。
-     *
-     * 现在同步填到 scrollHeight 够 344px 为止（每个分类几毫秒，最多多花
-     * 十几毫秒）。高度第一帧就是终值，观察器后面补的全落在滚动区里，
-     * 不再改变整体高度、也就不会再动窗口。
-     *
-     * 344 = bar.css 里 .panel-body 的 max-height，到量就没有继续填的必要
-     * （再填只影响滚动内容，不影响面板高度）。引擎少、填完全部还不到 344
-     * 也无所谓 —— 那种情况下懒填本来就没东西可填。 */
-    for (let i = 0; i < panelFillers.length; i++) {
-        panelFillOne(panelFillers[i]);
-        if (panelBody.scrollHeight >= 344) break;
-    }
-    panelWatch();
-}
+
+/* 平铺区渲染已拆到 bar-panel-lazy.js（v2.23.105）。 */
 
 function renderPanel(focusFilter, keepScroll) {
     /* 面板要重画时，先把当前滚动位置记下来。
@@ -7466,4 +7387,10 @@ window.QSBar = {
     barList: () => barList(),
     panelTree: () => panelTree(),
     barT: (s) => barT(s),
+    setPanelFillers: (v) => { panelFillers = v; },
+    PANEL_SUBS: () => PANEL_SUBS,
+    PANEL_GROUP_FALLBACK: () => PANEL_GROUP_FALLBACK,
+    PANEL_SUB_FALLBACK: () => PANEL_SUB_FALLBACK,
+    panelSubFilter: () => panelSubFilter,
+    panelCatFilter: () => panelCatFilter,
 };

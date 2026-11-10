@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.105 — 2026-11-10
+
+### bar.js 第三刀：平铺区渲染拆出
+
+- `renderFlatBody` + `panelSubMeta` 搬到 `ui/bar-panel-lazy.js`；
+- `QSBar` 桥补 `setPanelFillers` / `PANEL_SUBS` / `PANEL_SUB_FALLBACK` /
+  `PANEL_GROUP_FALLBACK` / `panelSubFilter` / `panelCatFilter`；
+- `bar.js` 7,071 → **6,997** 行；lazy 161 → 243；
+- E2E 4/4 场景、31/31 断言全过（移远本轮也 5/5）。
+
+---
+
 ## v2.23.104 — 2026-11-10
 
 ### E2E 静态检查进 CI + 七项验收文档
