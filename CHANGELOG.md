@@ -5,6 +5,17 @@
 
 ---
 
+## v2.23.96 — 2026-11-10
+
+### 拆分 main.rs 第四刀：text_ops 补齐智能换行
+
+- `unwrap_lines` / `ends_sentence` / `ends_punct` / `is_structural_line` /
+  `needs_space_between` 搬进 `src/text_ops.rs`；
+- `main.rs` 25,591 → **25,490** 行（四刀累计 -617）；text_ops 342 行；
+- 命令壳、剪贴板备份还原、回写目标软件仍留 main。
+
+---
+
 ## v2.23.95 — 2026-11-10
 
 ### 拆分 main.rs 第三刀：text_ops.rs + clippy 闸门修复

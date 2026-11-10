@@ -75,7 +75,7 @@ pub fn ui_root() -> std::path::PathBuf {
 mod clip;
 mod clip_open;
 mod text_ops;
-use text_ops::{apply_text_op, wrap_apply, WRAP_PAIRS};
+use text_ops::{apply_text_op, unwrap_lines, wrap_apply, WRAP_PAIRS};
 use ocr_plan::{
     creds_ready, engine_plan as ocr_engine_plan, online_engine,
     plan_with_local_fallback as ocr_plan_with_local_fallback,
@@ -14954,109 +14954,6 @@ fn to_halfwidth(s: &str) -> String {
         .collect()
 }
 
-/// 合并硬换行：把"因为排版被断开"的行接回同一段。
-///
-/// 用户原话：「选中的本来是一段话，但因为显示而分为好几段」—— PDF 复制、
-/// 窄栏网页、扫描件的 OCR 都会这样。
-///
-/// 判据**保守**，宁可少接也不接错：
-///   · 上一行以句末标点收尾 → 是完整句子，不接；
-///   · 上一行或当前行是"结构行"（列表 / 编号 / 引用 / 表格 / 标题）→ 不接
-///     （这些行的换行是**语义**，接起来会把列表糊成一坨）；
-///   · 空行是段落分隔 → 不接。
-/// 接的时候：中↔中直接贴；只要有一边是 ASCII 字母数字就补一个空格
-/// （不然 "hello" + "world" 会粘成 "helloworld"）。
-pub(crate) fn unwrap_lines(s: &str) -> String {
-    let mut out: Vec<String> = Vec::new();
-    for line in s.split('\n') {
-        let cur = line.trim();
-        if cur.is_empty() {
-            out.push(String::new());
-            continue;
-        }
-        let prev_ok = match out.last() {
-            Some(p) => {
-                let p = p.trim_end();
-                !p.is_empty() && !ends_sentence(p) && !is_structural_line(p)
-            }
-            None => false,
-        };
-        if prev_ok && !is_structural_line(cur) {
-            let last = out.last_mut().unwrap();
-            let a = last.chars().last().unwrap_or(' ');
-            let b = cur.chars().next().unwrap_or(' ');
-            if needs_space_between(a, b) {
-                last.push(' ');
-            }
-            last.push_str(cur);
-        } else {
-            out.push(cur.to_string());
-        }
-    }
-    out.join("\n")
-}
-
-/// 这一行是不是以句末标点收尾。
-/// 右引号/右括号收尾时看它**前面**那个字符（`他说：“好的。”` 这种）。
-fn ends_sentence(s: &str) -> bool {
-    let t = s.trim_end();
-    match t.chars().last() {
-        Some('”') | Some('」') | Some('』') | Some('）') | Some(')') | Some('"') | Some('’') => {
-            t.chars().rev().nth(1).map(ends_punct).unwrap_or(false)
-        }
-        Some(c) => ends_punct(c),
-        None => false,
-    }
-}
-
-fn ends_punct(c: char) -> bool {
-    matches!(c, '。' | '！' | '？' | '；' | '：' | '.' | '!' | '?' | ';' | ':' | '…')
-}
-
-/// 这一行是不是"换行有语义"的结构行：列表项、编号、引用、表格、标题。
-fn is_structural_line(s: &str) -> bool {
-    let t = s.trim();
-    let mut it = t.chars();
-    let Some(first) = it.next() else {
-        return false;
-    };
-    if matches!(
-        first,
-        '-' | '*' | '+' | '·' | '•' | '#' | '>' | '|' | '[' | '【' | '〔'
-    ) {
-        return true;
-    }
-    // 表格行：整行两个以上竖线
-    if t.matches('|').count() >= 2 {
-        return true;
-    }
-    // 编号：`1.` `2、` `3)` `(4)` `①`
-    if first.is_ascii_digit() || (0x2460..=0x2473).contains(&(first as u32)) {
-        if let Some(second) = it.next() {
-            if matches!(second, '.' | '、' | ')' | '）' | ':' | '：') {
-                return true;
-            }
-        }
-    }
-    // 中文数字编号：一、二、三…十、
-    if matches!(
-        first,
-        '一' | '二' | '三' | '四' | '五' | '六' | '七' | '八' | '九' | '十'
-    ) {
-        if let Some(second) = it.next() {
-            if matches!(second, '、' | '.' | '）' | ')') {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// 拼接两行时中间要不要补空格：只要有一边是 ASCII 字母/数字就要
-/// （中文之间直接贴；中文↔英文补一个空格 —— 那是更好的排版）。
-fn needs_space_between(a: char, b: char) -> bool {
-    a.is_ascii_alphanumeric() || b.is_ascii_alphanumeric()
-}
 
 /// 引擎的人话名字（需求 2 之后有十几家，名字统一从注册表取）。
 ///
