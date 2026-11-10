@@ -29,8 +29,8 @@
 | 远端配置 | ✅ `origin` = `git@github.com:QQQOrange/QuickAchieve.git`（**SSH**，2026-10-31 切换） |
 | GitHub 凭据 | ✅ 凭据管理器里有（`git credential fill` 能拿到）；SSH 用仓库部署密钥 |
 | 网络 | ⚠️ **间歇性**：`github.com:443` 时通时不通；**`github.com:22`(SSH) 稳定可用**；`api.github.com` 一直可用 |
-| 发布 | ✅ 最新 Release **v2.23.93**（2026-11-10），资产 `QuickAchieve.exe` 7,610,368 字节 |
-| 代码 | ✅ `main` 已推，tag `v2.23.93`（annotated）；SSH push，不需要 Git Data API |
+| 发布 | ✅ 最新 Release **v2.23.94**（2026-11-10），资产 `QuickAchieve.exe` 7,609,856 字节 |
+| 代码 | ✅ `main` 已推，tag `v2.23.94`（annotated）；SSH push，不需要 Git Data API |
 | 待发布 | 无（默认发版；用 `tools/release.ps1` 一条命令发） |
 
 ### ✅ SSH 推送通道（2026-10-31 起默认）
