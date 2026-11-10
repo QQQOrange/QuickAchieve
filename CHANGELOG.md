@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.101 — 2026-11-10
+
+### 前端拆分第三刀：settings-search.js
+
+- 设置页搜索的索引构建（`findPaneName`、`FIND_ACTIONS`、`findActionEntries`、
+  `buildIndex`）搬到 `ui/settings-search.js`（76 行）；
+- `settings.js` 12,884 → **12,822** 行；`findBuildIndex` 变 5 行包装器，
+  `pyInitialsOf` 由调用方传入；
+- 搜索绑定/上下键/跳转高亮/动作执行仍留 settings.js。
+
+---
+
 ## v2.23.100 — 2026-11-10
 
 ### 前端拆分第二刀：settings-card-reset.js
