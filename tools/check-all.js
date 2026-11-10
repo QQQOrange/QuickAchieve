@@ -3,9 +3,9 @@
  *  一键跑完所有前端自检
  * ============================================================
  *
- *  为什么要有它：发布前要跑 4 个脚本（UI 金丝雀 / 页面冒烟 / 命令表一致性 /
- *  英文覆盖），手动一条条敲容易漏，而且漏了不会有任何提示 —— 那个"漏跑一次"
- *  恰好就是把 i18n 盲点带进版本的方式（见 v2.23.36）。
+ *  为什么要有它：发布前要跑 5 个脚本（UI 金丝雀 / 页面冒烟 / 命令表一致性 /
+ *  英文覆盖 / 设置项一致性），手动一条条敲容易漏，而且漏了不会有任何提示 ——
+ *  那个"漏跑一次"恰好就是把 i18n 盲点带进版本的方式（见 v2.23.36）。
  *
  *  用法：node tools/check-all.js [--quiet]
  *  退出码：0 = 全过；1 = 有失败（发布脚本据此拦住）
@@ -33,12 +33,15 @@ const steps = [
        「百度」（index 3 处 + settings 2 处）和语言自称「简体中文」。
        新增的设置项文案已经全部进 i18n；再涨就说明真有漏翻。 */
     ['英文覆盖（残留条数）', 'tools/i18n-coverage.js', 5, /合计残留：(\d+)/],
+    /* v2.23.89：设置项三处登记（HTML 控件 / SLIDERS / config_view_of）静态对账。
+       滑块拖了没反应、值不保存、默认值对不上，先看这一行。 */
+    ['设置项一致性（滑块 ↔ HTML ↔ 配置）', 'tools/check-settings.js', 0, /合计问题：(\d+)/, '问题'],
 ];
 
 let failed = 0;
 const rows = [];
 
-for (const [name, script, maxResidue, pattern] of steps) {
+for (const [name, script, maxResidue, pattern, unit] of steps) {
     let out = '';
     let ok = true;
     let detail = '';
@@ -62,9 +65,9 @@ for (const [name, script, maxResidue, pattern] of steps) {
         const residue = Number(m[1]);
         if (Number.isFinite(residue) && residue > maxResidue) {
             ok = false;
-            detail = `残留 ${residue} 条，超过允许的 ${maxResidue}`;
+            detail = `${unit || '残留'} ${residue} 条，超过允许的 ${maxResidue}`;
         } else {
-            detail = `残留 ${m[1]} 条（允许 ${maxResidue}）`;
+            detail = `${unit || '残留'} ${m[1]} 条（允许 ${maxResidue}）`;
         }
     } else {
         detail = m[0].trim();

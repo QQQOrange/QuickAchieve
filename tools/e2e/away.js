@@ -1,0 +1,51 @@
+'use strict';
+/* 场景①：横条「鼠标移远就收起」。
+ *
+ * 钉住 2026-11-10 修过的两件事：
+ *   1. 指针**没动过**不能开始倒计时（多行划词时横条挂在选区下方，
+ *      指针停在选区中间、离横条 53px，旧逻辑弹出 1 秒后自己消失）；
+ *   2. 真移开以后要在 ~0.35 秒内收起，日志里能看到「指针移动 ≥6px」。
+ */
+
+const { App, Suite, sleep, setCursor } = require('./harness');
+
+module.exports = async function run() {
+    const s = new Suite('鼠标移远就收起');
+    const app = new App({ tag: 'away', port: 9895 });
+    let bar = null;
+    try {
+        await app.launch();
+        bar = await app.connectBar();
+        await bar.invoke('set_settings', { pairs: [['barAwayPx', 40], ['barIdleSec', 0]] });
+        await sleep(300);
+
+        setCursor(1200, 800);
+        await bar.invoke('grid_trigger_from_ui');
+        await sleep(700);
+
+        const atShow = await bar.invoke('bar_auto_state');
+        s.ok('横条已弹出', atShow && atShow.shown === true, JSON.stringify(atShow));
+
+        await sleep(1200);
+        const stationary = await bar.invoke('bar_auto_state');
+        s.ok('指针没动时不会自己收起', stationary && stationary.shown === true,
+            JSON.stringify(stationary));
+
+        setCursor(1720, 800);
+        let hidden = false;
+        for (let i = 0; i < 20; i++) {
+            sleep(100);
+            const st = await bar.invoke('bar_auto_state');
+            if (!st.shown) { hidden = true; break; }
+        }
+        s.ok('移开 500px 后收起', hidden);
+
+        const log = app.logTail(80);
+        s.ok('日志证明是“指针动过”才计时', /指针移动 ≥6px/.test(log), log.split('\n').slice(-6).join('\n'));
+        s.ok('日志有“连续 …ms 离横条 … 收起”', /连续 \d+ms 离横条/.test(log), log.split('\n').slice(-4).join('\n'));
+    } finally {
+        if (bar) bar.close();
+        await app.stop();
+    }
+    return s.done();
+};
