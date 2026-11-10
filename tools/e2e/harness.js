@@ -179,6 +179,10 @@ class Suite {
         console.log(`\n=== E2E · ${name} ===`);
     }
 
+    skip(title, detail) {
+        console.log(`SKIP  ${title}${detail ? `\n        ${detail}` : ''}`);
+    }
+
     ok(title, cond, detail) {
         if (cond) {
             this.pass += 1;

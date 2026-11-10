@@ -6010,30 +6010,6 @@ fn spawn_rbutton_watch() {
         .ok();
 }
 
-/// 横条的置顶守护（每 800ms 一次）。
-///
-/// 为什么单独起一条：置顶重申原先挂在 `layout_bar` 里（每次摆位重申一次）。
-/// 但 `layout_bar` 现在会**跳过尺寸没变的重复摆位**（断 ResizeObserver 反馈环，
-/// 见 pushLayout），横条开着不动的时候就没有人再重申置顶了 —— 别的置顶浮层
-/// 一冒出来就能把横条压到下面（用户报过「只显示一小块，甚至完全被挡住」）。
-/// 成本是 800ms 一次 SetWindowPos，可以忽略。
-fn spawn_bar_topmost_watch() {
-    std::thread::Builder::new()
-        .name("qs-bartop".into())
-        .spawn(|| loop {
-            std::thread::sleep(Duration::from_millis(800));
-            if !is_bar_shown() {
-                continue;
-            }
-            let hwnd = bar_hwnd();
-            if hwnd.0.is_null() {
-                continue;
-            }
-            win::reassert_topmost(hwnd);
-        })
-        .ok();
-}
-
 /// 「鼠标走远了就把横条收了」（用户 2026-10-23 要求）。
 ///
 /// 用户原话：「如果横条出来之后，如果鼠标移动了很大的一个范围，那么就说明这个
@@ -6078,6 +6054,7 @@ fn spawn_bar_away_guard() {
              * 移动超过 6px 才武装；没动过就一直等（无操作收起另有 3s 兜底）。 */
             let mut base: Option<(i32, i32)> = None;
             let mut armed = false;
+            let mut last_topmost = std::time::Instant::now();
             loop {
             let shown = bar_rects().is_some();
             std::thread::sleep(Duration::from_millis(
@@ -6096,6 +6073,16 @@ fn spawn_bar_away_guard() {
                 armed = false;
                 continue;
             };
+            /* v2.23.89：原先独立的 qs-bartop 线程（每 800ms 重申置顶）并到这里。
+             * 两者都只在横条显示时有意义：合一后少一个常驻线程和 800ms 一次的
+             * 空唤醒；横条没显示时一次 SetWindowPos 都不做。 */
+            if last_topmost.elapsed() >= Duration::from_millis(800) {
+                last_topmost = std::time::Instant::now();
+                let hwnd = bar_hwnd();
+                if !hwnd.0.is_null() {
+                    win::reassert_topmost(hwnd);
+                }
+            }
             /* 换了一根新横条：上一根的"离开计时"不能继承。 */
             let gen = GEN.load(Ordering::SeqCst);
             if gen != last_gen {
@@ -22929,7 +22916,6 @@ fn main() {
                 spawn_rbutton_watch();
                 // v2.23.10：磁盘上的 exe 换人了就自动交班（见函数注释）
                 spawn_binary_update_watch();
-                spawn_bar_topmost_watch();
                 // 2026-10-23：鼠标走远了自动收起（"这个横条我不会要了"）
                 spawn_bar_away_guard();
                 // r75：设置窗关掉一段时间后真正销毁（回收那 200~300MB）
