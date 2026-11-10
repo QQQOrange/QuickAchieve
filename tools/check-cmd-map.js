@@ -7,7 +7,7 @@ for (let i=0;i<rs.length;i++) {
   if (/^\s*#\[crate::t::command\]/.test(rs[i])) {
     // 属性和注释都可能夹在中间（layout_bar 就是这样），往后找几行
     for (let j=i+1;j<Math.min(i+9,rs.length);j++) {
-      const m = rs[j].match(/^\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z0-9_]+)/);
+      const m = rs[j].match(/^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-z0-9_]+)/);
       if (m) { cmds.add(m[1]); break; }
     }
   }

@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.113 — 2026-11-10
+
+### main.rs 第十一刀：apply_view 拆出
+
+- 整份配置恢复/导入 `apply_view`（542 行）搬到 `settings_apply.rs`；
+- 相关 main 函数改 `pub(crate)`（broadcast / config_view / copy_diagnostics /
+  merge_restored_custom_engines / parse_hotkey / refresh_steal_hotkeys 等）；
+- 命令表检查正则支持 `pub(crate) fn`（`copy_diagnostics` 仍是命令）；
+- `main.rs` 24,448 → **23,907** 行（累计 −2,200）。
+
+---
+
 ## v2.23.112 — 2026-11-10
 
 ### main.rs 第十刀：apply_one_setting 拆出
