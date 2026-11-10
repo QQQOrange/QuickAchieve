@@ -1,0 +1,29 @@
+{
+  "_comment": "设置页控件 ↔ 配置 key 的显式映射（v2.23.89）。check-settings.js 用它校验：每个 s-* 控件要么直接对应 config_view_of 的 key，要么走 aliases，要么在 external 里登记“为什么不在 config 视图里”。新增控件请同步这里。",
+  "aliases": {
+    "delay": "delayMs",
+    "barIdle": "barIdleSec",
+    "barAway": "barAwayPx",
+    "barDimDelay": "barDimDelayMs",
+    "aiMatting": "aiMattingEnable",
+    "aiPasteDelay": "imgAiPasteDelay",
+    "aiEnterDelay": "imgAiEnterDelay",
+    "imgAiAutoOff": "imgAiAutoOffOnMulti"
+  },
+  "external": {
+    "startupPwd": "本地启动密码表单（set_startup_password）",
+    "startupPwdVal": "本地启动密码表单",
+    "startupPwdVal2": "本地启动密码表单",
+    "startupPwdOff": "本地启动密码表单",
+    "previewDark": "预览主题按钮（本地状态）",
+    "previewDarkB": "预览主题按钮（本地状态）",
+    "exportEncrypt": "导出弹窗的本地勾选",
+    "barStyle": "派生值（barGlass / barBlur），不单独存",
+    "glassPreset": "玻璃预设按钮（本地状态）",
+    "ceKind": "自定义引擎表单的本地类型",
+    "apKind": "应用绑定表单的本地类型",
+    "clipHistEnabled": "走 clip_hist_* 命令，不在 config_view 里",
+    "clipHistMax": "走 clip_hist_* 命令",
+    "clipHistPersist": "走 clip_hist_* 命令"
+  }
+}
