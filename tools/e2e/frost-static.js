@@ -64,6 +64,22 @@ module.exports = async function run() {
         })()`);
         s.ok('强度归 0 后不再叠雾面', off.pseudo === 'none', off.pseudo);
         s.ok('强度归 0 后底板回到实色', Math.abs((alphaOf(off.bg) || 0) - 1) < 0.02, off.bg);
+
+        /* v2.23.90：引擎图标已转 WebP —— 打开「更多引擎」面板，确认图片真能解码。
+         * 只改文件名不改内容的迁移最容易在这里翻车（404/白格）。 */
+        await bar.eval("document.getElementById('btnMore').click(); 1");
+        await sleep(1200);
+        const icons = await bar.eval(`(function(){
+            const imgs = [...document.querySelectorAll('#panelBody img')];
+            return {
+                imgs: imgs.length,
+                loaded: imgs.filter((i) => i.complete && i.naturalWidth > 0).length,
+                broken: imgs.filter((i) => i.complete && i.naturalWidth === 0).length,
+            };
+        })()`);
+        s.ok('更多引擎面板有图标', icons.imgs > 0, JSON.stringify(icons));
+        s.ok('WebP 图标全部解码成功（没有坏图）', icons.broken === 0, JSON.stringify(icons));
+        s.ok('至少有一张图标真的加载完成', icons.loaded > 0, JSON.stringify(icons));
     } finally {
         if (bar) bar.close();
         await app.stop();

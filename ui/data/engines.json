@@ -7,7 +7,7 @@
    "url": "https://www.baidu.com/s?wd=%s&ie=utf-8",
    "icon": "https://api.iconify.design/simple-icons:baidu.svg?color=%234E6EF2",
    "inset": 1,
-   "iconFile": "百度.png",
+   "iconFile": "百度.webp",
    "kind": "search"
   },
   {
@@ -15,7 +15,7 @@
    "url": "https://www.google.com/search?q=%s&ie=utf-8&oe=utf-8",
    "icon": "https://api.iconify.design/logos:google-icon.svg",
    "inset": 0.84,
-   "iconFile": "Google.png",
+   "iconFile": "Google.webp",
    "kind": "search"
   },
   {
@@ -31,7 +31,7 @@
    "url": "https://fanyi.baidu.com/#auto/zh/%s",
    "icon": "https://fanyi.baidu.com/favicon.ico",
    "inset": 1,
-   "iconFile": "百度翻译.ico",
+   "iconFile": "百度翻译.webp",
    "kind": "search"
   },
   {
@@ -39,7 +39,7 @@
    "url": "https://www.zhihu.com/search?q=%s",
    "icon": "https://api.iconify.design/tabler:brand-zhihu.svg?color=%230084FF",
    "inset": 1,
-   "iconFile": "知乎.png",
+   "iconFile": "知乎.webp",
    "kind": "search"
   },
   {
@@ -55,7 +55,7 @@
    "url": "https://s.taobao.com/search?q=%s",
    "icon": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23FF5000%22%20stroke-width%3D%222.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20transform%3D%22translate(12%2012)%20scale(.98)%20translate(-12%20-12)%22%3E%3Cpath%20d%3D%22M2%205c.968.555%201.335%201.104%202%202m-2%203c5.007%203.674%202.85%206.544%200%2010m8-16c-.137%204.137-2.258%205.286-3.709%206.684M10%206c2.194-.8%203.736-.852%206.056-.993c4.206-.158%205.523%202.264%205.803%205.153c.428%204.396-.077%207.186-2.117%209.298c-1.188%201.23-3.238%202.62-7.207.259M11%2010h6m-4%200v6.493M8%2013h10m-2%202.512l.853%201.72%22%2F%3E%3Cpath%20d%3D%22M16.5%2017c-1.145.361-7%203-8.5-.5m3.765-7.961L10%2011%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E",
    "inset": 1,
-   "iconFile": "淘宝.png",
+   "iconFile": "淘宝.webp",
    "kind": "search"
   }
  ],
@@ -68,7 +68,7 @@
      "url": "https://www.google.com/search?q=%s&ie=utf-8&oe=utf-8",
      "icon": "https://api.iconify.design/logos:google-icon.svg",
      "inset": 0.84,
-     "iconFile": "Google.png",
+     "iconFile": "Google.webp",
      "kind": "search"
     },
     {
@@ -76,7 +76,7 @@
      "url": "https://www.baidu.com/s?wd=%s&ie=utf-8",
      "icon": "https://api.iconify.design/simple-icons:baidu.svg?color=%234E6EF2",
      "inset": 1,
-     "iconFile": "百度.png",
+     "iconFile": "百度.webp",
      "kind": "search",
      "alias": [
       "baidu",
@@ -116,7 +116,7 @@
      "url": "https://www.so.com/s?ie=utf-8&q=%s",
      "icon": "https://www.so.com/favicon.ico",
      "inset": 1,
-     "iconFile": "360.png",
+     "iconFile": "360.webp",
      "kind": "search",
      "alias": [
       "360搜索",
@@ -203,7 +203,7 @@
      "url": "https://www.mojeek.com/search?q=%s",
      "icon": "https://www.mojeek.com/",
      "inset": 1,
-     "iconFile": "Mojeek.png",
+     "iconFile": "Mojeek.webp",
      "kind": "search",
      "alias": [
       "mojeek",
@@ -239,7 +239,6 @@
      "url": "https://quark.sm.cn/s?q=%s",
      "icon": "https://quark.sm.cn/",
      "inset": 1,
-     "iconFile": "夸克搜索.png",
      "kind": "search",
      "alias": [
       "夸克",
@@ -251,7 +250,7 @@
      "url": "https://so.toutiao.com/search?keyword=%s",
      "icon": "https://so.toutiao.com/",
      "inset": 1,
-     "iconFile": "头条搜索.ico",
+     "iconFile": "头条搜索.webp",
      "kind": "search",
      "alias": [
       "今日头条搜索",
@@ -276,7 +275,7 @@
      "icon": "https://api.iconify.design/simple-icons:baidu.svg?color=%234E6EF2",
      "inset": 1,
      "kind": "open",
-     "iconFile": "百度.png",
+     "iconFile": "百度.webp",
      "alias": [
       "baidu",
       "Baidu",
@@ -303,7 +302,7 @@
      "icon": "https://api.iconify.design/logos:google-icon.svg",
      "inset": 0.84,
      "kind": "open",
-     "iconFile": "Google.png",
+     "iconFile": "Google.webp",
      "alias": [
       "Google",
       "google",
@@ -329,7 +328,7 @@
      "icon": "https://www.so.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "360.png",
+     "iconFile": "360.webp",
      "alias": [
       "360搜索",
       "好搜",
@@ -417,7 +416,7 @@
      "icon": "https://www.mojeek.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Mojeek.png",
+     "iconFile": "Mojeek.webp",
      "alias": [
       "mojeek",
       "摩杰克"
@@ -453,7 +452,6 @@
      "icon": "https://quark.sm.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "夸克搜索.png",
      "alias": [
       "夸克",
       "Quark"
@@ -465,7 +463,7 @@
      "icon": "https://so.toutiao.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "头条搜索.ico",
+     "iconFile": "头条搜索.webp",
      "alias": [
       "今日头条搜索",
       "字节搜索"
@@ -489,7 +487,7 @@
      "icon": "http://www.chinaso.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "中国搜索（首页）.ico",
+     "iconFile": "中国搜索（首页）.webp",
      "alias": [
       "中国搜索（首页）"
      ]
@@ -620,7 +618,7 @@
      "url": "https://metaso.cn/?q=%s",
      "icon": "https://metaso.cn/favicon.ico",
      "inset": 1,
-     "iconFile": "秘塔AI搜索.png",
+     "iconFile": "秘塔AI搜索.webp",
      "kind": "search",
      "alias": [
       "秘塔",
@@ -827,7 +825,7 @@
      "icon": "https://kimi.moonshot.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Kimi（首页）.ico",
+     "iconFile": "Kimi（首页）.webp",
      "alias": [
       "kimi",
       "月之暗面",
@@ -853,7 +851,7 @@
      "icon": "https://xinghuo.xfyun.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "讯飞星火（首页）.ico",
+     "iconFile": "讯飞星火（首页）.webp",
      "alias": [
       "星火",
       "iFlytek",
@@ -997,7 +995,7 @@
      "url": "https://www.zhihu.com/search?q=%s",
      "icon": "https://api.iconify.design/tabler:brand-zhihu.svg?color=%230084FF",
      "inset": 1,
-     "iconFile": "知乎.png",
+     "iconFile": "知乎.webp",
      "kind": "search",
      "alias": [
       "zhihu",
@@ -1037,7 +1035,7 @@
      "url": "https://maimai.cn/web/search_center?type=gossip&query=%s&highlight=true",
      "icon": "https://maimai.cn/favicon.ico",
      "inset": 1,
-     "iconFile": "脉脉.ico",
+     "iconFile": "脉脉.webp",
      "kind": "search",
      "alias": [
       "maimai",
@@ -1050,7 +1048,7 @@
      "url": "https://zhidao.baidu.com/search?word=%s",
      "icon": "https://www.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "百度知道.ico",
+     "iconFile": "百度知道.webp",
      "kind": "search",
      "alias": [
       "知道"
@@ -1075,7 +1073,7 @@
      "url": "https://baike.baidu.com/search/word?pic=1&sug=1&word=%s",
      "icon": "https://baike.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "百度百科.png",
+     "iconFile": "百度百科.webp",
      "kind": "search",
      "alias": [
       "baike",
@@ -1087,7 +1085,7 @@
      "url": "https://search.douban.com/book/subject_search?search_text=%s",
      "icon": "https://api.iconify.design/simple-icons:douban.svg?color=%232D963D",
      "inset": 1,
-     "iconFile": "豆瓣.png",
+     "iconFile": "豆瓣.webp",
      "kind": "search",
      "alias": [
       "豆瓣读书",
@@ -1124,7 +1122,7 @@
      "url": "https://www.jianshu.com/search?q=%s",
      "icon": "https://www.jianshu.com/",
      "inset": 1,
-     "iconFile": "简书.ico",
+     "iconFile": "简书.webp",
      "kind": "search",
      "alias": [
       "jianshu",
@@ -1136,7 +1134,7 @@
      "url": "https://www.guokr.com/search/?q=%s",
      "icon": "https://www.guokr.com/",
      "inset": 1,
-     "iconFile": "果壳.png",
+     "iconFile": "果壳.webp",
      "kind": "search",
      "alias": [
       "果壳网",
@@ -1148,7 +1146,7 @@
      "url": "https://sspai.com/search/post/%s",
      "icon": "https://sspai.com/",
      "inset": 1,
-     "iconFile": "少数派.png",
+     "iconFile": "少数派.webp",
      "kind": "search",
      "alias": [
       "sspai",
@@ -1160,7 +1158,7 @@
      "url": "https://zh.moegirl.org.cn/index.php?search=%s",
      "icon": "https://zh.moegirl.org.cn/",
      "inset": 1,
-     "iconFile": "萌娘百科.ico",
+     "iconFile": "萌娘百科.webp",
      "kind": "search",
      "alias": [
       "萌百",
@@ -1172,7 +1170,7 @@
      "url": "https://wenku.baidu.com/search?word=%s",
      "icon": "https://wenku.baidu.com/",
      "inset": 1,
-     "iconFile": "百度文库.ico",
+     "iconFile": "百度文库.webp",
      "kind": "search",
      "alias": [
       "文库",
@@ -1184,7 +1182,7 @@
      "url": "https://jingyan.baidu.com/search?word=%s",
      "icon": "https://jingyan.baidu.com/",
      "inset": 1,
-     "iconFile": "百度经验.ico",
+     "iconFile": "百度经验.webp",
      "kind": "search",
      "alias": [
       "经验"
@@ -1207,7 +1205,7 @@
      "url": "https://zh.wikihow.com/wikiHowTo?search=%s",
      "icon": "https://zh.wikihow.com/",
      "inset": 1,
-     "iconFile": "WikiHow.png",
+     "iconFile": "WikiHow.webp",
      "kind": "search",
      "alias": [
       "wikihow",
@@ -1246,7 +1244,7 @@
      "icon": "https://baike.baidu.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "百度百科.png",
+     "iconFile": "百度百科.webp",
      "alias": [
       "baike",
       "百科"
@@ -1258,7 +1256,7 @@
      "icon": "https://baike.sogou.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "搜狗百科（首页）.ico",
+     "iconFile": "搜狗百科（首页）.webp",
      "alias": [
       "搜狗百科（首页）"
      ]
@@ -1269,7 +1267,7 @@
      "icon": "https://baike.so.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "360_百科（首页）.png",
+     "iconFile": "360_百科（首页）.webp",
      "alias": [
       "360百科"
      ]
@@ -1280,7 +1278,7 @@
      "icon": "https://wiki.mbalib.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "MBA_智库百科（首页）.ico",
+     "iconFile": "MBA_智库百科（首页）.webp",
      "alias": [
       "MBA智库",
       "智库百科"
@@ -1292,7 +1290,7 @@
      "icon": "https://api.iconify.design/tabler:brand-zhihu.svg?color=%230084FF",
      "inset": 1,
      "kind": "open",
-     "iconFile": "知乎.png",
+     "iconFile": "知乎.webp",
      "alias": [
       "zhihu",
       "ZhiHu",
@@ -1318,7 +1316,7 @@
      "icon": "https://www.jianshu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "简书.ico",
+     "iconFile": "简书.webp",
      "alias": [
       "jianshu",
       "简书网"
@@ -1330,7 +1328,7 @@
      "icon": "https://www.guokr.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "果壳.png",
+     "iconFile": "果壳.webp",
      "alias": [
       "果壳网",
       "guokr"
@@ -1342,7 +1340,7 @@
      "icon": "https://sspai.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "少数派.png",
+     "iconFile": "少数派.webp",
      "alias": [
       "sspai",
       "少数派"
@@ -1354,7 +1352,7 @@
      "icon": "https://zh.moegirl.org.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "萌娘百科.ico",
+     "iconFile": "萌娘百科.webp",
      "alias": [
       "萌百",
       "Moegirlpedia"
@@ -1366,7 +1364,7 @@
      "icon": "https://wenku.baidu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "百度文库.ico",
+     "iconFile": "百度文库.webp",
      "alias": [
       "文库",
       "百度文档"
@@ -1378,7 +1376,7 @@
      "icon": "https://jingyan.baidu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "百度经验.ico",
+     "iconFile": "百度经验.webp",
      "alias": [
       "经验"
      ]
@@ -1401,7 +1399,7 @@
      "icon": "https://zh.wikihow.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "WikiHow.png",
+     "iconFile": "WikiHow.webp",
      "alias": [
       "wikihow",
       "怎么做"
@@ -1574,7 +1572,7 @@
      "url": "https://zzk.cnblogs.com/s?w=%s",
      "icon": "https://www.cnblogs.com/",
      "inset": 1,
-     "iconFile": "博客园.ico",
+     "iconFile": "博客园.webp",
      "kind": "search",
      "alias": [
       "cnblogs",
@@ -1586,7 +1584,7 @@
      "url": "https://www.oschina.net/search?q=%s",
      "icon": "https://www.oschina.net/",
      "inset": 1,
-     "iconFile": "开源中国.ico",
+     "iconFile": "开源中国.webp",
      "kind": "search",
      "alias": [
       "OSChina",
@@ -1598,7 +1596,7 @@
      "url": "https://search.gitee.com/?q=%s",
      "icon": "https://gitee.com/",
      "inset": 1,
-     "iconFile": "Gitee.ico",
+     "iconFile": "Gitee.webp",
      "kind": "search",
      "alias": [
       "码云",
@@ -1673,7 +1671,7 @@
      "url": "https://www.nuget.org/packages?q=%s",
      "icon": "https://www.nuget.org/",
      "inset": 1,
-     "iconFile": "NuGet.ico",
+     "iconFile": "NuGet.webp",
      "kind": "search",
      "alias": [
       "nuget",
@@ -1685,7 +1683,7 @@
      "url": "https://packagist.org/search/?q=%s",
      "icon": "https://packagist.org/",
      "inset": 1,
-     "iconFile": "Packagist.png",
+     "iconFile": "Packagist.webp",
      "kind": "search",
      "alias": [
       "packagist",
@@ -1734,7 +1732,7 @@
      "url": "https://leetcode.cn/search/?q=%s",
      "icon": "https://leetcode.cn/",
      "inset": 1,
-     "iconFile": "LeetCode.ico",
+     "iconFile": "LeetCode.webp",
      "kind": "search",
      "alias": [
       "力扣",
@@ -1748,7 +1746,7 @@
      "url": "https://www.runoob.com/?s=%s",
      "icon": "https://www.runoob.com/",
      "inset": 1,
-     "iconFile": "菜鸟教程.ico",
+     "iconFile": "菜鸟教程.webp",
      "kind": "search",
      "alias": [
       "runoob",
@@ -1760,7 +1758,7 @@
      "url": "https://cloud.tencent.com/developer/search/article-%s",
      "icon": "https://cloud.tencent.com/",
      "inset": 1,
-     "iconFile": "腾讯云社区.ico",
+     "iconFile": "腾讯云社区.webp",
      "kind": "search",
      "alias": [
       "腾讯云",
@@ -1772,7 +1770,7 @@
      "url": "https://developer.aliyun.com/search?q=%s",
      "icon": "https://developer.aliyun.com/",
      "inset": 1,
-     "iconFile": "阿里云开发者.ico",
+     "iconFile": "阿里云开发者.webp",
      "kind": "search",
      "alias": [
       "阿里云",
@@ -1832,7 +1830,7 @@
      "url": "https://codeberg.org/explore/repos?q=%s",
      "icon": "https://codeberg.org/",
      "inset": 1,
-     "iconFile": "Codeberg.png",
+     "iconFile": "Codeberg.webp",
      "kind": "search",
      "alias": [
       "codeberg",
@@ -1880,7 +1878,7 @@
      "url": "https://lobste.rs/search?q=%s",
      "icon": "https://lobste.rs/",
      "inset": 1,
-     "iconFile": "Lobsters.png",
+     "iconFile": "Lobsters.webp",
      "kind": "search",
      "alias": [
       "lobsters",
@@ -1907,7 +1905,7 @@
      "icon": "https://gitee.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Gitee.ico",
+     "iconFile": "Gitee.webp",
      "alias": [
       "码云",
       "gitee",
@@ -1944,7 +1942,7 @@
      "icon": "https://codeberg.org/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Codeberg.png",
+     "iconFile": "Codeberg.webp",
      "alias": [
       "codeberg",
       "CB"
@@ -1994,7 +1992,7 @@
      "icon": "https://www.cnblogs.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "博客园.ico",
+     "iconFile": "博客园.webp",
      "alias": [
       "cnblogs",
       "园子"
@@ -2006,7 +2004,7 @@
      "icon": "https://www.oschina.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "开源中国.ico",
+     "iconFile": "开源中国.webp",
      "alias": [
       "OSChina",
       "oschina"
@@ -2018,7 +2016,7 @@
      "icon": "https://www.csdn.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "CSDN（首页）.ico",
+     "iconFile": "CSDN（首页）.webp",
      "alias": [
       "csdn",
       "中国专业IT社区"
@@ -2106,7 +2104,7 @@
      "icon": "https://www.nuget.org/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "NuGet.ico",
+     "iconFile": "NuGet.webp",
      "alias": [
       "nuget",
       ".NET包"
@@ -2118,7 +2116,7 @@
      "icon": "https://packagist.org/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Packagist.png",
+     "iconFile": "Packagist.webp",
      "alias": [
       "packagist",
       "PHP包"
@@ -2180,7 +2178,7 @@
      "icon": "https://lobste.rs/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Lobsters.png",
+     "iconFile": "Lobsters.webp",
      "alias": [
       "lobsters",
       "龙虾"
@@ -2204,7 +2202,7 @@
      "icon": "https://leetcode.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "LeetCode.ico",
+     "iconFile": "LeetCode.webp",
      "alias": [
       "力扣",
       "leetcode",
@@ -2218,7 +2216,7 @@
      "icon": "https://www.runoob.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "菜鸟教程.ico",
+     "iconFile": "菜鸟教程.webp",
      "alias": [
       "runoob",
       "菜鸟"
@@ -2230,7 +2228,7 @@
      "icon": "https://cloud.tencent.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯云社区.ico",
+     "iconFile": "腾讯云社区.webp",
      "alias": [
       "腾讯云",
       "cloud.tencent"
@@ -2242,7 +2240,7 @@
      "icon": "https://developer.aliyun.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "阿里云开发者.ico",
+     "iconFile": "阿里云开发者.webp",
      "alias": [
       "阿里云",
       "aliyun"
@@ -2297,7 +2295,7 @@
      "url": "https://fanyi.baidu.com/#auto/zh/%s",
      "icon": "https://fanyi.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "百度翻译.ico",
+     "iconFile": "百度翻译.webp",
      "kind": "search",
      "alias": [
       "baidu翻译",
@@ -2322,7 +2320,7 @@
      "url": "https://youdao.com/w/%s",
      "icon": "https://youdao.com/favicon.ico",
      "inset": 1,
-     "iconFile": "有道词典.png",
+     "iconFile": "有道词典.webp",
      "kind": "search",
      "alias": [
       "有道",
@@ -2359,7 +2357,7 @@
      "url": "https://fanyi.sogou.com/text?keyword=%s",
      "icon": "https://fanyi.sogou.com/",
      "inset": 1,
-     "iconFile": "搜狗翻译.ico",
+     "iconFile": "搜狗翻译.webp",
      "kind": "search",
      "alias": [
       "搜狗机翻"
@@ -2381,7 +2379,7 @@
      "url": "https://papago.naver.com/?sk=auto&tk=zh-CN&st=%s",
      "icon": "https://papago.naver.com/",
      "inset": 1,
-     "iconFile": "Papago.ico",
+     "iconFile": "Papago.webp",
      "kind": "search",
      "alias": [
       "papago",
@@ -2394,7 +2392,7 @@
      "url": "https://www.linguee.com/english-chinese/search?query=%s",
      "icon": "https://www.linguee.com/",
      "inset": 1,
-     "iconFile": "Linguee.ico",
+     "iconFile": "Linguee.webp",
      "kind": "search",
      "alias": [
       "灵格",
@@ -2432,7 +2430,7 @@
      "icon": "https://fanyi.baidu.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "百度翻译.ico",
+     "iconFile": "百度翻译.webp",
      "alias": [
       "baidu翻译",
       "百度机翻"
@@ -2457,7 +2455,7 @@
      "icon": "https://fanyi.sogou.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "搜狗翻译.ico",
+     "iconFile": "搜狗翻译.webp",
      "alias": [
       "搜狗机翻"
      ]
@@ -2468,7 +2466,7 @@
      "icon": "https://fanyi.youdao.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "有道翻译（首页）.ico",
+     "iconFile": "有道翻译（首页）.webp",
      "alias": [
       "有道",
       "youdao"
@@ -2480,7 +2478,7 @@
      "icon": "https://fanyi.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯翻译君（首页）.png",
+     "iconFile": "腾讯翻译君（首页）.webp",
      "alias": [
       "翻译君",
       "腾讯翻译"
@@ -2492,7 +2490,7 @@
      "icon": "https://fanyi.caiyunapp.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "彩云小译（首页）.png",
+     "iconFile": "彩云小译（首页）.webp",
      "alias": [
       "彩云",
       "小译"
@@ -2515,7 +2513,7 @@
      "icon": "https://papago.naver.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Papago.ico",
+     "iconFile": "Papago.webp",
      "alias": [
       "papago",
       "韩国翻译",
@@ -2528,7 +2526,7 @@
      "icon": "https://www.linguee.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Linguee.ico",
+     "iconFile": "Linguee.webp",
      "alias": [
       "灵格",
       "例句翻译"
@@ -2569,7 +2567,7 @@
      "url": "https://www.amap.com/search?query=%s",
      "icon": "https://www.amap.com/favicon.ico",
      "inset": 1,
-     "iconFile": "高德地图.ico",
+     "iconFile": "高德地图.webp",
      "kind": "search",
      "alias": [
       "高德",
@@ -2606,7 +2604,7 @@
      "url": "https://map.qq.com/?what=%s",
      "icon": "https://map.qq.com/",
      "inset": 1,
-     "iconFile": "腾讯地图.ico",
+     "iconFile": "腾讯地图.webp",
      "kind": "search",
      "alias": [
       "腾讯地图（首页）"
@@ -2643,7 +2641,7 @@
      "icon": "https://www.amap.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "高德地图.ico",
+     "iconFile": "高德地图.webp",
      "alias": [
       "高德",
       "Amap",
@@ -2667,7 +2665,7 @@
      "icon": "https://map.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯地图.ico",
+     "iconFile": "腾讯地图.webp",
      "alias": [
       "腾讯地图（首页）"
      ]
@@ -2678,7 +2676,7 @@
      "icon": "https://api.iconify.design/logos:google-icon.svg",
      "inset": 0.84,
      "kind": "open",
-     "iconFile": "Google.png",
+     "iconFile": "Google.webp",
      "alias": [
       "Google Maps",
       "google maps"
@@ -2721,7 +2719,7 @@
      "url": "https://image.baidu.com/search/index?tn=baiduimage&ie=utf-8&word=%s",
      "icon": "https://www.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "百度知道.ico",
+     "iconFile": "百度知道.webp",
      "kind": "search",
      "alias": [
       "百度图"
@@ -2743,7 +2741,7 @@
      "url": "https://www.google.com/search?q=%s&tbm=isch",
      "icon": "https://api.iconify.design/logos:google-icon.svg",
      "inset": 0.84,
-     "iconFile": "Google.png",
+     "iconFile": "Google.webp",
      "kind": "search",
      "alias": [
       "Google图片",
@@ -2793,7 +2791,7 @@
      "url": "https://huaban.com/search/?q=%s",
      "icon": "https://huaban.com/favicon.ico",
      "inset": 1,
-     "iconFile": "花瓣.ico",
+     "iconFile": "花瓣.webp",
      "kind": "search",
      "alias": [
       "huaban",
@@ -2842,7 +2840,7 @@
      "url": "https://www.freepik.com/search?query=%s",
      "icon": "https://www.freepik.com/",
      "inset": 1,
-     "iconFile": "Freepik.ico",
+     "iconFile": "Freepik.webp",
      "kind": "search",
      "alias": [
       "freepik",
@@ -2862,7 +2860,7 @@
      "url": "https://www.iconfont.cn/search/index?searchType=icon&q=%s",
      "icon": "https://www.iconfont.cn/",
      "inset": 1,
-     "iconFile": "iconfont.png",
+     "iconFile": "iconfont.webp",
      "kind": "search"
     },
     {
@@ -2870,7 +2868,7 @@
      "url": "https://icon-sets.iconify.design/?query=%s",
      "icon": "https://icon-sets.iconify.design/",
      "inset": 1,
-     "iconFile": "Iconify.png",
+     "iconFile": "Iconify.webp",
      "alias": [
       "开源图标库",
       "iconify",
@@ -2921,7 +2919,7 @@
      "url": "https://yandex.com/images/search?text=%s",
      "icon": "https://api.iconify.design/simple-icons:yandex.svg?color=%23FC3F1D",
      "inset": 1,
-     "iconFile": "Yandex_图片.png",
+     "iconFile": "Yandex_图片.webp",
      "kind": "search",
      "alias": [
       "yandex图片"
@@ -3016,7 +3014,7 @@
      "icon": "https://www.baidu.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "百度知道.ico",
+     "iconFile": "百度知道.webp",
      "alias": [
       "百度图"
      ]
@@ -3039,7 +3037,7 @@
      "icon": "https://api.iconify.design/logos:google-icon.svg",
      "inset": 0.84,
      "kind": "open",
-     "iconFile": "Google.png",
+     "iconFile": "Google.webp",
      "alias": [
       "Google图片",
       "google images"
@@ -3087,7 +3085,7 @@
      "icon": "https://www.freepik.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Freepik.ico",
+     "iconFile": "Freepik.webp",
      "alias": [
       "freepik",
       "免费矢量"
@@ -3099,7 +3097,7 @@
      "icon": "https://www.iconfont.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "iconfont.png",
+     "iconFile": "iconfont.webp",
      "alias": [
       "阿里图标库",
       "阿里巴巴图标库",
@@ -3112,7 +3110,7 @@
      "icon": "https://icon-sets.iconify.design/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Iconify.png",
+     "iconFile": "Iconify.webp",
      "alias": [
       "iconify",
       "图标库"
@@ -3149,7 +3147,7 @@
      "icon": "https://huaban.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "花瓣.ico",
+     "iconFile": "花瓣.webp",
      "alias": [
       "huaban",
       "花瓣"
@@ -3286,7 +3284,7 @@
      "url": "https://y.qq.com/portal/search.html#page=1&searchid=1&remoteplace=txt.yqq.top&t=song&w=%s",
      "icon": "https://y.qq.com/favicon.ico",
      "inset": 1,
-     "iconFile": "QQ音乐.ico",
+     "iconFile": "QQ音乐.webp",
      "kind": "search",
      "alias": [
       "QQ Music",
@@ -3298,7 +3296,7 @@
      "url": "http://www.kuwo.cn/search/list?type=all&key=%s",
      "icon": "https://www.kuwo.cn/favicon.ico",
      "inset": 1,
-     "iconFile": "酷我音乐.png",
+     "iconFile": "酷我音乐.webp",
      "kind": "search",
      "alias": [
       "酷我",
@@ -3322,7 +3320,7 @@
      "url": "http://search.5sing.kugou.com/?keyword=%s",
      "icon": "https://5sing.kugou.com/favicon.ico",
      "inset": 1,
-     "iconFile": "酷狗5sing.png",
+     "iconFile": "酷狗5sing.webp",
      "kind": "search",
      "alias": [
       "5SING",
@@ -3373,7 +3371,6 @@
      "url": "https://music.taihe.com/search?key=%s",
      "icon": "https://music.taihe.com/",
      "inset": 1,
-     "iconFile": "千千音乐.png",
      "kind": "search",
      "alias": [
       "千千",
@@ -3434,7 +3431,7 @@
      "icon": "https://y.qq.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "QQ音乐.ico",
+     "iconFile": "QQ音乐.webp",
      "alias": [
       "QQ Music",
       "qq音乐"
@@ -3459,7 +3456,7 @@
      "icon": "https://www.kugou.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "酷狗音乐（首页）.ico",
+     "iconFile": "酷狗音乐（首页）.webp",
      "alias": [
       "酷狗",
       "Kugou"
@@ -3471,7 +3468,7 @@
      "icon": "https://www.kuwo.cn/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "酷我音乐.png",
+     "iconFile": "酷我音乐.webp",
      "alias": [
       "酷我",
       "Kuwo"
@@ -3495,7 +3492,6 @@
      "icon": "https://music.taihe.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "千千音乐.png",
      "alias": [
       "千千",
       "百度音乐"
@@ -3520,7 +3516,7 @@
      "icon": "https://music.apple.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Apple_Music（首页）.png",
+     "iconFile": "Apple_Music（首页）.webp",
      "alias": [
       "苹果音乐",
       "AM"
@@ -3626,7 +3622,7 @@
      "url": "https://search.douban.com/movie/subject_search?search_text=%s",
      "icon": "https://api.iconify.design/simple-icons:douban.svg?color=%232D963D",
      "inset": 1,
-     "iconFile": "豆瓣.png",
+     "iconFile": "豆瓣.webp",
      "kind": "search",
      "alias": [
       "豆瓣",
@@ -3639,7 +3635,7 @@
      "url": "https://so.iqiyi.com/so/q_%s",
      "icon": "https://www.iqiyi.com/favicon.ico",
      "inset": 1,
-     "iconFile": "爱奇艺.png",
+     "iconFile": "爱奇艺.webp",
      "kind": "search",
      "alias": [
       "iQiyi",
@@ -3652,7 +3648,7 @@
      "url": "https://v.qq.com/x/search/?q=%s",
      "icon": "https://v.qq.com/favicon.ico",
      "inset": 1,
-     "iconFile": "腾讯视频.png",
+     "iconFile": "腾讯视频.webp",
      "kind": "search",
      "alias": [
       "Tencent Video",
@@ -3689,7 +3685,7 @@
      "url": "https://www.acfun.cn/search/?type=complex&keyword=%s",
      "icon": "https://www.acfun.cn/favicon.ico",
      "inset": 1,
-     "iconFile": "AcFun.ico",
+     "iconFile": "AcFun.webp",
      "kind": "search",
      "alias": [
       "A站",
@@ -3741,7 +3737,7 @@
      "url": "https://so.mgtv.com/so?k=%s",
      "icon": "https://www.mgtv.com/",
      "inset": 1,
-     "iconFile": "芒果TV.ico",
+     "iconFile": "芒果TV.webp",
      "kind": "search",
      "alias": [
       "芒果台",
@@ -3754,7 +3750,7 @@
      "url": "https://so.tv.sohu.com/mts?wd=%s",
      "icon": "https://tv.sohu.com/",
      "inset": 1,
-     "iconFile": "搜狐视频.ico",
+     "iconFile": "搜狐视频.webp",
      "kind": "search",
      "alias": [
       "搜狐",
@@ -3766,7 +3762,7 @@
      "url": "https://www.ixigua.com/search/%s",
      "icon": "https://www.ixigua.com/",
      "inset": 1,
-     "iconFile": "西瓜视频.png",
+     "iconFile": "西瓜视频.webp",
      "kind": "search",
      "alias": [
       "字节视频"
@@ -3777,7 +3773,7 @@
      "url": "https://haokan.baidu.com/web/search/page?query=%s",
      "icon": "https://haokan.baidu.com/",
      "inset": 1,
-     "iconFile": "好看视频.ico",
+     "iconFile": "好看视频.webp",
      "kind": "search",
      "alias": [
       "好看"
@@ -3788,7 +3784,7 @@
      "url": "https://search.cctv.com/search.php?qtext=%s",
      "icon": "https://www.cctv.com/",
      "inset": 1,
-     "iconFile": "央视网.ico",
+     "iconFile": "央视网.webp",
      "kind": "search",
      "alias": [
       "CCTV",
@@ -3851,7 +3847,7 @@
      "url": "https://www.1905.com/search/?q=%s",
      "icon": "https://www.1905.com/",
      "inset": 1,
-     "iconFile": "1905_电影网.ico",
+     "iconFile": "1905_电影网.webp",
      "kind": "search",
      "alias": [
       "电影网",
@@ -3864,7 +3860,7 @@
      "icon": "https://www.bilibili.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "哔哩哔哩（首页）.ico",
+     "iconFile": "哔哩哔哩（首页）.webp",
      "alias": [
       "B站",
       "bilibili",
@@ -3880,7 +3876,7 @@
      "icon": "https://www.iqiyi.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "爱奇艺（首页）.png",
+     "iconFile": "爱奇艺（首页）.webp",
      "alias": [
       "iQiyi",
       "iqiyi",
@@ -3893,7 +3889,7 @@
      "icon": "https://v.qq.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯视频.png",
+     "iconFile": "腾讯视频.webp",
      "alias": [
       "Tencent Video",
       "鹅厂视频"
@@ -3905,7 +3901,7 @@
      "icon": "https://www.youku.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "优酷（首页）.ico",
+     "iconFile": "优酷（首页）.webp",
      "alias": [
       "Youku",
       "youku"
@@ -3917,7 +3913,7 @@
      "icon": "https://www.mgtv.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "芒果TV.ico",
+     "iconFile": "芒果TV.webp",
      "alias": [
       "芒果台",
       "Mango TV",
@@ -3930,7 +3926,7 @@
      "icon": "https://tv.sohu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "搜狐视频.ico",
+     "iconFile": "搜狐视频.webp",
      "alias": [
       "搜狐",
       "sohu"
@@ -3942,7 +3938,7 @@
      "icon": "https://www.ixigua.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "西瓜视频.png",
+     "iconFile": "西瓜视频.webp",
      "alias": [
       "字节视频"
      ]
@@ -3953,7 +3949,7 @@
      "icon": "https://haokan.baidu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "好看视频.ico",
+     "iconFile": "好看视频.webp",
      "alias": [
       "好看"
      ]
@@ -3964,7 +3960,7 @@
      "icon": "https://www.cctv.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "央视网.ico",
+     "iconFile": "央视网.webp",
      "alias": [
       "CCTV",
       "央视",
@@ -4079,7 +4075,7 @@
      "icon": "https://www.1905.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "1905_电影网.ico",
+     "iconFile": "1905_电影网.webp",
      "alias": [
       "电影网",
       "1905"
@@ -4091,7 +4087,7 @@
      "icon": "https://movie.douban.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "豆瓣电影（首页）.ico",
+     "iconFile": "豆瓣电影（首页）.webp",
      "alias": [
       "豆瓣",
       "douban电影",
@@ -4110,7 +4106,7 @@
      "url": "https://s.taobao.com/search?q=%s",
      "icon": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23FF5000%22%20stroke-width%3D%222.8%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20transform%3D%22translate(12%2012)%20scale(.98)%20translate(-12%20-12)%22%3E%3Cpath%20d%3D%22M2%205c.968.555%201.335%201.104%202%202m-2%203c5.007%203.674%202.85%206.544%200%2010m8-16c-.137%204.137-2.258%205.286-3.709%206.684M10%206c2.194-.8%203.736-.852%206.056-.993c4.206-.158%205.523%202.264%205.803%205.153c.428%204.396-.077%207.186-2.117%209.298c-1.188%201.23-3.238%202.62-7.207.259M11%2010h6m-4%200v6.493M8%2013h10m-2%202.512l.853%201.72%22%2F%3E%3Cpath%20d%3D%22M16.5%2017c-1.145.361-7%203-8.5-.5m3.765-7.961L10%2011%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E",
      "inset": 1,
-     "iconFile": "淘宝.png",
+     "iconFile": "淘宝.webp",
      "kind": "search",
      "alias": [
       "taobao",
@@ -4123,7 +4119,7 @@
      "url": "https://search.jd.com/Search?keyword=%s&enc=utf-8",
      "icon": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212.6%22%20r%3D%226.05%22%20fill%3D%22%23E1251B%22%2F%3E%3Cpath%20d%3D%22M7.6%208.4C6.2%206.2%204.0%206.0%203.3%208.1c-.8%202.4-.3%205.9.7%207.7.7%201.3%202.2%201.2%202.7-.2.5-1.5%201.1-4.7.9-7.2Z%22%20fill%3D%22%23E1251B%22%2F%3E%3Cpath%20d%3D%22M16.4%208.4c1.4-2.2%203.6-2.4%204.3-.3.8%202.4.3%205.9-.7%207.7-.7%201.3-2.2%201.2-2.7-.2-.5-1.5-1.1-4.7-.9-7.2Z%22%20fill%3D%22%23E1251B%22%2F%3E%3Ccircle%20cx%3D%229.7%22%20cy%3D%2211.2%22%20r%3D%221.1%22%20fill%3D%22%23FFFFFF%22%2F%3E%3Ccircle%20cx%3D%2214.3%22%20cy%3D%2211.2%22%20r%3D%221.1%22%20fill%3D%22%23FFFFFF%22%2F%3E%3Cpath%20d%3D%22M12%2013.4c1.05%200%201.8.55%201.8%201.2%200%20.62-.6%201.05-1.3%201.28l-.5.42-.5-.42c-.7-.23-1.3-.66-1.3-1.28%200-.65.75-1.2%201.8-1.2Z%22%20fill%3D%22%23FFFFFF%22%2F%3E%3C%2Fsvg%3E",
      "inset": 1,
-     "iconFile": "京东.png",
+     "iconFile": "京东.webp",
      "kind": "search",
      "alias": [
       "JD",
@@ -4137,7 +4133,7 @@
      "url": "https://list.tmall.com/search_product.htm?q=%s",
      "icon": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M12%206.4C10%204.8%208.7%203.4%207.6%202.3c-.4%202.2-.8%204.1-.9%205.8-1.9%201.6-2.9%203.6-2.9%205.8%200%203.4%203.7%206%208.2%206s8.2-2.6%208.2-6c0-2.2-1-4.2-2.9-5.8-.1-1.7-.5-3.6-.9-5.8-1.1%201.1-2.4%202.5-4.4%204.1Z%22%20fill%3D%22%23FF0036%22%2F%3E%3Ccircle%20cx%3D%229.4%22%20cy%3D%2213.2%22%20r%3D%221.15%22%20fill%3D%22%23FFFFFF%22%2F%3E%3Ccircle%20cx%3D%2214.6%22%20cy%3D%2213.2%22%20r%3D%221.15%22%20fill%3D%22%23FFFFFF%22%2F%3E%3Cpath%20d%3D%22M12%2015.4l1.15%201.5h-2.3z%22%20fill%3D%22%23FFFFFF%22%2F%3E%3C%2Fsvg%3E",
      "inset": 1,
-     "iconFile": "天猫.png",
+     "iconFile": "天猫.webp",
      "kind": "search",
      "alias": [
       "tmall",
@@ -4164,7 +4160,7 @@
      "url": "https://search.suning.com/%s/",
      "icon": "https://www.suning.com/",
      "inset": 1,
-     "iconFile": "苏宁易购.ico",
+     "iconFile": "苏宁易购.webp",
      "kind": "search",
      "alias": [
       "苏宁",
@@ -4176,7 +4172,7 @@
      "url": "https://category.vip.com/suggest.php?keyword=%s",
      "icon": "https://www.vip.com/",
      "inset": 1,
-     "iconFile": "唯品会.ico",
+     "iconFile": "唯品会.webp",
      "kind": "search",
      "alias": [
       "唯品",
@@ -4189,7 +4185,7 @@
      "url": "https://search.dangdang.com/?key=%s",
      "icon": "https://www.dangdang.com/",
      "inset": 1,
-     "iconFile": "当当.ico",
+     "iconFile": "当当.webp",
      "kind": "search",
      "alias": [
       "dangdang",
@@ -4241,7 +4237,7 @@
      "url": "https://s.1688.com/selloffer/offer_search.htm?keywords=%s",
      "icon": "https://www.1688.com/",
      "inset": 1,
-     "iconFile": "1688.ico",
+     "iconFile": "1688.webp",
      "alias": [
       "阿里巴巴1688",
       "阿里巴巴",
@@ -4254,7 +4250,7 @@
      "url": "https://www.goofish.com/search?q=%s",
      "icon": "https://www.goofish.com/",
      "inset": 1,
-     "iconFile": "闲鱼.png",
+     "iconFile": "闲鱼.webp",
      "kind": "search",
      "alias": [
       "闲鱼网",
@@ -4267,7 +4263,7 @@
      "url": "https://search.smzdm.com/?c=home&s=%s",
      "icon": "https://www.smzdm.com/",
      "inset": 1,
-     "iconFile": "什么值得买.ico",
+     "iconFile": "什么值得买.webp",
      "kind": "search",
      "alias": [
       "色魔张大妈",
@@ -4281,7 +4277,7 @@
      "url": "https://you.163.com/search?keyword=%s",
      "icon": "https://you.163.com/",
      "inset": 1,
-     "iconFile": "网易严选.ico",
+     "iconFile": "网易严选.webp",
      "kind": "search",
      "alias": [
       "严选",
@@ -4317,7 +4313,7 @@
      "url": "https://shopee.sg/search?keyword=%s",
      "icon": "https://shopee.sg/",
      "inset": 1,
-     "iconFile": "Shopee.png",
+     "iconFile": "Shopee.webp",
      "kind": "search",
      "alias": [
       "虾皮",
@@ -4366,7 +4362,7 @@
      "url": "https://www.ikea.cn/cn/zh/search/products/?q=%s",
      "icon": "https://www.ikea.cn/",
      "inset": 1,
-     "iconFile": "宜家.png",
+     "iconFile": "宜家.webp",
      "kind": "search",
      "alias": [
       "IKEA",
@@ -4380,7 +4376,7 @@
      "icon": "https://www.taobao.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "淘宝（首页）.ico",
+     "iconFile": "淘宝（首页）.webp",
      "alias": [
       "taobao",
       "TB",
@@ -4406,7 +4402,7 @@
      "icon": "https://www.jd.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "京东（首页）.ico",
+     "iconFile": "京东（首页）.webp",
      "alias": [
       "JD",
       "jd",
@@ -4434,7 +4430,7 @@
      "icon": "https://www.suning.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "苏宁易购.ico",
+     "iconFile": "苏宁易购.webp",
      "alias": [
       "苏宁",
       "Suning"
@@ -4446,7 +4442,7 @@
      "icon": "https://www.vip.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "唯品会.ico",
+     "iconFile": "唯品会.webp",
      "alias": [
       "唯品",
       "VIP.com",
@@ -4459,7 +4455,7 @@
      "icon": "https://www.dangdang.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "当当.ico",
+     "iconFile": "当当.webp",
      "alias": [
       "dangdang",
       "当当书"
@@ -4510,7 +4506,7 @@
      "icon": "https://www.1688.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "1688.ico",
+     "iconFile": "1688.webp",
      "alias": [
       "阿里巴巴",
       "1688批发"
@@ -4522,7 +4518,7 @@
      "icon": "https://www.goofish.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "闲鱼.png",
+     "iconFile": "闲鱼.webp",
      "alias": [
       "闲鱼网",
       "Xianyu",
@@ -4535,7 +4531,7 @@
      "icon": "https://www.smzdm.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "什么值得买.ico",
+     "iconFile": "什么值得买.webp",
      "alias": [
       "色魔张大妈",
       "SMZDM",
@@ -4549,7 +4545,7 @@
      "icon": "https://you.163.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "网易严选.ico",
+     "iconFile": "网易严选.webp",
      "alias": [
       "严选",
       "yanxuan"
@@ -4585,7 +4581,7 @@
      "icon": "https://shopee.sg/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Shopee.png",
+     "iconFile": "Shopee.webp",
      "alias": [
       "虾皮",
       "shopee",
@@ -4634,7 +4630,7 @@
      "icon": "https://www.ikea.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "宜家.png",
+     "iconFile": "宜家.webp",
      "alias": [
       "IKEA",
       "ikea",
@@ -4647,7 +4643,7 @@
      "icon": "https://www.mi.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "小米商城（首页）.ico",
+     "iconFile": "小米商城（首页）.webp",
      "alias": [
       "小米",
       "Xiaomi",
@@ -4660,7 +4656,7 @@
      "icon": "https://www.vmall.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "华为商城（首页）.ico",
+     "iconFile": "华为商城（首页）.webp",
      "alias": [
       "华为",
       "Huawei"
@@ -4766,7 +4762,7 @@
      "url": "https://pc.qq.com/search.html#!keyword=%s",
      "icon": "https://pc.qq.com/",
      "inset": 1,
-     "iconFile": "腾讯软件中心.ico",
+     "iconFile": "腾讯软件中心.webp",
      "kind": "search",
      "alias": [
       "腾讯软件",
@@ -4778,7 +4774,7 @@
      "url": "https://www.coolapk.com/algo?keyword=%s",
      "icon": "https://www.coolapk.com/",
      "inset": 1,
-     "iconFile": "酷安.png",
+     "iconFile": "酷安.webp",
      "kind": "search",
      "alias": [
       "coolapk",
@@ -4828,7 +4824,7 @@
      "icon": "https://www.coolapk.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "酷安.png",
+     "iconFile": "酷安.webp",
      "alias": [
       "coolapk",
       "酷安网"
@@ -4877,7 +4873,7 @@
      "icon": "https://pc.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯软件中心.ico",
+     "iconFile": "腾讯软件中心.webp",
      "alias": [
       "腾讯软件",
       "软管"
@@ -4938,7 +4934,7 @@
      "icon": "https://www.wandoujia.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "豌豆荚（首页）.ico",
+     "iconFile": "豌豆荚（首页）.webp",
      "alias": [
       "豌豆荚",
       "wandoujia"
@@ -4981,7 +4977,7 @@
      "url": "https://www.taptap.cn/search/%s",
      "icon": "https://www.taptap.cn/favicon.ico",
      "inset": 1,
-     "iconFile": "TapTap.png",
+     "iconFile": "TapTap.webp",
      "kind": "search",
      "alias": [
       "taptap",
@@ -4993,7 +4989,7 @@
      "url": "https://so.gamersky.com/?s=%s",
      "icon": "https://www.gamersky.com/",
      "inset": 1,
-     "iconFile": "游民星空.ico",
+     "iconFile": "游民星空.webp",
      "kind": "search",
      "alias": [
       "游民",
@@ -5005,7 +5001,7 @@
      "url": "https://so.3dmgame.com/?keyword=%s",
      "icon": "https://www.3dmgame.com/",
      "inset": 1,
-     "iconFile": "3DM.ico",
+     "iconFile": "3DM.webp",
      "kind": "search",
      "alias": [
       "3DMGAME",
@@ -5018,7 +5014,7 @@
      "url": "https://www.ign.com/search?q=%s",
      "icon": "https://www.ign.com/",
      "inset": 1,
-     "iconFile": "IGN.png",
+     "iconFile": "IGN.webp",
      "kind": "search",
      "alias": [
       "ign",
@@ -5081,7 +5077,7 @@
      "url": "https://www.gog.com/games?query=%s",
      "icon": "https://www.gog.com/",
      "inset": 1,
-     "iconFile": "GOG.png",
+     "iconFile": "GOG.webp",
      "kind": "search",
      "alias": [
       "gog",
@@ -5169,7 +5165,7 @@
      "icon": "https://www.wegame.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "WeGame（首页）.ico",
+     "iconFile": "WeGame（首页）.webp",
      "alias": [
       "wegame",
       "腾讯游戏平台"
@@ -5194,7 +5190,7 @@
      "icon": "https://www.mihoyo.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "米哈游（首页）.ico",
+     "iconFile": "米哈游（首页）.webp",
      "alias": [
       "miHoYo",
       "mihoyo"
@@ -5206,7 +5202,7 @@
      "icon": "https://pvp.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "王者荣耀（首页）.ico",
+     "iconFile": "王者荣耀（首页）.webp",
      "alias": [
       "王者",
       "Honor of Kings",
@@ -5219,7 +5215,7 @@
      "icon": "https://lol.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "英雄联盟（首页）.ico",
+     "iconFile": "英雄联盟（首页）.webp",
      "alias": [
       "LOL",
       "lol",
@@ -5232,7 +5228,7 @@
      "icon": "https://www.gamersky.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "游民星空.ico",
+     "iconFile": "游民星空.webp",
      "alias": [
       "游民",
       "gamersky"
@@ -5244,7 +5240,7 @@
      "icon": "https://www.3dmgame.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "3DM.ico",
+     "iconFile": "3DM.webp",
      "alias": [
       "3DMGAME",
       "3dmgame",
@@ -5257,7 +5253,7 @@
      "icon": "https://www.ign.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "IGN.png",
+     "iconFile": "IGN.webp",
      "alias": [
       "ign",
       "游戏媒体"
@@ -5307,7 +5303,7 @@
      "icon": "https://www.gog.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "GOG.png",
+     "iconFile": "GOG.webp",
      "alias": [
       "gog",
       "GOG游戏"
@@ -5425,7 +5421,7 @@
      "url": "https://www.alipan.com/search?q=%s",
      "icon": "https://www.alipan.com/",
      "inset": 1,
-     "iconFile": "阿里云盘.ico",
+     "iconFile": "阿里云盘.webp",
      "kind": "search",
      "alias": [
       "阿里盘",
@@ -5438,7 +5434,7 @@
      "url": "https://pan.quark.cn/search?q=%s",
      "icon": "https://pan.quark.cn/",
      "inset": 1,
-     "iconFile": "夸克网盘.ico",
+     "iconFile": "夸克网盘.webp",
      "kind": "search",
      "alias": [
       "夸克盘",
@@ -5450,7 +5446,7 @@
      "url": "https://115.com/?mode=search&search_value=%s",
      "icon": "https://115.com/",
      "inset": 1,
-     "iconFile": "115_网盘.png",
+     "iconFile": "115_网盘.webp",
      "kind": "search",
      "alias": [
       "115",
@@ -5494,7 +5490,7 @@
      "url": "http://xueshu.baidu.com/s?wd=%s",
      "icon": "https://xueshu.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "百度学术.ico",
+     "iconFile": "百度学术.webp",
      "kind": "search",
      "alias": [
       "百度学术搜索",
@@ -5519,7 +5515,7 @@
      "url": "http://www.wanfangdata.com.cn/search/searchList.do?searchType=all&searchWord=%s",
      "icon": "https://www.wanfangdata.com.cn/favicon.ico",
      "inset": 1,
-     "iconFile": "万方.ico",
+     "iconFile": "万方.webp",
      "kind": "search",
      "alias": [
       "万方数据",
@@ -5531,7 +5527,7 @@
      "url": "https://www.ebsco.com/search?q=%s",
      "icon": "https://www.ebsco.com/favicon.ico",
      "inset": 1,
-     "iconFile": "EBSCO.ico",
+     "iconFile": "EBSCO.webp",
      "kind": "search",
      "alias": [
       "ebsco",
@@ -5593,7 +5589,7 @@
      "url": "https://www.semanticscholar.org/search?q=%s",
      "icon": "https://www.semanticscholar.org/",
      "inset": 1,
-     "iconFile": "Semantic_Scholar.ico",
+     "iconFile": "Semantic_Scholar.webp",
      "kind": "search",
      "alias": [
       "语义学者",
@@ -5606,7 +5602,7 @@
      "url": "https://pubmed.ncbi.nlm.nih.gov/?term=%s",
      "icon": "https://pubmed.ncbi.nlm.nih.gov/",
      "inset": 1,
-     "iconFile": "PubMed.png",
+     "iconFile": "PubMed.webp",
      "kind": "search",
      "alias": [
       "pubmed",
@@ -5619,7 +5615,7 @@
      "url": "https://www.researchgate.net/search?q=%s",
      "icon": "https://www.researchgate.net/",
      "inset": 1,
-     "iconFile": "ResearchGate.ico",
+     "iconFile": "ResearchGate.webp",
      "kind": "search",
      "alias": [
       "RG",
@@ -5706,7 +5702,7 @@
      "url": "https://dblp.org/search?q=%s",
      "icon": "https://dblp.org/",
      "inset": 1,
-     "iconFile": "DBLP.ico",
+     "iconFile": "DBLP.webp",
      "kind": "search",
      "alias": [
       "dblp",
@@ -5767,7 +5763,7 @@
      "icon": "https://www.cnki.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "知网（首页）.png",
+     "iconFile": "知网（首页）.webp",
      "alias": [
       "CNKI",
       "cnki",
@@ -5780,7 +5776,7 @@
      "icon": "https://www.wanfangdata.com.cn/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "万方.ico",
+     "iconFile": "万方.webp",
      "alias": [
       "万方数据",
       "wanfang"
@@ -5792,7 +5788,7 @@
      "icon": "http://www.cqvip.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "维普（首页）.ico",
+     "iconFile": "维普（首页）.webp",
      "alias": [
       "维普网",
       "VIP期刊",
@@ -5818,7 +5814,7 @@
      "icon": "https://www.semanticscholar.org/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Semantic_Scholar.ico",
+     "iconFile": "Semantic_Scholar.webp",
      "alias": [
       "语义学者",
       "semanticscholar",
@@ -5831,7 +5827,7 @@
      "icon": "https://pubmed.ncbi.nlm.nih.gov/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "PubMed.png",
+     "iconFile": "PubMed.webp",
      "alias": [
       "pubmed",
       "医学文献",
@@ -5844,7 +5840,7 @@
      "icon": "https://www.researchgate.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "ResearchGate.ico",
+     "iconFile": "ResearchGate.webp",
      "alias": [
       "RG",
       "researchgate",
@@ -5931,7 +5927,7 @@
      "icon": "https://dblp.org/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "DBLP.ico",
+     "iconFile": "DBLP.webp",
      "alias": [
       "dblp",
       "计算机论文"
@@ -6011,7 +6007,7 @@
      "url": "https://tieba.baidu.com/f?kw=%s&ie=utf-8",
      "icon": "https://tieba.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "贴吧.ico",
+     "iconFile": "贴吧.webp",
      "kind": "search",
      "alias": [
       "百度贴吧",
@@ -6023,7 +6019,7 @@
      "url": "https://www.zhihu.com/search?q=%s",
      "icon": "https://api.iconify.design/tabler:brand-zhihu.svg?color=%230084FF",
      "inset": 1,
-     "iconFile": "知乎.png",
+     "iconFile": "知乎.webp",
      "kind": "search",
      "alias": [
       "zhihu",
@@ -6036,7 +6032,7 @@
      "url": "https://www.douban.com/search?q=%s",
      "icon": "https://api.iconify.design/simple-icons:douban.svg?color=%232D963D",
      "inset": 1,
-     "iconFile": "豆瓣.png",
+     "iconFile": "豆瓣.webp",
      "kind": "search",
      "alias": [
       "douban",
@@ -6077,7 +6073,7 @@
      "url": "https://www.xiaohongshu.com/search_result?keyword=%s",
      "icon": "https://api.iconify.design/simple-icons:xiaohongshu.svg?color=%23FF2442",
      "inset": 1,
-     "iconFile": "小红书.png",
+     "iconFile": "小红书.webp",
      "kind": "search",
      "alias": [
       "RED",
@@ -6153,7 +6149,7 @@
      "url": "https://web.okjike.com/search?q=%s",
      "icon": "https://web.okjike.com/",
      "inset": 1,
-     "iconFile": "即刻.png",
+     "iconFile": "即刻.webp",
      "kind": "search",
      "alias": [
       "jike",
@@ -6165,7 +6161,7 @@
      "url": "https://bbs.hupu.com/search?q=%s",
      "icon": "https://www.hupu.com/",
      "inset": 1,
-     "iconFile": "虎扑.ico",
+     "iconFile": "虎扑.webp",
      "kind": "search",
      "alias": [
       "hupu",
@@ -6203,7 +6199,7 @@
      "icon": "https://weibo.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "微博（首页）.ico",
+     "iconFile": "微博（首页）.webp",
      "alias": [
       "weibo",
       "Weibo",
@@ -6217,7 +6213,7 @@
      "icon": "https://api.iconify.design/simple-icons:douban.svg?color=%232D963D",
      "inset": 1,
      "kind": "open",
-     "iconFile": "豆瓣.png",
+     "iconFile": "豆瓣.webp",
      "alias": [
       "douban",
       "Douban",
@@ -6230,7 +6226,7 @@
      "icon": "https://api.iconify.design/simple-icons:xiaohongshu.svg?color=%23FF2442",
      "inset": 1,
      "kind": "open",
-     "iconFile": "小红书.png",
+     "iconFile": "小红书.webp",
      "alias": [
       "RED",
       "小红书App",
@@ -6243,7 +6239,7 @@
      "icon": "https://tieba.baidu.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "贴吧.ico",
+     "iconFile": "贴吧.webp",
      "alias": [
       "贴吧",
       "tieba"
@@ -6255,7 +6251,7 @@
      "icon": "https://web.okjike.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "即刻.png",
+     "iconFile": "即刻.webp",
      "alias": [
       "jike",
       "Jike"
@@ -6267,7 +6263,7 @@
      "icon": "https://www.hupu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "虎扑.ico",
+     "iconFile": "虎扑.webp",
      "alias": [
       "hupu",
       "虎扑步行街"
@@ -6279,7 +6275,7 @@
      "icon": "https://maimai.cn/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "脉脉.ico",
+     "iconFile": "脉脉.webp",
      "alias": [
       "maimai",
       "Maimai",
@@ -6454,7 +6450,7 @@
      "url": "https://www.baidu.com/s?rtt=1&bsst=1&cl=2&tn=news&rsv_dl=ns_pc&word=%s",
      "icon": "https://www.baidu.com/favicon.ico",
      "inset": 1,
-     "iconFile": "百度知道.ico",
+     "iconFile": "百度知道.webp",
      "kind": "search",
      "alias": [
       "百度资讯",
@@ -6466,7 +6462,7 @@
      "url": "https://www.toutiao.com/search/?keyword=%s",
      "icon": "https://www.toutiao.com/favicon.ico",
      "inset": 1,
-     "iconFile": "今日头条.ico",
+     "iconFile": "今日头条.webp",
      "kind": "search",
      "alias": [
       "头条",
@@ -6507,7 +6503,7 @@
      "url": "https://www.zhihu.com/search?q=%s",
      "icon": "https://api.iconify.design/tabler:brand-zhihu.svg?color=%230084FF",
      "inset": 1,
-     "iconFile": "知乎.png",
+     "iconFile": "知乎.webp",
      "kind": "search",
      "alias": [
       "zhihu",
@@ -6520,7 +6516,7 @@
      "url": "https://www.thepaper.cn/searchResult?searchWord=%s",
      "icon": "https://www.thepaper.cn/",
      "inset": 1,
-     "iconFile": "澎湃新闻.ico",
+     "iconFile": "澎湃新闻.webp",
      "kind": "search",
      "alias": [
       "澎湃",
@@ -6533,7 +6529,7 @@
      "url": "https://search.sina.com.cn/?q=%s",
      "icon": "https://news.sina.com.cn/",
      "inset": 1,
-     "iconFile": "新浪新闻.ico",
+     "iconFile": "新浪新闻.webp",
      "kind": "search",
      "alias": [
       "新浪",
@@ -6546,7 +6542,7 @@
      "url": "https://www.163.com/search?keyword=%s",
      "icon": "https://news.163.com/",
      "inset": 1,
-     "iconFile": "网易新闻.ico",
+     "iconFile": "网易新闻.webp",
      "kind": "search",
      "alias": [
       "网易",
@@ -6559,7 +6555,7 @@
      "url": "https://search.ifeng.com/sofeng/search.action?q=%s",
      "icon": "https://www.ifeng.com/",
      "inset": 1,
-     "iconFile": "凤凰网.png",
+     "iconFile": "凤凰网.webp",
      "kind": "search",
      "alias": [
       "凤凰",
@@ -6572,7 +6568,7 @@
      "url": "https://sou.chinanews.com.cn/search.do?q=%s",
      "icon": "https://www.chinanews.com.cn/",
      "inset": 1,
-     "iconFile": "中国新闻网.ico",
+     "iconFile": "中国新闻网.webp",
      "kind": "search",
      "alias": [
       "中新网",
@@ -6584,7 +6580,7 @@
      "url": "https://www.ithome.com/search/%s.html",
      "icon": "https://www.ithome.com/",
      "inset": 1,
-     "iconFile": "IT之家.png",
+     "iconFile": "IT之家.webp",
      "kind": "search",
      "alias": [
       "it之家",
@@ -6609,7 +6605,7 @@
      "url": "https://www.huxiu.com/search.html?s=%s",
      "icon": "https://www.huxiu.com/",
      "inset": 1,
-     "iconFile": "虎嗅.png",
+     "iconFile": "虎嗅.webp",
      "kind": "search",
      "alias": [
       "huxiu",
@@ -6658,7 +6654,7 @@
      "icon": "https://news.sina.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "新浪新闻.ico",
+     "iconFile": "新浪新闻.webp",
      "alias": [
       "新浪",
       "sina",
@@ -6671,7 +6667,7 @@
      "icon": "https://news.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯新闻（首页）.png",
+     "iconFile": "腾讯新闻（首页）.webp",
      "alias": [
       "腾讯网",
       "腾讯资讯"
@@ -6683,7 +6679,7 @@
      "icon": "https://news.163.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "网易新闻.ico",
+     "iconFile": "网易新闻.webp",
      "alias": [
       "网易",
       "netease",
@@ -6696,7 +6692,7 @@
      "icon": "https://news.sohu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "搜狐新闻（首页）.ico",
+     "iconFile": "搜狐新闻（首页）.webp",
      "alias": [
       "搜狐",
       "sohu"
@@ -6708,7 +6704,7 @@
      "icon": "https://www.thepaper.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "澎湃新闻.ico",
+     "iconFile": "澎湃新闻.webp",
      "alias": [
       "澎湃",
       "thepaper",
@@ -6721,7 +6717,7 @@
      "icon": "https://www.jiemian.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "界面新闻（首页）.ico",
+     "iconFile": "界面新闻（首页）.webp",
      "alias": [
       "界面",
       "jiemian"
@@ -6733,7 +6729,7 @@
      "icon": "https://www.guancha.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "观察者网（首页）.ico",
+     "iconFile": "观察者网（首页）.webp",
      "alias": [
       "观察者",
       "guancha"
@@ -6745,7 +6741,6 @@
      "icon": "https://www.huanqiu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "环球网（首页）.png",
      "alias": [
       "环球",
       "huanqiu"
@@ -6757,7 +6752,7 @@
      "icon": "https://www.chinanews.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "中国新闻网（首页）.ico",
+     "iconFile": "中国新闻网（首页）.webp",
      "alias": [
       "中新网",
       "chinanews"
@@ -6769,7 +6764,7 @@
      "icon": "http://www.people.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "人民网（首页）.ico",
+     "iconFile": "人民网（首页）.webp",
      "alias": [
       "人民",
       "people.com.cn"
@@ -6794,7 +6789,7 @@
      "icon": "https://www.cnr.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "央广网（首页）.ico",
+     "iconFile": "央广网（首页）.webp",
      "alias": [
       "央广",
       "cnr"
@@ -6818,7 +6813,7 @@
      "icon": "https://www.huxiu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "虎嗅.png",
+     "iconFile": "虎嗅.webp",
      "alias": [
       "huxiu",
       "虎嗅网"
@@ -6885,7 +6880,7 @@
      "url": "https://www.zdic.net/hans/%s",
      "icon": "https://www.zdic.net/",
      "inset": 1,
-     "iconFile": "汉典.png",
+     "iconFile": "汉典.webp",
      "kind": "search",
      "alias": [
       "汉典网",
@@ -6909,7 +6904,7 @@
      "url": "https://www.iciba.com/word?w=%s",
      "icon": "https://www.iciba.com/",
      "inset": 1,
-     "iconFile": "金山词霸.ico",
+     "iconFile": "金山词霸.webp",
      "kind": "search",
      "alias": [
       "词霸",
@@ -6922,7 +6917,7 @@
      "url": "https://dict.cn/%s",
      "icon": "https://dict.cn/",
      "inset": 1,
-     "iconFile": "海词.ico",
+     "iconFile": "海词.webp",
      "kind": "search",
      "alias": [
       "海词词典"
@@ -6933,7 +6928,7 @@
      "url": "https://dictionary.cambridge.org/dictionary/english-chinese-simplified/%s",
      "icon": "https://dictionary.cambridge.org/",
      "inset": 1,
-     "iconFile": "剑桥词典.ico",
+     "iconFile": "剑桥词典.webp",
      "kind": "search",
      "alias": [
       "剑桥",
@@ -6957,7 +6952,7 @@
      "url": "https://www.oxfordlearnersdictionaries.com/search/english/?q=%s",
      "icon": "https://www.oxfordlearnersdictionaries.com/",
      "inset": 1,
-     "iconFile": "牛津词典.ico",
+     "iconFile": "牛津词典.webp",
      "kind": "search",
      "alias": [
       "牛津",
@@ -6969,7 +6964,7 @@
      "url": "https://www.merriam-webster.com/dictionary/%s",
      "icon": "https://www.merriam-webster.com/",
      "inset": 1,
-     "iconFile": "韦氏词典.png",
+     "iconFile": "韦氏词典.webp",
      "kind": "search",
      "alias": [
       "韦氏",
@@ -6981,7 +6976,7 @@
      "url": "https://www.vocabulary.com/dictionary/%s",
      "icon": "https://www.vocabulary.com/",
      "inset": 1,
-     "iconFile": "Vocabulary.com.ico",
+     "iconFile": "Vocabulary.com.webp",
      "kind": "search",
      "alias": [
       "词汇",
@@ -7005,7 +7000,7 @@
      "url": "https://www.thefreedictionary.com/%s",
      "icon": "https://www.thefreedictionary.com/",
      "inset": 1,
-     "iconFile": "Free_Dictionary.ico",
+     "iconFile": "Free_Dictionary.webp",
      "kind": "search",
      "alias": [
       "TFD",
@@ -7019,7 +7014,7 @@
      "icon": "https://www.zdic.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "汉典.png",
+     "iconFile": "汉典.webp",
      "alias": [
       "汉典网",
       "汉字典"
@@ -7043,7 +7038,7 @@
      "icon": "https://youdao.com/favicon.ico",
      "inset": 1,
      "kind": "open",
-     "iconFile": "有道词典.png",
+     "iconFile": "有道词典.webp",
      "alias": [
       "有道",
       "youdao"
@@ -7055,7 +7050,7 @@
      "icon": "https://www.iciba.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "金山词霸.ico",
+     "iconFile": "金山词霸.webp",
      "alias": [
       "词霸",
       "Kingsoft",
@@ -7068,7 +7063,7 @@
      "icon": "https://dict.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "海词.ico",
+     "iconFile": "海词.webp",
      "alias": [
       "海词词典"
      ]
@@ -7079,7 +7074,7 @@
      "icon": "https://dictionary.cambridge.org/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "剑桥词典.ico",
+     "iconFile": "剑桥词典.webp",
      "alias": [
       "剑桥",
       "Cambridge"
@@ -7103,7 +7098,7 @@
      "icon": "https://www.oxfordlearnersdictionaries.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "牛津词典.ico",
+     "iconFile": "牛津词典.webp",
      "alias": [
       "牛津",
       "Oxford"
@@ -7115,7 +7110,7 @@
      "icon": "https://www.merriam-webster.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "韦氏词典.png",
+     "iconFile": "韦氏词典.webp",
      "alias": [
       "韦氏",
       "Merriam-Webster"
@@ -7127,7 +7122,7 @@
      "icon": "https://www.vocabulary.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Vocabulary.com.ico",
+     "iconFile": "Vocabulary.com.webp",
      "alias": [
       "词汇",
       "vocabulary"
@@ -7151,7 +7146,7 @@
      "icon": "https://www.thefreedictionary.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Free_Dictionary.ico",
+     "iconFile": "Free_Dictionary.webp",
      "alias": [
       "TFD",
       "tfd",
@@ -7170,7 +7165,7 @@
      "url": "https://so.eastmoney.com/web/s?keyword=%s",
      "icon": "https://www.eastmoney.com/",
      "inset": 1,
-     "iconFile": "东方财富.ico",
+     "iconFile": "东方财富.webp",
      "kind": "search",
      "alias": [
       "东财",
@@ -7183,7 +7178,7 @@
      "url": "https://xueqiu.com/k?q=%s",
      "icon": "https://xueqiu.com/",
      "inset": 1,
-     "iconFile": "雪球.ico",
+     "iconFile": "雪球.webp",
      "kind": "search",
      "alias": [
       "xueqiu",
@@ -7219,7 +7214,7 @@
      "url": "https://www.yicai.com/search?keys=%s",
      "icon": "https://www.yicai.com/",
      "inset": 1,
-     "iconFile": "第一财经.ico",
+     "iconFile": "第一财经.webp",
      "kind": "search",
      "alias": [
       "一财",
@@ -7243,7 +7238,7 @@
      "url": "https://search.sina.com.cn/?q=%s&c=finance",
      "icon": "https://finance.sina.com.cn/",
      "inset": 1,
-     "iconFile": "新浪财经.ico",
+     "iconFile": "新浪财经.webp",
      "kind": "search",
      "alias": [
       "新浪股票",
@@ -7256,7 +7251,7 @@
      "icon": "https://www.eastmoney.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "东方财富.ico",
+     "iconFile": "东方财富.webp",
      "alias": [
       "东财",
       "eastmoney",
@@ -7269,7 +7264,7 @@
      "icon": "https://xueqiu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "雪球.ico",
+     "iconFile": "雪球.webp",
      "alias": [
       "xueqiu",
       "雪球财经"
@@ -7305,7 +7300,7 @@
      "icon": "https://www.yicai.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "第一财经.ico",
+     "iconFile": "第一财经.webp",
      "alias": [
       "一财",
       "Yicai"
@@ -7317,7 +7312,7 @@
      "icon": "https://finance.sina.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "新浪财经.ico",
+     "iconFile": "新浪财经.webp",
      "alias": [
       "新浪股票",
       "finance.sina"
@@ -7329,7 +7324,7 @@
      "icon": "https://www.hexun.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "和讯网（首页）.ico",
+     "iconFile": "和讯网（首页）.webp",
      "alias": [
       "和讯",
       "hexun"
@@ -7341,7 +7336,7 @@
      "icon": "https://www.10jqka.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "同花顺（首页）.ico",
+     "iconFile": "同花顺（首页）.webp",
      "alias": [
       "ths",
       "10jqka",
@@ -7354,7 +7349,7 @@
      "icon": "https://www.stockstar.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "证券之星（首页）.ico",
+     "iconFile": "证券之星（首页）.webp",
      "alias": [
       "证券之星网",
       "stockstar"
@@ -7391,7 +7386,7 @@
      "icon": "https://www.cnbc.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "CNBC（首页）.png",
+     "iconFile": "CNBC（首页）.webp",
      "alias": [
       "cnbc",
       "消费者新闻与商业频道"
@@ -7471,7 +7466,7 @@
      "url": "https://so.gushiwen.cn/search.aspx?value=%s",
      "icon": "https://www.gushiwen.cn/",
      "inset": 1,
-     "iconFile": "古诗文网.ico",
+     "iconFile": "古诗文网.webp",
      "kind": "search",
      "alias": [
       "古诗文",
@@ -7508,7 +7503,7 @@
      "url": "https://www.imooc.com/search/?words=%s",
      "icon": "https://www.imooc.com/",
      "inset": 1,
-     "iconFile": "慕课网.ico",
+     "iconFile": "慕课网.webp",
      "kind": "search",
      "alias": [
       "imooc",
@@ -7520,7 +7515,7 @@
      "url": "https://study.163.com/search.htm?keyword=%s",
      "icon": "https://study.163.com/",
      "inset": 1,
-     "iconFile": "网易云课堂.ico",
+     "iconFile": "网易云课堂.webp",
      "kind": "search",
      "alias": [
       "云课堂",
@@ -7545,7 +7540,7 @@
      "url": "https://ocw.mit.edu/search/?q=%s",
      "icon": "https://ocw.mit.edu/",
      "inset": 1,
-     "iconFile": "MIT_OpenCourseWare.ico",
+     "iconFile": "MIT_OpenCourseWare.webp",
      "kind": "search",
      "alias": [
       "MIT公开课",
@@ -7634,7 +7629,7 @@
      "icon": "https://www.skillshare.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Skillshare（首页）.png",
+     "iconFile": "Skillshare（首页）.webp",
      "alias": [
       "skillshare",
       "技能分享"
@@ -7658,7 +7653,7 @@
      "icon": "https://www.imooc.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "慕课网.ico",
+     "iconFile": "慕课网.webp",
      "alias": [
       "imooc",
       "慕课"
@@ -7670,7 +7665,7 @@
      "icon": "https://study.163.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "网易云课堂.ico",
+     "iconFile": "网易云课堂.webp",
      "alias": [
       "云课堂",
       "study.163"
@@ -7682,7 +7677,7 @@
      "icon": "https://www.w3schools.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "W3Schools（首页）.png",
+     "iconFile": "W3Schools（首页）.webp",
      "alias": [
       "w3schools",
       "W3C学校"
@@ -7706,7 +7701,7 @@
      "icon": "https://leetcode.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "LeetCode.ico",
+     "iconFile": "LeetCode.webp",
      "alias": [
       "力扣",
       "LC",
@@ -7719,7 +7714,7 @@
      "icon": "https://www.nowcoder.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "牛客网（首页）.ico",
+     "iconFile": "牛客网（首页）.webp",
      "alias": [
       "牛客",
       "NowCoder",
@@ -7738,7 +7733,7 @@
      "url": "https://www.qidian.com/so/%s.html",
      "icon": "https://www.qidian.com/",
      "inset": 1,
-     "iconFile": "起点中文网.ico",
+     "iconFile": "起点中文网.webp",
      "kind": "search",
      "alias": [
       "起点",
@@ -7751,7 +7746,7 @@
      "url": "https://search.jjwxc.net/search.php?kw=%s",
      "icon": "https://www.jjwxc.net/",
      "inset": 1,
-     "iconFile": "晋江文学城.png",
+     "iconFile": "晋江文学城.webp",
      "kind": "search",
      "alias": [
       "晋江",
@@ -7764,7 +7759,7 @@
      "url": "https://weread.qq.com/web/search/books?keyword=%s",
      "icon": "https://weread.qq.com/",
      "inset": 1,
-     "iconFile": "微信读书.ico",
+     "iconFile": "微信读书.webp",
      "kind": "search",
      "alias": [
       "WeRead",
@@ -7777,7 +7772,7 @@
      "url": "https://search.zongheng.com/s?keyword=%s",
      "icon": "https://www.zongheng.com/",
      "inset": 1,
-     "iconFile": "纵横中文网.png",
+     "iconFile": "纵横中文网.webp",
      "kind": "search",
      "alias": [
       "纵横",
@@ -7789,7 +7784,7 @@
      "url": "https://search.kongfz.com/product_result/?key=%s",
      "icon": "https://www.kongfz.com/",
      "inset": 1,
-     "iconFile": "孔夫子旧书网.png",
+     "iconFile": "孔夫子旧书网.webp",
      "kind": "search",
      "alias": [
       "孔夫子",
@@ -7814,7 +7809,7 @@
      "url": "https://www.gutenberg.org/ebooks/search/?query=%s",
      "icon": "https://www.gutenberg.org/",
      "inset": 1,
-     "iconFile": "Project_Gutenberg.png",
+     "iconFile": "Project_Gutenberg.webp",
      "kind": "search",
      "alias": [
       "古腾堡",
@@ -7841,7 +7836,7 @@
      "icon": "https://www.qidian.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "起点中文网.ico",
+     "iconFile": "起点中文网.webp",
      "alias": [
       "起点",
       "qidian",
@@ -7854,7 +7849,7 @@
      "icon": "https://www.jjwxc.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "晋江文学城.png",
+     "iconFile": "晋江文学城.webp",
      "alias": [
       "晋江",
       "jjwxc",
@@ -7867,7 +7862,7 @@
      "icon": "https://weread.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "微信读书.ico",
+     "iconFile": "微信读书.webp",
      "alias": [
       "WeRead",
       "weread",
@@ -7880,7 +7875,7 @@
      "icon": "https://www.zongheng.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "纵横中文网.png",
+     "iconFile": "纵横中文网.webp",
      "alias": [
       "纵横",
       "zongheng"
@@ -7916,7 +7911,7 @@
      "icon": "https://www.ciweimao.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "刺猬猫（首页）.png",
+     "iconFile": "刺猬猫（首页）.webp",
      "alias": [
       "刺猬猫阅读",
       "ciweimao"
@@ -7940,7 +7935,7 @@
      "icon": "https://www.17k.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "17K_小说（首页）.ico",
+     "iconFile": "17K_小说（首页）.webp",
      "alias": [
       "17K",
       "17k小说"
@@ -7952,7 +7947,7 @@
      "icon": "https://www.tadu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "塔读文学（首页）.ico",
+     "iconFile": "塔读文学（首页）.webp",
      "alias": [
       "塔读",
       "tadu"
@@ -8008,7 +8003,7 @@
      "url": "https://sou.autohome.com.cn/zonghe?q=%s",
      "icon": "https://www.autohome.com.cn/",
      "inset": 1,
-     "iconFile": "汽车之家.png",
+     "iconFile": "汽车之家.webp",
      "kind": "search",
      "alias": [
       "汽车之家论坛",
@@ -8032,7 +8027,7 @@
      "url": "https://so.yiche.com/?q=%s",
      "icon": "https://www.yiche.com/",
      "inset": 1,
-     "iconFile": "易车.ico",
+     "iconFile": "易车.webp",
      "kind": "search",
      "alias": [
       "易车网",
@@ -8044,7 +8039,7 @@
      "url": "https://so.pcauto.com.cn/cs/s?q=%s",
      "icon": "https://www.pcauto.com.cn/",
      "inset": 1,
-     "iconFile": "太平洋汽车.ico",
+     "iconFile": "太平洋汽车.webp",
      "kind": "search",
      "alias": [
       "太平洋汽车网",
@@ -8056,7 +8051,7 @@
      "url": "https://so.xcar.com.cn/?q=%s",
      "icon": "https://www.xcar.com.cn/",
      "inset": 1,
-     "iconFile": "爱卡汽车.ico",
+     "iconFile": "爱卡汽车.webp",
      "kind": "search",
      "alias": [
       "爱卡",
@@ -8069,7 +8064,7 @@
      "icon": "https://www.autohome.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "汽车之家.png",
+     "iconFile": "汽车之家.webp",
      "alias": [
       "汽车之家论坛",
       "autohome"
@@ -8093,7 +8088,7 @@
      "icon": "https://www.yiche.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "易车.ico",
+     "iconFile": "易车.webp",
      "alias": [
       "易车网",
       "bitauto"
@@ -8105,7 +8100,7 @@
      "icon": "https://www.pcauto.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "太平洋汽车.ico",
+     "iconFile": "太平洋汽车.webp",
      "alias": [
       "太平洋汽车网",
       "pcauto"
@@ -8117,7 +8112,7 @@
      "icon": "https://www.xcar.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "爱卡汽车.ico",
+     "iconFile": "爱卡汽车.webp",
      "alias": [
       "爱卡",
       "xcar"
@@ -8129,7 +8124,7 @@
      "icon": "https://www.guazi.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "瓜子二手车（首页）.png",
+     "iconFile": "瓜子二手车（首页）.webp",
      "alias": [
       "瓜子",
       "guazi",
@@ -8173,7 +8168,7 @@
      "url": "https://www.xiachufang.com/search/?keyword=%s",
      "icon": "https://www.xiachufang.com/",
      "inset": 1,
-     "iconFile": "下厨房.ico",
+     "iconFile": "下厨房.webp",
      "kind": "search",
      "alias": [
       "下厨房美食",
@@ -8186,7 +8181,7 @@
      "url": "https://www.tianqi.com/so/?keyword=%s",
      "icon": "https://www.tianqi.com/",
      "inset": 1,
-     "iconFile": "天气网.ico",
+     "iconFile": "天气网.webp",
      "kind": "search",
      "alias": [
       "中国天气网",
@@ -8222,7 +8217,7 @@
      "url": "https://dxy.com/search?keyword=%s",
      "icon": "https://dxy.com/",
      "inset": 1,
-     "iconFile": "丁香医生.ico",
+     "iconFile": "丁香医生.webp",
      "kind": "search",
      "alias": [
       "丁香园",
@@ -8235,7 +8230,7 @@
      "url": "https://www.haodf.com/search/?kw=%s",
      "icon": "https://www.haodf.com/",
      "inset": 1,
-     "iconFile": "好大夫在线.png",
+     "iconFile": "好大夫在线.webp",
      "kind": "search",
      "alias": [
       "好大夫",
@@ -8261,7 +8256,7 @@
      "icon": "https://www.xiachufang.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "下厨房.ico",
+     "iconFile": "下厨房.webp",
      "alias": [
       "下厨房美食",
       "xiachufang",
@@ -8286,7 +8281,7 @@
      "icon": "https://www.tianqi.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "天气网.ico",
+     "iconFile": "天气网.webp",
      "alias": [
       "中国天气网",
       "天气"
@@ -8298,7 +8293,7 @@
      "icon": "https://www.weather.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "中国天气网（首页）.png",
+     "iconFile": "中国天气网（首页）.webp",
      "alias": [
       "天气网",
       "天气"
@@ -8310,7 +8305,7 @@
      "icon": "https://www.kuaidi100.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "快递100.png",
+     "iconFile": "快递100.webp",
      "alias": [
       "快递查询",
       "kuaidi100",
@@ -8323,7 +8318,7 @@
      "icon": "https://www.cainiao.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "菜鸟裹裹（首页）.png",
+     "iconFile": "菜鸟裹裹（首页）.webp",
      "alias": [
       "菜鸟",
       "cainiao",
@@ -8349,7 +8344,7 @@
      "icon": "https://www.ctrip.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "携程（首页）.ico",
+     "iconFile": "携程（首页）.webp",
      "alias": [
       "携程网",
       "ctrip",
@@ -8362,7 +8357,7 @@
      "icon": "https://www.qunar.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "去哪儿（首页）.ico",
+     "iconFile": "去哪儿（首页）.webp",
      "alias": [
       "去哪儿网",
       "qunar",
@@ -8388,7 +8383,7 @@
      "icon": "https://www.mafengwo.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "马蜂窝（首页）.ico"
+     "iconFile": "马蜂窝（首页）.webp"
     },
     {
      "name": "途牛（首页）",
@@ -8396,7 +8391,7 @@
      "icon": "https://www.tuniu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "途牛（首页）.ico"
+     "iconFile": "途牛（首页）.webp"
     },
     {
      "name": "58 同城（首页）",
@@ -8404,7 +8399,7 @@
      "icon": "https://www.58.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "58_同城（首页）.ico"
+     "iconFile": "58_同城（首页）.webp"
     },
     {
      "name": "赶集网（首页）",
@@ -8412,7 +8407,7 @@
      "icon": "https://www.ganji.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "赶集网（首页）.ico"
+     "iconFile": "赶集网（首页）.webp"
     }
    ],
    "group": "web",
@@ -8426,7 +8421,7 @@
      "url": "https://www.tianyancha.com/search?key=%s",
      "icon": "https://www.tianyancha.com/",
      "inset": 1,
-     "iconFile": "天眼查.ico",
+     "iconFile": "天眼查.webp",
      "kind": "search"
     },
     {
@@ -8434,7 +8429,7 @@
      "url": "https://www.qcc.com/web/search?key=%s",
      "icon": "https://www.qcc.com/",
      "inset": 1,
-     "iconFile": "企查查.png",
+     "iconFile": "企查查.webp",
      "kind": "search"
     },
     {
@@ -8442,7 +8437,7 @@
      "url": "https://aiqicha.baidu.com/s?q=%s",
      "icon": "https://aiqicha.baidu.com/",
      "inset": 1,
-     "iconFile": "爱企查.ico",
+     "iconFile": "爱企查.webp",
      "kind": "search"
     },
     {
@@ -8450,7 +8445,7 @@
      "url": "https://www.kuaidi100.com/?nu=%s",
      "icon": "https://www.kuaidi100.com/",
      "inset": 1,
-     "iconFile": "快递100.png",
+     "iconFile": "快递100.webp",
      "kind": "search",
      "alias": [
       "快递查询",
@@ -8463,7 +8458,7 @@
      "url": "https://tool.chinaz.com/?q=%s",
      "icon": "https://tool.chinaz.com/",
      "inset": 1,
-     "iconFile": "站长之家.ico",
+     "iconFile": "站长之家.webp",
      "kind": "search"
     },
     {
@@ -8471,7 +8466,7 @@
      "url": "https://www.ip138.com/iplookup.asp?ip=%s",
      "icon": "https://www.ip138.com/",
      "inset": 1,
-     "iconFile": "IP138.ico",
+     "iconFile": "IP138.webp",
      "kind": "search"
     },
     {
@@ -8511,7 +8506,7 @@
      "url": "https://who.is/whois/%s",
      "icon": "https://who.is/",
      "inset": 1,
-     "iconFile": "who.is.ico",
+     "iconFile": "who.is.webp",
      "kind": "search"
     },
     {
@@ -8519,7 +8514,7 @@
      "url": "https://www.virustotal.com/gui/search/%s",
      "icon": "https://www.virustotal.com/",
      "inset": 1,
-     "iconFile": "VirusTotal.ico",
+     "iconFile": "VirusTotal.webp",
      "kind": "search"
     },
     {
@@ -8527,7 +8522,7 @@
      "url": "https://www.similarweb.com/website/%s/",
      "icon": "https://www.similarweb.com/",
      "inset": 1,
-     "iconFile": "SimilarWeb.png",
+     "iconFile": "SimilarWeb.webp",
      "kind": "search"
     },
     {
@@ -8544,7 +8539,7 @@
      "icon": "https://www.tianyancha.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "天眼查.ico"
+     "iconFile": "天眼查.webp"
     },
     {
      "name": "企查查（首页）",
@@ -8552,7 +8547,7 @@
      "icon": "https://www.qcc.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "企查查.png"
+     "iconFile": "企查查.webp"
     },
     {
      "name": "爱企查（首页）",
@@ -8560,7 +8555,7 @@
      "icon": "https://aiqicha.baidu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "爱企查.ico"
+     "iconFile": "爱企查.webp"
     },
     {
      "name": "Wolfram Alpha（首页）",
@@ -8592,7 +8587,7 @@
      "icon": "https://www.virustotal.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "VirusTotal.ico"
+     "iconFile": "VirusTotal.webp"
     },
     {
      "name": "石墨文档（首页）",
@@ -8600,7 +8595,7 @@
      "icon": "https://shimo.im/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "石墨文档（首页）.ico"
+     "iconFile": "石墨文档（首页）.webp"
     },
     {
      "name": "腾讯文档（首页）",
@@ -8624,7 +8619,7 @@
      "icon": "https://www.processon.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "ProcessOn（首页）.ico"
+     "iconFile": "ProcessOn（首页）.webp"
     },
     {
      "name": "draw.io（首页）",
@@ -8632,7 +8627,7 @@
      "icon": "https://app.diagrams.net/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "draw.io（首页）.ico"
+     "iconFile": "draw.io（首页）.webp"
     },
     {
      "name": "Excalidraw（首页）",
@@ -8640,7 +8635,7 @@
      "icon": "https://excalidraw.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Excalidraw（首页）.png"
+     "iconFile": "Excalidraw（首页）.webp"
     },
     {
      "name": "稿定设计（首页）",
@@ -8656,7 +8651,7 @@
      "icon": "https://www.canva.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Canva（首页）.ico"
+     "iconFile": "Canva（首页）.webp"
     },
     {
      "name": "TinyPNG（首页）",
@@ -8672,7 +8667,7 @@
      "icon": "https://cli.im/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "草料二维码（首页）.ico"
+     "iconFile": "草料二维码（首页）.webp"
     }
    ],
    "group": "web",
@@ -8687,7 +8682,7 @@
      "icon": "https://mail.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "QQ_邮箱（首页）.ico"
+     "iconFile": "QQ_邮箱（首页）.webp"
     },
     {
      "name": "163 邮箱（首页）",
@@ -8695,7 +8690,7 @@
      "icon": "https://mail.163.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "163_邮箱（首页）.png"
+     "iconFile": "163_邮箱（首页）.webp"
     },
     {
      "name": "126 邮箱（首页）",
@@ -8703,7 +8698,7 @@
      "icon": "https://mail.126.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "126_邮箱（首页）.png"
+     "iconFile": "126_邮箱（首页）.webp"
     },
     {
      "name": "新浪邮箱（首页）",
@@ -8711,7 +8706,7 @@
      "icon": "https://mail.sina.com.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "新浪邮箱（首页）.ico"
+     "iconFile": "新浪邮箱（首页）.webp"
     },
     {
      "name": "Outlook（首页）",
@@ -8719,7 +8714,7 @@
      "icon": "https://outlook.live.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Outlook（首页）.ico"
+     "iconFile": "Outlook（首页）.webp"
     },
     {
      "name": "Gmail（首页）",
@@ -8743,7 +8738,7 @@
      "icon": "https://mail.189.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "189_邮箱（首页）.ico"
+     "iconFile": "189_邮箱（首页）.webp"
     },
     {
      "name": "139 邮箱（首页）",
@@ -8751,7 +8746,7 @@
      "icon": "https://mail.10086.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "139_邮箱（首页）.png"
+     "iconFile": "139_邮箱（首页）.webp"
     },
     {
      "name": "搜狐邮箱（首页）",
@@ -8775,7 +8770,7 @@
      "icon": "https://www.zoho.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Zoho_Mail（首页）.ico"
+     "iconFile": "Zoho_Mail（首页）.webp"
     }
    ],
    "group": "web",
@@ -8838,7 +8833,7 @@
      "icon": "https://im.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "QQ（首页）.ico",
+     "iconFile": "QQ（首页）.webp",
      "app": [
       "QQ"
      ]
@@ -8849,7 +8844,7 @@
      "icon": "https://www.dingtalk.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "钉钉（首页）.ico",
+     "iconFile": "钉钉（首页）.webp",
      "app": [
       "dingtalk://dingtalkclient/page/link?url=https%3A%2F%2Fwww.dingtalk.com%2F",
       "钉钉"
@@ -8861,7 +8856,7 @@
      "icon": "https://www.feishu.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "飞书（首页）.ico",
+     "iconFile": "飞书（首页）.webp",
      "app": [
       "feishu://",
       "飞书"
@@ -8873,7 +8868,7 @@
      "icon": "https://work.weixin.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "企业微信（首页）.ico",
+     "iconFile": "企业微信（首页）.webp",
      "app": [
       "wxwork://",
       "企业微信"
@@ -8885,7 +8880,7 @@
      "icon": "https://meeting.tencent.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯会议（首页）.ico",
+     "iconFile": "腾讯会议（首页）.webp",
      "app": [
       "tencentmeeting://",
       "腾讯会议"
@@ -8897,7 +8892,7 @@
      "icon": "https://zoom.us/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Zoom（首页）.png",
+     "iconFile": "Zoom（首页）.webp",
      "app": [
       "zoommtg://",
       "Zoom"
@@ -8909,7 +8904,7 @@
      "icon": "https://www.microsoft.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Microsoft_Teams（首页）.png",
+     "iconFile": "Microsoft_Teams（首页）.webp",
      "app": [
       "msteams://",
       "Microsoft Teams"
@@ -8933,7 +8928,7 @@
      "icon": "https://www.mgtv.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "芒果TV.ico"
+     "iconFile": "芒果TV.webp"
     },
     {
      "name": "斗鱼直播（首页）",
@@ -8941,7 +8936,7 @@
      "icon": "https://www.douyu.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "斗鱼直播（首页）.ico",
+     "iconFile": "斗鱼直播（首页）.webp",
      "app": [
       "斗鱼直播"
      ]
@@ -8952,7 +8947,7 @@
      "icon": "https://www.huya.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "虎牙直播（首页）.png",
+     "iconFile": "虎牙直播（首页）.webp",
      "app": [
       "虎牙直播"
      ]
@@ -8963,7 +8958,7 @@
      "icon": "https://www.ximalaya.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "喜马拉雅（首页）.ico",
+     "iconFile": "喜马拉雅（首页）.webp",
      "app": [
       "喜马拉雅"
      ]
@@ -8974,7 +8969,7 @@
      "icon": "https://www.qtfm.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "蜻蜓_FM（首页）.png"
+     "iconFile": "蜻蜓_FM（首页）.webp"
     },
     {
      "name": "腾讯动漫（首页）",
@@ -8982,7 +8977,7 @@
      "icon": "https://ac.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "腾讯动漫（首页）.ico"
+     "iconFile": "腾讯动漫（首页）.webp"
     },
     {
      "name": "快看漫画（首页）",
@@ -8990,7 +8985,7 @@
      "icon": "https://www.kuaikanmanhua.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "快看漫画（首页）.png",
+     "iconFile": "快看漫画（首页）.webp",
      "app": [
       "快看漫画"
      ]
@@ -9009,7 +9004,7 @@
      "icon": "https://ys.mihoyo.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "原神（首页）.ico",
+     "iconFile": "原神（首页）.webp",
      "app": [
       "原神"
      ]
@@ -9020,7 +9015,7 @@
      "icon": "https://sr.mihoyo.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "崩坏：星穹铁道（首页）.ico",
+     "iconFile": "崩坏：星穹铁道（首页）.webp",
      "app": [
       "崩坏：星穹铁道"
      ]
@@ -9031,7 +9026,7 @@
      "icon": "https://ak.hypergryph.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "明日方舟（首页）.ico",
+     "iconFile": "明日方舟（首页）.webp",
      "app": [
       "明日方舟"
      ]
@@ -9042,7 +9037,7 @@
      "icon": "https://gp.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "和平精英（首页）.ico",
+     "iconFile": "和平精英（首页）.webp",
      "app": [
       "和平精英"
      ]
@@ -9053,7 +9048,7 @@
      "icon": "https://www.yjwujian.cn/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "永劫无间（首页）.ico",
+     "iconFile": "永劫无间（首页）.webp",
      "app": [
       "永劫无间"
      ]
@@ -9064,7 +9059,7 @@
      "icon": "https://val.qq.com/",
      "inset": 1,
      "kind": "open",
-     "iconFile": "Valorant（首页）.ico",
+     "iconFile": "Valorant（首页）.webp",
      "app": [
       "Valorant",
       "VALORANT"

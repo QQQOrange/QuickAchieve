@@ -39,6 +39,24 @@ function setCursor(x, y) {
         + `[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${Math.round(x)},${Math.round(y)})`);
 }
 
+function cursorPos() {
+    const out = ps('Add-Type -AssemblyName System.Windows.Forms;'
+        + '$p=[System.Windows.Forms.Cursor]::Position; "$($p.X),$($p.Y)"');
+    const [x, y] = out.split(',').map((v) => Number(v.trim()));
+    return { x, y };
+}
+
+/** 设置指针并确认真的到位（远程/被别的程序抢焦点时 SetCursorPos 可能不生效）。 */
+function setCursorExact(x, y) {
+    for (let i = 0; i < 5; i++) {
+        setCursor(x, y);
+        sleep(60);
+        const p = cursorPos();
+        if (Math.abs(p.x - x) <= 1 && Math.abs(p.y - y) <= 1) return true;
+    }
+    return false;
+}
+
 async function waitTarget(port, sub, timeoutMs = 15000) {
     const end = Date.now() + timeoutMs;
     while (Date.now() < end) {
@@ -200,4 +218,4 @@ class Suite {
     }
 }
 
-module.exports = { ROOT, EXE, sleep, ps, setCursor, waitTarget, Conn, App, Suite };
+module.exports = { ROOT, EXE, sleep, ps, setCursor, cursorPos, setCursorExact, waitTarget, Conn, App, Suite };

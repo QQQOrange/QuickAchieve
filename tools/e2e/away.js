@@ -7,7 +7,7 @@
  *   2. 真移开以后要在 ~0.35 秒内收起，日志里能看到「指针移动 ≥6px」。
  */
 
-const { App, Suite, sleep, setCursor } = require('./harness');
+const { App, Suite, sleep, cursorPos, setCursorExact } = require('./harness');
 
 module.exports = async function run() {
     const s = new Suite('鼠标移远就收起');
@@ -19,7 +19,11 @@ module.exports = async function run() {
         await bar.invoke('set_settings', { pairs: [['barAwayPx', 40], ['barIdleSec', 0]] });
         await sleep(300);
 
-        setCursor(1200, 800);
+        const placed = setCursorExact(1200, 800);
+        if (!placed) {
+            s.skip('指针定位失败（远程会话/别的程序抢指针），跳过场景');
+            return s.done();
+        }
         await bar.invoke('grid_trigger_from_ui');
         await sleep(700);
 
@@ -27,6 +31,10 @@ module.exports = async function run() {
         s.ok('横条已弹出', atShow && atShow.shown === true, JSON.stringify(atShow));
 
         await sleep(1200);
+        const p0 = cursorPos();
+        if (Math.abs(p0.x - 1200) > 2 || Math.abs(p0.y - 800) > 2) {
+            s.skip('等待期间指针被外部移动，跳过“静止”断言', JSON.stringify(p0));
+        }
         const stationary = await bar.invoke('bar_auto_state');
         if (stationary && stationary.shown === true) {
             s.ok('指针没动时不会自己收起', true);
@@ -46,7 +54,10 @@ module.exports = async function run() {
             }
         }
 
-        setCursor(1720, 800);
+        if (!setCursorExact(1720, 800)) {
+            s.skip('移开时指针定位失败，跳过');
+            return s.done();
+        }
         let hidden = false;
         for (let i = 0; i < 20; i++) {
             sleep(100);
