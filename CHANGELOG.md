@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.110 — 2026-11-10
+
+### main.rs 第八刀：网格配置读取 + setter 拆出
+
+- `grid_config` / `set_grid_size` / `set_grid_behavior` / `set_grid_items`
+  的实现搬到 `grid_cmds.rs`；
+- 模块只读/改 Config，main 命令壳负责锁、保存、广播、日志；
+- 网格命令组只剩 `set_grid_hotkey`（钩子键位与收藏夹冲突检查）留 main；
+- `main.rs` 25,280 → **25,203** 行。
+
+---
+
 ## v2.23.109 — 2026-11-10
 
 ### main.rs 第七刀：grid 页管理命令拆出

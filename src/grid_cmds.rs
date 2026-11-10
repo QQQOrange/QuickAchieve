@@ -130,6 +130,114 @@ pub(crate) fn app_page_remove(cfg: &mut config::Config, app: String) -> Result<(
     Ok(())
 }
 
+
+
+/// 给设置页的网格配置快照（纯读，不锁、不落盘）。
+pub(crate) fn config_view(c: &config::Config) -> serde_json::Value {
+    serde_json::json!({
+        "hotkey": c.grid_hotkey,
+        "rows": c.grid_rows.clamp(1, 10),
+        "cols": c.grid_cols.clamp(1, 10),
+        "cellW": c.grid_cell_w.clamp(40, 260),
+        "cellH": c.grid_cell_h.clamp(40, 200),
+        "gap": c.grid_gap.clamp(0, 24),
+        "radius": c.grid_radius.clamp(0, 24),
+        "enable": c.grid_enable,
+        "click": c.grid_click,
+        "allowAdd": c.grid_allow_add,
+        "items": c.grid_list,
+        "usingBarList": c.grid_list.is_empty(),
+        "barItems": c.bar_list,
+        "pages": c.grid_pages.iter().map(|p| serde_json::json!({
+            "id": p.id, "name": p.name, "items": p.items,
+        })).collect::<Vec<_>>(),
+        "defaultPage": c.grid_default_page,
+        "appPages": c.grid_app_pages.iter().map(|b| serde_json::json!({
+            "app": b.app, "page": b.page,
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// 行列 / 单元格尺寸。返回最终生效的 `(r,c,w,h,g,rad)`，日志由 main 打。
+pub(crate) fn set_size(
+    cfg: &mut config::Config,
+    rows: u32,
+    cols: u32,
+    cell_w: u32,
+    cell_h: u32,
+    gap: Option<u32>,
+    radius: Option<u32>,
+) -> (u32, u32, u32, u32, u32, u32) {
+    let (r, c) = (rows.clamp(1, 10), cols.clamp(1, 10));
+    let (w, h) = (cell_w.clamp(40, 260), cell_h.clamp(40, 200));
+    cfg.grid_rows = r;
+    cfg.grid_cols = c;
+    cfg.grid_cell_w = w;
+    cfg.grid_cell_h = h;
+    if let Some(g) = gap {
+        cfg.grid_gap = g.clamp(0, 24);
+    }
+    if let Some(rad) = radius {
+        cfg.grid_radius = rad.clamp(0, 24);
+    }
+    (r, c, w, h, cfg.grid_gap, cfg.grid_radius)
+}
+
+/// 功能开关：启用 / 点格子行为 / 空位可加。返回归一化后的 click。
+pub(crate) fn set_behavior(
+    cfg: &mut config::Config,
+    enable: bool,
+    click: String,
+    allow_add: bool,
+) -> Result<&'static str, String> {
+    let mode = match click.trim().to_ascii_lowercase().as_str() {
+        "home" => "home",
+        "auto" => "auto",
+        other => return Err(format!("未知的点格子行为：{other}")),
+    };
+    cfg.grid_enable = enable;
+    cfg.grid_click = mode.to_string();
+    cfg.grid_allow_add = allow_add;
+    Ok(mode)
+}
+
+/// 网格内容项（形状净化：去空、去重、上限 60），写到指定页。
+/// 返回实际写入的页名。
+pub(crate) fn set_items(
+    cfg: &mut config::Config,
+    items: Vec<String>,
+    page: Option<String>,
+) -> Result<String, String> {
+    let mut out: Vec<String> = Vec::new();
+    for it in items {
+        let name = it.trim().to_string();
+        if name.is_empty() || out.contains(&name) {
+            continue;
+        }
+        if out.len() >= 60 {
+            break;
+        }
+        out.push(name);
+    }
+    let target = page.unwrap_or_default();
+    let idx = if target.trim().is_empty() {
+        config::grid_page_index(cfg, &cfg.grid_default_page).unwrap_or(0)
+    } else {
+        match config::grid_page_index(cfg, &target) {
+            Some(i) => i,
+            None => return Err(format!("找不到这个网格页：{target}")),
+        }
+    };
+    if let Some(p) = cfg.grid_pages.get_mut(idx) {
+        p.items = out;
+    }
+    cfg.grid_list = config::grid_page_index(cfg, &cfg.grid_default_page)
+        .and_then(|i| cfg.grid_pages.get(i))
+        .map(|p| p.items.clone())
+        .unwrap_or_default();
+    Ok(cfg.grid_pages.get(idx).map(|p| p.name.clone()).unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2930,32 +2930,7 @@ fn restore_clip_after_paste(keep: Option<clip::Snapshot>, tag: &'static str) {
 /// 以及把不允许放进网格的项灰掉（比如分隔线）。
 #[crate::t::command]
 fn grid_config() -> Value {
-    cfg_with(|c| {
-        json!({
-            "hotkey": c.grid_hotkey,
-            "rows": c.grid_rows.clamp(1, 10),
-            "cols": c.grid_cols.clamp(1, 10),
-            "cellW": c.grid_cell_w.clamp(40, 260),
-            "cellH": c.grid_cell_h.clamp(40, 200),
-            "gap": c.grid_gap.clamp(0, 24),
-            "radius": c.grid_radius.clamp(0, 24),
-            "enable": c.grid_enable,
-            "click": c.grid_click,
-            "allowAdd": c.grid_allow_add,
-            // 默认页的内容（老前端只认这一份）
-            "items": c.grid_list,
-            "usingBarList": c.grid_list.is_empty(),
-            "barItems": c.bar_list,
-            // 多页：设置页要用它们画出页列表与「按应用切换」
-            "pages": c.grid_pages.iter().map(|p| json!({
-                "id": p.id, "name": p.name, "items": p.items,
-            })).collect::<Vec<_>>(),
-            "defaultPage": c.grid_default_page,
-            "appPages": c.grid_app_pages.iter().map(|b| json!({
-                "app": b.app, "page": b.page,
-            })).collect::<Vec<_>>(),
-        })
-    })
+    cfg_with(grid_cmds::config_view)
 }
 
 /// 行列与单元格尺寸。改完立刻生效（下一次唤起就是新尺寸，已弹出的由前端重排）。
@@ -2968,24 +2943,12 @@ fn set_grid_size(
     gap: Option<u32>,
     radius: Option<u32>,
 ) -> Result<(), String> {
-    let (r, c) = (rows.clamp(1, 10), cols.clamp(1, 10));
-    let (w, h) = (cell_w.clamp(40, 260), cell_h.clamp(40, 200));
     let mut cfg = match st().cfg.lock() {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    cfg.grid_rows = r;
-    cfg.grid_cols = c;
-    cfg.grid_cell_w = w;
-    cfg.grid_cell_h = h;
-    // gap / radius 是后来加的：给 Option，老调用方（少传这两个）不会报错
-    if let Some(g) = gap {
-        cfg.grid_gap = g.clamp(0, 24);
-    }
-    if let Some(rad) = radius {
-        cfg.grid_radius = rad.clamp(0, 24);
-    }
-    let (g, rad) = (cfg.grid_gap, cfg.grid_radius);
+    let (r, c, w, h, g, rad) =
+        grid_cmds::set_size(&mut cfg, rows, cols, cell_w, cell_h, gap, radius);
     config::save(&cfg);
     drop(cfg);
     broadcast();
@@ -3002,18 +2965,11 @@ fn set_grid_size(
 /// 正在输入框里改了一半的数字覆盖掉）。
 #[crate::t::command]
 fn set_grid_behavior(enable: bool, click: String, allow_add: bool) -> Result<(), String> {
-    let mode = match click.trim().to_ascii_lowercase().as_str() {
-        "home" => "home",
-        "auto" => "auto",
-        other => return Err(format!("未知的点格子行为：{other}")),
-    };
     let mut cfg = match st().cfg.lock() {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    cfg.grid_enable = enable;
-    cfg.grid_click = mode.to_string();
-    cfg.grid_allow_add = allow_add;
+    let mode = grid_cmds::set_behavior(&mut cfg, enable, click, allow_add)?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
@@ -3076,44 +3032,11 @@ fn set_grid_hotkey(hotkey: String) -> Result<(), String> {
 /// 网格里放哪些项（顺序即显示顺序，拖拽排序后整份回传）。
 #[crate::t::command]
 fn set_grid_items(items: Vec<String>, page: Option<String>) -> Result<(), String> {
-    // 只做**形状**层面的净化：空名丢掉、重复丢掉、上限 60 条。
-    // 不在这里校验"是不是存在的引擎" —— 那会让用户刚拖好顺序就因为某个
-    // 引擎临时不可用而整份被拒；悬空项前端会画成"!"格子，和横条一致。
-    let mut out: Vec<String> = Vec::new();
-    for it in items {
-        let name = it.trim().to_string();
-        if name.is_empty() || out.contains(&name) {
-            continue;
-        }
-        if out.len() >= 60 {
-            break;
-        }
-        out.push(name);
-    }
     let mut cfg = match st().cfg.lock() {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    /* 写到哪一页：前端会把当前页的 id 带上（多页）。
-     * 不带（老调用 / 老页面）就写默认页 —— 那正是以前 `grid_list` 的语义。 */
-    let target = page.unwrap_or_default();
-    let idx = if target.trim().is_empty() {
-        config::grid_page_index(&cfg, &cfg.grid_default_page).unwrap_or(0)
-    } else {
-        match config::grid_page_index(&cfg, &target) {
-            Some(i) => i,
-            None => return Err(format!("找不到这个网格页：{target}")),
-        }
-    };
-    if let Some(p) = cfg.grid_pages.get_mut(idx) {
-        p.items = out;
-    }
-    // 镜像：默认页的内容同步到 grid_list（导出 / 老逻辑还认它）
-    cfg.grid_list = config::grid_page_index(&cfg, &cfg.grid_default_page)
-        .and_then(|i| cfg.grid_pages.get(i))
-        .map(|p| p.items.clone())
-        .unwrap_or_default();
-    let page_name = cfg.grid_pages.get(idx).map(|p| p.name.clone()).unwrap_or_default();
+    let page_name = grid_cmds::set_items(&mut cfg, items, page)?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
