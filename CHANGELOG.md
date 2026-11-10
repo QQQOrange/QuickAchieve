@@ -5,6 +5,20 @@
 
 ---
 
+## v2.23.106 — 2026-11-10
+
+### bar.js 第四刀：renderPanel 整体拆出
+
+- 262 行的 `renderPanel` 搬到 `ui/bar-panel-lazy.js`；
+- 面板状态仍留 bar.js，桥新增 `getConf` / `panelGroupFilter` /
+  `panelRenderSig`/`setPanelRenderSig` / `panelRenderOwner`/`setPanelRenderOwner` /
+  `panelScrollBound`/`setPanelScrollBound` / `setFavFromEngines` /
+  `inputEngFilter` / `QS_FAV_PREFIX` / `setPanelFav`；
+- `bar.js` 6,997 → **6,765** 行；lazy 243 → 489；
+- UI 887 / 页面 56 / E2E 4 场景全绿。
+
+---
+
 ## v2.23.105 — 2026-11-10
 
 ### bar.js 第三刀：平铺区渲染拆出
