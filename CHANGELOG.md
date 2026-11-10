@@ -5,6 +5,17 @@
 
 ---
 
+## v2.23.112 — 2026-11-10
+
+### main.rs 第十刀：apply_one_setting 拆出
+
+- 单键写入核心 `apply_one_setting`（467 行）搬到 `src/settings_apply.rs`；
+- 只改内存配置，不落盘/不广播；`set_setting` / `set_settings` 命令壳仍留 main；
+- `app` / 启动密码哈希 / 开机启动偏好 / 区域动作归一化改 `pub(crate)`；
+- `main.rs` 24,908 → **24,448** 行（累计 −1,659）。
+
+---
+
 ## v2.23.111 — 2026-11-10
 
 ### main.rs 第九刀：设置页配置视图拆出
