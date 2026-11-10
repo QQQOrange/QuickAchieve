@@ -5,6 +5,17 @@
 
 ---
 
+## v2.23.108 — 2026-11-10
+
+### settings.js 第四刀：剪贴板历史拆出
+
+- 剪贴板历史（`paintClipHist` / `loadClipHist` / `saveClipHist` /
+  `bindClipHist` / `clipHistCfg`）搬到 `ui/settings-cliphist.js`（99 行）；
+- settings.js 12,615 → **12,536** 行（累计 −433）；
+- 隐私口径不变：只存本机、不同步、可清空。
+
+---
+
 ## v2.23.107 — 2026-11-10
 
 ### settings.js 第三刀：搜索运行时拆出

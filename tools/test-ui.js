@@ -638,7 +638,7 @@ function baseConf(over) {
 async function testSettings() {
     console.log('=== 设置面板（ui/settings.html）===');
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -2306,7 +2306,7 @@ async function testRegression() {
     /* ---------------- 1. OCR 精度：选中态与回写类型 ---------------- */
     {
         const env = makeEnv('ui/settings.html', baseConf({ ocrAccurate: true }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -2344,7 +2344,7 @@ async function testRegression() {
     /* ---------------- 2. 主题三档（只管设置页 UI） ---------------- */
     {
         const env = makeEnv('ui/settings.html', baseConf({ theme: 'dark' }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -2383,7 +2383,7 @@ async function testRegression() {
             iconSize: 36, barPadding: 6, itemRadius: 14, sepStyle: 'dot',
         });
         const env = makeEnv('ui/settings.html', conf);
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -2444,7 +2444,7 @@ async function testRegression() {
     /* ---------------- 4. 黑白名单：鼠标点选 + 文件选择 ---------------- */
     {
         const env = makeEnv('ui/settings.html', baseConf({ filterMode: 'black', filterList: [] }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -2504,7 +2504,7 @@ async function testRegression() {
             overrideIcons: { '站A': 'data:image/png;base64,AAAA' },
         });
         const env = makeEnv('ui/settings.html', conf);
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -3102,7 +3102,7 @@ async function testTrans() {
             transEnable: true, transEngine: 'siliconflow', transMulti: ['deepseek'],
             transTarget: 'ja',
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         await new Promise((r) => setTimeout(r, 60));
         const { w } = env;
@@ -3352,7 +3352,7 @@ async function testTrans() {
             transTarget: 'zh',
             transCreds: { baidu: { key: '2024bdappid', secret: 'baidu-secret' } },
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         await new Promise((r) => setTimeout(r, 60));
         const { w } = env;
@@ -3463,7 +3463,7 @@ async function testOcrSettingsPage() {
     // ① OCR 不在横条里 → 「把 OCR 加进横条」按钮出现
     {
         const env = makeEnv('ui/settings.html', baseConf({ barList: ['百度', 'Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -3476,7 +3476,7 @@ async function testOcrSettingsPage() {
     // ② OCR 已经在横条里 → 按钮整个收起来（用户明确要求）
     {
         const env = makeEnv('ui/settings.html', baseConf({ barList: ['百度', '@ocr', 'Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
@@ -3491,7 +3491,7 @@ async function testOcrSettingsPage() {
     {
         const env = makeEnv('ui/settings.html',
             baseConf({ barList: ['百度', '@ocr', 'Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const $ = (id) => env.w.document.getElementById(id);
         const ocrRows = [...$('barList').querySelectorAll('.ocr-row')];
@@ -3504,7 +3504,7 @@ async function testOcrSettingsPage() {
     // ④ 反方向：OCR 不在横条里 → 有入口行、没有成员行
     {
         const env = makeEnv('ui/settings.html', baseConf({ barList: ['百度', 'Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const $ = (id) => env.w.document.getElementById(id);
         const ocrRows = [...$('barList').querySelectorAll('.ocr-row')];
@@ -3543,7 +3543,7 @@ async function testOcrDepCheck() {
     {
         OCR_DEP_MISS = [];
         const env = makeEnv('ui/settings.html', baseConf());
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         eq('boot 时**不**去检测本地 OCR 环境（用户没点就不查）',
             env.cmd('ocr_env_check').length, 0);
@@ -3565,7 +3565,7 @@ async function testOcrDepCheck() {
     {
         OCR_DEP_MISS = [];
         const env = makeEnv('ui/settings.html', baseConf());
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         await runDepCheck(env);
         const w = env.w;
@@ -3599,7 +3599,7 @@ async function testOcrDepCheck() {
     {
         OCR_DEP_MISS = ['lang', 'profile'];
         const env = makeEnv('ui/settings.html', baseConf());
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         await runDepCheck(env);
         const w = env.w;
@@ -3646,7 +3646,7 @@ async function testOcrDepCheck() {
     {
         OCR_DEP_MISS = ['winrt', 'lang', 'profile'];
         const env = makeEnv('ui/settings.html', baseConf());
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         await runDepCheck(env);
         const w = env.w;
@@ -3665,7 +3665,7 @@ async function testOcrDepCheck() {
         OCR_DEP_MISS = [];
         const env = makeEnv('ui/settings.html', baseConf());
         env.rejectCmds.add('ocr_env_check');
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         await runDepCheck(env);
         const box = env.w.document.getElementById('w-ocrDep');
@@ -3682,7 +3682,7 @@ async function testOcrDepCheck() {
     {
         OCR_DEP_MISS = [];
         const env = makeEnv('ui/settings.html', baseConf());
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         env.calls.length = 0;
         // ⚠ 引擎选择器从 r45 起是**列表**（#w-ocrEngList 一行一家），
@@ -3727,7 +3727,7 @@ async function testIconEditorEntries() {
             overrideIcons: { '百度': 'data:image/png;base64,QmFpZHU=' },
             customEngines: [{ name: '测试引擎', url: 'https://x.com/s?q=%s', category: '自定义' }],
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
 
         const rows = [...env.w.document.querySelectorAll('#barList .item:not(.add-row)')];
@@ -3753,7 +3753,7 @@ async function testIconEditorEntries() {
             barList: ['百度', '@ocr'],
             overrideIcons: { '@ocr': 'data:image/png;base64,T0NS' },
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const row = [...env.w.document.querySelectorAll('#barList .item:not(.add-row)')]
             .find((r) => r.classList.contains('ocr-row'));
@@ -3769,7 +3769,7 @@ async function testIconEditorEntries() {
             overrideIcons: { '我的镜像': 'data:image/png;base64,eA==' },
             customEngines: [{ name: '我的镜像', url: 'https://x.com/s?q=%s', category: '自定义' }],
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         env.w.eval('renderCustomList()');
         const row = [...env.w.document.querySelectorAll('#customList .item')]
@@ -3921,7 +3921,7 @@ async function testSettingsPreviewDark() {
     console.log('');
     console.log('=== 设置面板：深色背景预览 ===');
     const env = makeEnv('ui/settings.html', baseConf({ theme: 'light' }));
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -3988,7 +3988,7 @@ async function testSettingsPreviewDark() {
     // renderPreview 活着：跑一遍真的 settings 环境，确认变量写进了预览盒子
     {
         const env2 = makeEnv('ui/settings.html', baseConf({ barDimAlpha: 30 }));
-        runScripts(env2, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env2, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const d2 = env2.w.document;
         const boxA = d2.getElementById('qsPreviewA');
@@ -4175,7 +4175,7 @@ async function testDownloadFailureRoute() {
     console.log('');
     console.log('=== 下载失败：原因留在页面上 + 自动切兜底入口（v1.5.11）===');
     const env = makeEnv('ui/settings.html', baseConf({ githubToken: 'ghp_x' }));
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -4220,7 +4220,7 @@ async function testExportEncryptAndImportPass() {
     console.log('');
     console.log('=== 加密导出勾选框 / 导入密码框 / 额度用量（v1.5.10）===');
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     await flush();   // export_groups_list 是异步拿的，要等它回来才渲染勾选表
     const { w } = env;
@@ -4374,7 +4374,7 @@ async function testBackupSecurity() {
     console.log('');
     console.log('=== 备份可移植性状态条（v1.5.9）===');
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -4436,7 +4436,7 @@ async function testBackupPage() {
     console.log('');
     console.log('=== 备份页：仅保留最近 10 份 / 云端备份管理 ===');
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -4793,7 +4793,7 @@ async function testCatJump() {
 async function testUpdateToken() {
     console.log('=== 更新：GitHub 个人访问令牌（v1.5.7）===');
     const env = makeEnv('ui/settings.html', baseConf({ githubToken: 'ghp_x' }));
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -5188,7 +5188,7 @@ async function testExtremeData() {
             barList: [LONG, WEIRD],
             customEngines: [{ name: WEIRD, url: 'https://x.com/s?q=%s', category: '自定义' }],
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         const html = env.w.document.querySelector('#barList').innerHTML;
         ok('特殊字符被当作文本（没有变成 <b> 标签）', !html.includes('<b>粗</b>'));
@@ -5206,7 +5206,7 @@ async function testExtremeData() {
         const env = makeEnv('ui/settings.html', baseConf({
             barList: [], customEngines: [], apps: [], favorites: [],
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         /* 空横条本来就该只剩三条"快捷添加"行（OCR / 翻译 / 万能框选）——
          * 真正要钉的是"没有幽灵引擎条目"。 */
@@ -5221,7 +5221,7 @@ async function testExtremeData() {
         const env = makeEnv('ui/settings.html', baseConf({
             barList: ['不存在的引擎XYZ', '@fav:missing-id', '@app:nope', '@bogus'],
         }));
-        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+        runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
         await flush();
         ok('悬空哨兵 + 不存在的引擎：横条列表照常渲染出来',
             !!env.w.document.querySelector('#barList'));
@@ -5233,7 +5233,7 @@ async function testSectionReset() {
     console.log('=== 设置项·恢复本节默认 ===');
 
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     /* 直接注入默认视图，绕开 Rust 桩（这条测的是“按钮怎么装、点了发什么”）。 */
     /* 先清掉 boot 可能已经装上的按钮：那些闭包拿的是 undefined（点击时才取
@@ -5268,7 +5268,7 @@ async function testSettingsSearch() {
     console.log('=== 设置项搜索（顶栏输入框）===');
 
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     env.w.eval('bindSettingsSearch()');
     await flush();
@@ -5438,7 +5438,7 @@ async function testClipHist() {
     console.log('');
     console.log('=== 剪贴板历史（设置页）===');
     const env = makeEnv('ui/settings.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings.js']);
+    runScripts(env, ['ui/shared.js', 'ui/settings-card-reset.js', 'ui/settings-search.js', 'ui/settings-cliphist.js', 'ui/settings.js']);
     await flush();
     await flush();
     const $ = (id) => env.w.document.getElementById(id);
