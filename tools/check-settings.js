@@ -6,7 +6,7 @@
  *  设置页有四处“同一件事”的登记：
  *    ui/settings.html      —— 控件（id = `s-<key>`）
  *    ui/settings.js        —— `SLIDERS` 表、各种开关映射表
- *    src/main.rs           —— `config_view_of()` 真正下发的 camelCase key
+ *    src/settings_view.rs  —— `config_view_of()` 真正下发的 camelCase key
  *    tools/settings-schema.json —— 控件 key 与配置 key 不一致时的显式映射
  *
  *  这个脚本做静态对账（不启动应用）：
@@ -26,7 +26,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'ui/settings.html'), 'utf8');
 const js = fs.readFileSync(path.join(root, 'ui/settings.js'), 'utf8');
-const rs = fs.readFileSync(path.join(root, 'src/main.rs'), 'utf8');
+const view = fs.readFileSync(path.join(root, 'src/settings_view.rs'), 'utf8');
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'tools/settings-schema.json'), 'utf8'));
 
 const issues = [];
@@ -59,12 +59,12 @@ for (const m of sBlock.matchAll(/\[\s*'(s-[A-Za-z0-9_-]+)'\s*,\s*'([A-Za-z0-9_-]
 if (!sliders.length) add('SLIDERS 表解析出 0 条（正则失配？）');
 
 /* ---- 3. config_view_of 下发的 key ---- */
-const cvStart = rs.indexOf('fn config_view_of(');
-const cvEnd = cvStart < 0 ? -1 : rs.indexOf('fn config_view()', cvStart);
-if (cvStart < 0 || cvEnd < 0) add('main.rs 里找不到 `fn config_view_of(` / `fn config_view()`');
+const cvStart = view.indexOf('fn config_view_of(');
+const cvEnd = cvStart < 0 ? -1 : view.indexOf('\n}', cvStart) + 2;
+if (cvStart < 0 || cvEnd < 0) add('settings_view.rs 里找不到 `fn config_view_of(` 的函数体');
 const configKeys = new Set();
 if (cvStart >= 0 && cvEnd > cvStart) {
-    for (const m of rs.slice(cvStart, cvEnd).matchAll(/"([A-Za-z][A-Za-z0-9_]*)"\s*:/g)) configKeys.add(m[1]);
+    for (const m of view.slice(cvStart, cvEnd).matchAll(/"([A-Za-z][A-Za-z0-9_]*)"\s*:/g)) configKeys.add(m[1]);
 }
 if (!configKeys.size) add('config_view_of 解析出 0 个 key');
 

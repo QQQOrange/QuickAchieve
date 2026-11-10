@@ -5,6 +5,19 @@
 
 ---
 
+## v2.23.111 — 2026-11-10
+
+### main.rs 第九刀：设置页配置视图拆出
+
+- `config_view_of`（269 行）+ `ocr_creds_view` / `trans_creds_view` 搬到
+  `src/settings_view.rs`；
+- main 只留 `config_view` / `defaults_view` 命令壳；写入链路下一刀；
+- `tools/check-settings.js` 改读 `settings_view.rs`，恢复 77 控件 / 18 滑块 /
+  134 key 全对；
+- `main.rs` 25,203 → **24,908** 行。
+
+---
+
 ## v2.23.110 — 2026-11-10
 
 ### main.rs 第八刀：网格配置读取 + setter 拆出
