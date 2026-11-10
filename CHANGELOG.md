@@ -5,6 +5,16 @@
 
 ---
 
+## v2.23.103 — 2026-11-10
+
+### bar.js 第二刀：最近使用一栏拆出
+
+- `renderRecentSection`（约 60 行）搬到 `ui/bar-panel-lazy.js`；
+- `bar.js` 7,128 → **7,071** 行；`QSBar` 桥补 `barList` / `panelTree` / `barT`；
+- 「最近使用」仍排除横条上已固定的引擎、最多 20 颗、保留 `data-filled` 账目。
+
+---
+
 ## v2.23.102 — 2026-11-10
 
 ### E2E 第四个场景：设置页搜索

@@ -1853,69 +1853,7 @@ let panelFillers = [];
 /*   **默认视图**（用户刚点开面板、还没做任何筛选），那也是用户说"默认显示" */
 /*   的那个场景。                                                         */
 /* ------------------------------------------------------------------ */
-function renderRecentSection() {
-    const cfg = window.CONF || {};
-    const names = Array.isArray(cfg.recentEngines) ? cfg.recentEngines : [];
-    if (!names.length) return;
-    const max = Math.max(1, Math.min(20, Number(cfg.recentMax) || 10));
-    /* r57：**横条上已经固定住的不放进「最近使用」。**
-     *
-     * 用户原话：「最近使用的引擎一定要跟横条里已经固定的不重复，毕竟都在横条里
-     * 固定住了，那你再放到最近使用就没有必要了，因为放到横条里的肯定是要经常
-     * 使用的。」
-     *
-     * 这条不只是"去重"——它决定了这一栏**还剩什么价值**：横条上的引擎本来就在
-     * 眼皮底下、一格就能点，再把它们抄到"最近使用"里，等于这一栏永远只显示
-     * 你早就有的东西，真正需要"捞回来"的那几家反而被挤到 max 之外。
-     *
-     * ⚠ 用 barList()（横条此刻真正的成员，悬空哨兵已剪掉），别读 CONF.barList
-     *   原始数组 —— 里面可能有已删软件的哨兵，会误判"在横条上"。
-     * ⚠ 过滤在**取前 max 个之前**做：先排除再截断，否则名额被横条上的引擎
-     *   占掉，这一栏实际显示的数会比用户设的少。 */
-    const inBar = barList();
-    const barSet = new Set(inBar);
-    const rows = window.qsAllEngineRows(panelTree());
-    const byName = {};
-    for (const r of rows) byName[r.name] = r;
-    const picks = [];
-    for (const n of names) {
-        if (picks.length >= max) break;
-        if (barSet.has(n)) continue;   // 横条上已经有了，不重复
-        const r = byName[n];
-        // 名单里可能有已经不存在的引擎（配置恢复 / 引擎被删）：跳过，
-        // 别给一颗点了 404 的格子。
-        if (r) picks.push(r);
-    }
-    /* 排除完横条上的之后可能一颗都不剩（用户最近用的全是横条上那几家）。
-     * 这时**整栏不显示** —— 显示一个只有标题的空栏，比不显示更像坏了。 */
-    if (!picks.length) return;
-
-    // 标题：和分类标题同一形状（.cat-title），所以滚动同步/锚点那套机器
-    // 认它也不碍事 —— 但它**没有** data-cat，锚点导航不会给它发胶囊。
-    const t = document.createElement('div');
-    t.className = 'cat-title recent-title';
-    t.dataset.recent = '1';
-    const txt = document.createElement('span');
-    txt.textContent = barT('最近使用');
-    t.appendChild(txt);
-    const hint = document.createElement('small');
-    hint.textContent = barT('你刚用过的引擎，按最近顺序排');
-    t.appendChild(hint);
-    panelBody.appendChild(t);
-
-    const grid = document.createElement('div');
-    grid.className = 'grid recent-grid';
-    /* 直接填，不走懒建：这一栏最多 20 颗，懒建的观察器开销比省下的 DOM 还大。
-     *
-     * ⚠ 必须打 `data-filled="1"`。面板的懒建有一套不变量：
-     *   「所有 .grid 都填过 ⇔ filled 数 === grids 数」（r51 探针 ④ 就是按这个判
-     *   "懒建没漏内容"）。这一栏是**急切**填的，不打这个标记就会让那个等式
-     *   差 1，看上去像"有一节漏填了" —— 实际是标记没跟上。
-     *   打上之后它既是"已填"，也和懒建那套账对得上。 */
-    grid.dataset.filled = '1';
-    for (const r of picks) grid.appendChild(panelRowCell(r));
-    panelBody.appendChild(grid);
-}
+/* 「最近使用」一栏已拆到 bar-panel-lazy.js（v2.23.103）。 */
 
 function renderFlatBody(groups, filterKey) {
     const rows = window.qsAllEngineRows(groups);
@@ -7525,4 +7463,7 @@ window.QSBar = {
     applyEngineFilter: (q) => applyEngineFilter(q),
     engineFilterText: () => engineFilterText,
     panelSearchMode: () => panelSearchMode,
+    barList: () => barList(),
+    panelTree: () => panelTree(),
+    barT: (s) => barT(s),
 };
