@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.100 — 2026-11-10
+
+### 前端拆分第二刀：settings-card-reset.js
+
+- 「恢复本节默认」按钮的安装/点击逻辑搬到 `ui/settings-card-reset.js`（88 行）；
+- `settings.js` 12,969 → **12,884** 行，只留 10 行包装器；
+- 依赖用对象显式传入（`getConf` / `getDefaults` / `setDefaults` / `invoke` /
+  `toast` / `SLIDERS`），不依赖跨脚本顶层变量；settings.html 与测试加载顺序同步；
+- E2E「恢复本节默认」6 条断言全过。
+
+---
+
 ## v2.23.99 — 2026-11-10
 
 ### 前端拆分第一刀：bar-panel-lazy.js
