@@ -73,6 +73,7 @@ pub fn ui_root() -> std::path::PathBuf {
 }
 
 mod clip;
+mod clip_open;
 mod config;
 mod cleanup;
 mod crypto;
@@ -14099,141 +14100,10 @@ fn open_file(path: String) -> String {
     msg
 }
 
-/// v2.23.80：**智能直达**（网格页那一格点下去走这里）。
-///
-/// 用户原话：「点击之后，它就会自动把最近的一条剪切板记录以相应的方式来
-/// 打开。当然，也会检测它是不是网址、网页、文件夹或者文件。如果是的话，
-/// 它才能够直接打开。如果不是的话，那就会提示。不是 文件、文件夹、网址
-/// 无法打开。」
-///
-/// # 判据顺序（先"真实存在的东西"，再"看起来像网址"）
-///
-/// ① `CF_HDROP`：用户在资源管理器里复制了文件 / 文件夹 —— 最明确的意图，
-///    **不走文本判据**（这类剪贴板常常连文本格式都没有）；
-/// ② 文本是一条**真实存在的**路径（文件 → 默认程序打开；文件夹 → 打开目录）；
-/// ③ 文本是一条网址（`engines::text_to_url`，带协议或已知 TLD 的裸域名）；
-/// ④ 其它一律拒绝，报那句用户指定的提示。
-///
-/// ⚠ ② 必须在 ③ 之前：`report.final.txt` 这种文件名在裸域名那条路上本来
-///   就认不出来，但 `C:\a\b.com` 会同时满足"路径"和"网址"两种形状 ——
-///   磁盘上真实存在的路径优先，否则用户复制一个叫 `b.com` 的本地文件，
-///   点下去却被浏览器打开（打不开、还找不到原因）。
+/// 智能直达：命令壳。业务在 `clip_open.rs`（v2.23.92 从 main 拆出的第一块）。
 #[crate::t::command]
 fn open_clipboard_target() -> Result<String, String> {
-    let bad = || "不是 文件、文件夹、网址，无法打开".to_string();
-
-    /* v2.23.81：**一次开门读全**（文件 + 文本），并允许一次延迟重试。
-     *
-     * 以前是 `read_files_any` + `read_text_any_within` 两次开门；中间目标
-     * 程序刚好在分段写剪贴板时，就会出现"文件没读到、文本也没有"的窗口，
-     * 用户看到的是「有时候点了没反应，再点一次又好了」。 */
-    let mut c = clip::read_direct_content(25); // 25 × 10ms ≈ 250ms
-    let text_empty = c
-        .text
-        .as_deref()
-        .map(|t| t.trim().is_empty())
-        .unwrap_or(true);
-    if c.opened && c.files.is_empty() && text_empty {
-        /* 再读一次：有些宿主先写一个占位、过一会儿才换成真正内容。
-         * 不在这里 sleep —— 同步命令跑在主线程上（见
-         * `sync_commands_must_not_block_the_main_thread`），重试窗口交给
-         * `read_direct_content` 自己的 10ms 开门重试。 */
-        let again = clip::read_direct_content(15);
-        if again.opened {
-            c = again;
-        }
-    }
-    if !c.opened {
-        win::log(&format!(
-            "clip-direct: 剪贴板一直打不开（{}）",
-            clip::describe_formats()
-        ));
-        return Err("剪贴板被别的程序占着，稍等一下再点这一格".into());
-    }
-
-    // ① 资源管理器里复制的是文件 / 文件夹
-    if let Some(first) = c.files.first() {
-        let p = std::path::Path::new(first);
-        if !p.exists() {
-            win::log(&format!("clip-direct: 剪贴板里的位置已不存在 -> {first}"));
-            return Err(bad());
-        }
-        let msg = if p.is_dir() {
-            paths::open(first)
-        } else {
-            paths::open_file(first)
-        };
-        win::log(&format!(
-            "clip-direct: 剪贴板文件 {} 个，打开第一个 -> {msg}",
-            c.files.len()
-        ));
-        return if is_open_failure(&msg) { Err(msg) } else { Ok(msg) };
-    }
-
-    // ② / ③ 文本：先看真实存在的路径，再看网址
-    let Some(text) = c.text else {
-        win::log(&format!(
-            "clip-direct: 剪贴板里没有文件，也没有文本（{}）",
-            clip::describe_formats()
-        ));
-        return Err(bad());
-    };
-    let text = text
-        .trim()
-        .trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace())
-        .trim()
-        .to_string();
-    if text.is_empty() {
-        return Err(bad());
-    }
-
-    if paths::looks_like_path(&text).is_some() {
-        if let Some(p) = paths::resolve(&text) {
-            let pb = std::path::Path::new(&p);
-            if pb.exists() {
-                let msg = if pb.is_dir() {
-                    paths::open(&p)
-                } else {
-                    paths::open_file(&p)
-                };
-                win::log(&format!("clip-direct: 剪贴板文本是本地路径 -> {msg}"));
-                return if is_open_failure(&msg) { Err(msg) } else { Ok(msg) };
-            }
-        }
-    }
-
-    if let Some(u) = engines::text_to_url(&text) {
-        let brief: String = u.chars().take(120).collect();
-        // `that_detached` 是"发起后立刻返回"的版本，不会卡住命令线程；
-        // 失败要把原因抛给前端，不能像以前那样静默吞掉。
-        match open::that_detached(u.as_str()) {
-            Ok(()) => {
-                win::log(&format!("clip-direct: 打开网址 {brief}"));
-                return Ok(format!("已在浏览器打开：{brief}"));
-            }
-            Err(e) => {
-                let why: String = e.to_string().chars().take(120).collect();
-                win::log(&format!("clip-direct: 打开网址失败（{brief}）：{why}"));
-                return Err(format!("打开网址失败：{why}"));
-            }
-        }
-    }
-
-    win::log(&format!(
-        "clip-direct: 剪贴板文本既不是路径也不是网址（{} 字，格式 {}）",
-        text.chars().count(),
-        clip::describe_formats()
-    ));
-    Err(bad())
-}
-
-/// `paths::open` / `paths::open_file` 返回的是"给人看的文案"，不是 Result。
-/// 这里按它们的失败前缀判一下，把失败变成 `Err` —— 否则前端会当成打开成功、
-/// 收起网格，用户看到的就是"点了没反应"。
-fn is_open_failure(msg: &str) -> bool {
-    ["打开失败", "找不到这个路径", "找不到这个文件", "这个文件没有关联程序", "这不像"]
-        .iter()
-        .any(|p| msg.starts_with(p))
+    crate::clip_open::open_clipboard_target()
 }
 
 /// r97：**这条路径解析出来是文件还是目录**（前端据此决定显示哪颗按钮）。
@@ -23256,24 +23126,6 @@ mod tests {
 
 
     use super::*;
-
-    /// v2.23.81：`open_clipboard_target` 把 `paths::open*` 的返回文案分成
-    /// 成功 / 失败两种。分错的话，打不开的文件会被前端当成成功、收起网格，
-    /// 用户看到的就是「点了没反应」——
-    /// 所以这几个前缀必须与 `paths.rs` 里的 return 语句保持一致。
-    #[test]
-    fn open_failure_messages_are_detected() {
-        assert!(is_open_failure("打开失败：拒绝访问"));
-        assert!(is_open_failure("找不到这个路径：C:\\nope"));
-        assert!(is_open_failure("找不到这个文件：C:\\nope.txt"));
-        assert!(is_open_failure(
-            "这个文件没有关联程序：a.xyz —— 右键它选「打开方式」设一个"
-        ));
-        assert!(!is_open_failure("已在文件管理器中打开"));
-        assert!(!is_open_failure("已在文件管理器中定位"));
-        assert!(!is_open_failure("已用默认程序打开：a.txt"));
-        assert!(!is_open_failure("已在浏览器打开：https://example.com"));
-    }
 
     /// 标点全角/半角互转：**引号必须成对**，不能一对一查表。
     ///
