@@ -2,6 +2,7 @@
 //! （v2.23.97 从 main 拆出）。只依赖 `win` 的进程/窗口查询。
 
 use crate::win;
+use windows::Win32::Foundation::HWND;
 
 
 /// 剪贴板里的内容，是不是「我们信得过的那些进程」之一放进去的？
@@ -104,5 +105,72 @@ pub(crate) fn same_app_pid(a: u32, b: u32) -> bool {
         (Some(x), Some(y)) => x.eq_ignore_ascii_case(&y),
         _ => false,
     }
+}
+
+/// 当前前台还是不是这次取词的目标（允许我们自己短暂抢到焦点）。
+///
+/// 补字是异步的：横条弹出后用户完全可能 Alt+Tab 去别的软件。此时再发
+/// 合成 Ctrl+C，就会把**另一个程序**的选区复制回来；如果落到终端，还是
+/// SIGINT。所有"发送前"的闸门统一用这个函数。
+pub(crate) fn foreground_still_target(target_pid: u32) -> bool {
+    if target_pid == 0 {
+        return false;
+    }
+    let fg = win::window_pid(win::foreground_window());
+    if fg == 0 {
+        return false;
+    }
+    if fg == std::process::id() {
+        return true;
+    }
+    fg == target_pid || same_app_pid(fg, target_pid)
+}
+
+
+/// 这个窗口是不是「控制台 / 终端」。
+///
+/// 只用来决定"能不能在这里模拟 Ctrl+C"（见 `confirm_selection_text` 的注释）：
+/// 控制台里 Ctrl+C = 中断信号，误发一次就可能把用户正在跑的编译/脚本打掉。
+/// 覆盖三种：conhost（`ConsoleWindowClass`）、Windows Terminal
+/// （`CASCADIA_HOSTING_WINDOW_CLASS`）、以及伪控制台宿主（`PseudoConsoleWindow`）。
+pub(crate) fn is_console_window(h: HWND) -> bool {
+    if h.0.is_null() {
+        return false;
+    }
+    matches!(
+        win::class_name(h).as_str(),
+        "ConsoleWindowClass" | "PseudoConsoleWindow" | "CASCADIA_HOSTING_WINDOW_CLASS"
+    )
+}
+
+
+/// 前台窗口是不是**我们自己、且属于「不该弹横条」的那一类**。
+///
+/// 必须挡掉：框选识别时用户要在整屏上拖一个框、拾取器要在整屏上点一下 ——
+/// 这些动作在全局钩子看来跟"在别的软件里选词"一模一样，不挡的话每拖一次都弹横条；
+/// 横条自己的输入框里划选同理（那是在改要搜的内容，不是要再弹一条新横条）。
+///
+/// ⚠ 2026-10-16 起「识别结果」窗口**不再算**：用户明确要求
+///   "OCR 识别结果页面，选择文字也应该横条显示" —— 他要在识别结果里划一段，
+///   直接搜 / 复制。旧口径（"在识别结果窗里划选纯属打扰、还会盖住正在看的内容"）
+///   是更早一版的需求，已被这一条取代。
+///
+/// ⚠ r59 起「设置页」也不再算：用户原话「我在这个软件的设置页面按 control 加 c
+///   不能够换出横条，这也是一个问题要修复」。设置页是用户**会去读、会去复制**
+///   的普通页面（引擎名、路径、说明文字都在那儿），在那儿 Ctrl+C 却弹不出横条，
+///   等于把"在设置里看到一段字想搜一下"这条路堵死了。
+///   仍然挡着的是：横条自己（bar）、框选遮罩（region）、图标编辑器 ——
+///   那几处的划选/点击是**操作**，不是"选一段文字去搜"。
+/// 前台**是不是我们自己进程的任意窗口**（横条 / 网格页 / 设置页 / 识别结果页…）。
+///
+/// 和 `foreground_is_ours()` 的区别：那个故意把"设置页 / 识别结果页"当外部窗口
+/// （因为它们要允许划词取词）；这里问的是更朴素的问题 —— "当前前台是不是本程序"，
+/// 用来决定**还要不要按黑白名单去判**。自己家的窗口不该参与黑白名单。
+pub(crate) fn foreground_is_self_any() -> bool {
+    let h = win::foreground_window();
+    if h.0.is_null() {
+        return false;
+    }
+    win::window_pid(h) == std::process::id()
 }
 

@@ -5,6 +5,16 @@
 
 ---
 
+## v2.23.98 — 2026-11-10
+
+### 拆分 main.rs 第六刀：capture_env 补前台/终端判断
+
+- `foreground_still_target` / `foreground_is_self_any` / `is_console_window`
+  搬进 `src/capture_env.rs`（162 行）；
+- `main.rs` 25,397 → **25,338** 行（六刀累计 -769）。
+
+---
+
 ## v2.23.97 — 2026-11-10
 
 ### 拆分 main.rs 第五刀：capture_env.rs
