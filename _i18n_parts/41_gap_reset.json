@@ -1,0 +1,6 @@
+{
+  "恢复本节默认": "Restore this section",
+  "把这一节里改过的数字/开关恢复为默认值（不碰路径、凭据）": "Reset the numbers/switches changed in this section to their defaults (paths and credentials are left alone)",
+  "这一节已经是默认值": "This section already uses the defaults",
+  "已恢复本节默认": "Section restored to defaults"
+}

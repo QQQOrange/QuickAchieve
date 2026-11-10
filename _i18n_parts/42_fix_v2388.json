@@ -1,0 +1,10 @@
+{
+  "指针离横条超过这么远，说明这条你不需要了 —— 约 0.3 秒后收起 · 0 = 不收起 · 当前 400 px": "Hide about 0.3 s after the pointer goes farther than this from the bar · 0 = never · now 400 px",
+  "指针离横条超过这么远，说明这条你不需要了 —— 约 0.3 秒后收起 · 0 = 不收起 · 当前": "If the pointer goes farther than this from the bar, you clearly don't need it — hide about 0.3 s later · 0 = never hide · now ",
+  "关 · 值越大雾面越浓（静态磨砂，不抓屏、不吃 GPU）；0 = 不磨砂": "Off · higher means a thicker static frost (no screen capture, no GPU cost); 0 = no frost.",
+  "· 值越大雾面越浓（静态磨砂，不抓屏、不吃 GPU）；0 = 不磨砂": "· Higher means a thicker static frost (no screen capture, no GPU cost); 0 = no frost.",
+  "底板透明度": "Background opacity",
+  "% · 只改横条底板（非图标部分）；图标浓淡仍由「横条不透明度」控制 · 100 = 完全透出背后内容 · 0 = 实色底板": "% · Only the bar backing (not the icons); icon strength still follows “Bar opacity” · 100 = fully see-through · 0 = solid backing",
+  "Ctrl+Shift+G 网格页 · Ctrl+Alt+O 文字识别 · 其余热键可在设置里改": "Ctrl+Shift+G grid page · Ctrl+Alt+O text recognition · the rest are configurable",
+  "把「收藏这段文字」放到横条上，之后可以拖到任意位置": "Put “Save this text” on the bar; you can drag it anywhere afterwards"
+}

@@ -243,6 +243,23 @@ main::-webkit-scrollbar-thumb:hover { background: var(--fg-dim); }
 
 .card h2 small { font-size: 11px; font-weight: 400; color: var(--fg-dim); }
 
+/* v2.23.88：每张卡片的「恢复本节默认」。
+   挂在 h2 的 flex 行尾（margin-left:auto），不占正文高度；比正文小一号，
+   低调到不抢标题，但扫视时能看到。 */
+.card h2 .card-reset {
+    margin-left: auto;
+    flex: none;
+    align-self: center;
+    height: 22px;
+    padding: 0 9px;
+    font-size: 11px;
+    line-height: 20px;
+    border-radius: 999px;
+    color: var(--fg-dim);
+    opacity: .75;
+}
+.card h2 .card-reset:hover { opacity: 1; color: var(--fg); }
+
 .card.hl { animation: hl 1.1s ease; }
 @keyframes hl {
     0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }

@@ -22,6 +22,8 @@ function qsT(s) {
 
 let CATALOG = null;
 let CONF = null;
+/** 默认配置视图（Rust `defaults_view`）。「恢复本节默认」只认这一份。 */
+let DEFAULTS = null;
 let BY_NAME = new Map();
 
 /* ------------------------------------------------------------------ */
@@ -5131,7 +5133,7 @@ async function gridRecCommit(combo) {
     try {
         await invoke('set_grid_hotkey', { hotkey: combo });
         CONF = window.CONF = await invoke('get_config');
-    syncSaveErrorBanner();
+        syncSaveErrorBanner();
         gridRecSyncUI();
         gridMsg('gridHotkeyMsg', '已生效：' + gridHotkeyLabel((CONF && CONF.gridHotkey) || combo));
         toast('网格页快捷键已改为 ' + gridHotkeyLabel(combo));
@@ -12463,6 +12465,96 @@ document.addEventListener('keydown', (e) => {
     invoke('grid_trigger_from_ui').catch(() => { });
 });
 
+/** 给每张设置卡片加一颗「恢复本节默认」。
+ *
+ * 口径（v2.23.88）：
+ *   · 默认值来自 Rust 的 `defaults_view`，前端不再硬编码；
+ *   · 只收**数字滑块 / 布尔开关**两类，绝不碰路径、凭据、数组
+ *     （那些字段即使在同一张卡片里也跳过 —— 恢复默认不该把 URL/Key 清空）；
+ *   · 只对“当前值和默认值不同”的字段发 `set_settings`，没改过的卡片不写盘；
+ *   · 卡片里没有任何可恢复字段就不加按钮。
+ *
+ * 为什么不做成每张卡片写死 key 列表：46 张卡片、176 个字段，手写一遍就是
+ * 下一份会漂移的真相。这里直接从控件 id 反推 key（`s-<key>`），
+ * 未知 key / 非标量默认值自动跳过。 */
+function installCardResets(defaults, current) {
+    const cards = document.querySelectorAll('.card');
+    /* 滑块的“默认值”和 Rust `Config::default()` 不是一回事：
+     * `SLIDERS` 里存的是**该样式下的默认**（磨砂强度默认 12，而全局默认配置
+     * 是 0 = 默认样式）。恢复「磨砂」这一节应该回到 12，不是把磨砂关掉。
+     * 开关类没有这种样式默认，仍用 Rust 的值。 */
+    const sliderDefault = new Map();
+    for (const it of SLIDERS) {
+        if (it && it.length >= 4) sliderDefault.set(String(it[2]), it[3]);
+    }
+    /* 样式默认值 ≠ 全局默认值：磨砂这一节的「默认」应该是**磨砂开着**的
+     * 默认强度 12，而不是全局默认样式里的 0（0 会把磨砂关掉）。 */
+    const styleDefault = { barBlur: 12 };
+    /** 一张卡里可以“恢复默认”的控件 → [配置 key, 默认值]。 */
+    const keysOf = (card, D) => {
+        const out = [];
+        for (const el of card.querySelectorAll('input[type="range"], input[type="checkbox"]')) {
+            if (!/^s-/.test(el.id)) continue;
+            const key = el.id.slice(2);
+            if (el.type === 'range') {
+                if (Object.prototype.hasOwnProperty.call(styleDefault, key)) {
+                    out.push([key, styleDefault[key]]);
+                } else if (sliderDefault.has(key)) {
+                    out.push([key, sliderDefault.get(key)]);
+                }
+                continue;
+            }
+            if (!(key in D)) continue;
+            if (typeof D[key] !== 'boolean') continue;
+            out.push([key, D[key]]);
+        }
+        return out;
+    };
+    for (const card of cards) {
+        if (card.querySelector('.card-reset')) continue;
+        const h2 = card.querySelector('h2');
+        if (!h2) continue;
+        /* 控件是现成的；默认值**点的时候再取**。
+         *
+         * 为什么不在 boot 里先 await 一份：`defaults_view` 在某些启动时序下
+         * 会先失败/返回空（页面已经用 v2.23.87 的启动续跑验证过），
+         * 那会让整页按钮全部装不上。懒加载 + 失败提示更稳。 */
+        if (!card.querySelector('input[type="range"], input[type="checkbox"]')) continue;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn ghost card-reset';
+        btn.textContent = '恢复本节默认';
+        btn.title = '把这一节里改过的数字/开关恢复为默认值（不碰路径、凭据）';
+        btn.addEventListener('click', async () => {
+            const C = current || CONF;
+            let D = defaults || DEFAULTS;
+            if (!D) {
+                try {
+                    D = await invoke('defaults_view');
+                    DEFAULTS = D;
+                } catch (e) {
+                    toast('读取默认值失败：' + String((e && e.message) || e));
+                    return;
+                }
+            }
+            if (!D || typeof D !== 'object') { toast('读取默认值失败'); return; }
+            const pairs = [];
+            for (const [key, def] of keysOf(card, D)) {
+                const now = C ? C[key] : undefined;
+                if (JSON.stringify(now) !== JSON.stringify(def)) pairs.push([key, def]);
+            }
+            if (!pairs.length) { toast('这一节已经是默认值'); return; }
+            try {
+                await invoke('set_settings', { pairs });
+                toast('已恢复本节默认');
+            } catch (e) {
+                toast('恢复失败：' + String((e && e.message) || e));
+            }
+        });
+        h2.appendChild(btn);
+    }
+}
+
 (async function boot() {
     bindTabs();
 
@@ -12491,6 +12583,11 @@ document.addEventListener('keydown', (e) => {
 
     CONF = window.CONF = await invoke('get_config');
     syncSaveErrorBanner();
+    /* v2.23.88：每张卡片一颗「恢复本节默认」。boot 已经跑在 DOM 解析完之后，
+     * 直接装；再补一拍 setTimeout，防止个别构建里表格还没量完就被跳过。
+     * installCardResets 幂等（已有按钮就跳过），多调几次没有副作用。 */
+    try { installCardResets(); } catch (_) { }
+    setTimeout(() => { try { installCardResets(); } catch (_) { } }, 0);
     // 网格页表单（快捷键 / 行列 / 单元格 / 内容项）在配置到手之后再绑，
     // 不然 gridFill() 读到的是空配置，输入框会显示默认值而不是用户的值
     bindGrid();

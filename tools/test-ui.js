@@ -5227,6 +5227,41 @@ async function testExtremeData() {
             !!env.w.document.querySelector('#barList'));
     }
 }
+/** 每张卡片的「恢复本节默认」（v2.23.88）：默认值来自 Rust，只提交改过的字段。 */
+async function testSectionReset() {
+    console.log('');
+    console.log('=== 设置项·恢复本节默认 ===');
+
+    const env = makeEnv('ui/settings.html', baseConf());
+    runScripts(env, ['ui/shared.js', 'ui/settings.js']);
+    await flush();
+    /* 直接注入默认视图，绕开 Rust 桩（这条测的是“按钮怎么装、点了发什么”）。 */
+    /* 先清掉 boot 可能已经装上的按钮：那些闭包拿的是 undefined（点击时才取
+     * Rust 默认值），这里要测“直接注入默认值”的路径，必须重新装一遍。 */
+    env.w.document.querySelectorAll('.card-reset').forEach((b) => b.remove());
+    env.w.eval('installCardResets({ barBlur: 12, barBgAlpha: 55, alpha: 100 },'
+        + ' { barBlur: 21, barBgAlpha: 0, alpha: 100 })');
+    const doc = env.w.document;
+    const btn = doc.querySelector('#s-barBlur')
+        && doc.querySelector('#s-barBlur').closest('.card').querySelector('.card-reset');
+    ok('磨砂卡片上有「恢复本节默认」', !!btn);
+    if (!btn) return;
+
+    const before = env.calls.length;
+    btn.click();
+    await flush();
+    const call = env.calls.slice(before).find((c) => c.cmd === 'set_settings');
+    ok('点一下会提交 set_settings', !!call);
+    const pairs = call ? call.args.pairs : [];
+    ok('只提交改过的字段（含 barBlur / barBgAlpha，不含没变的 alpha）',
+        pairs.some((p) => p[0] === 'barBlur')
+        && pairs.some((p) => p[0] === 'barBgAlpha')
+        && !pairs.some((p) => p[0] === 'alpha'), JSON.stringify(pairs));
+    ok('提交的是默认值 12 / 55',
+        pairs.some((p) => p[0] === 'barBlur' && p[1] === 12)
+        && pairs.some((p) => p[0] === 'barBgAlpha' && p[1] === 55), JSON.stringify(pairs));
+}
+
 /** 设置项搜索（v2.23.41）：输入 → 出结果（带分页）→ 回车 → 跳到那一页并高亮。 */
 async function testSettingsSearch() {
     console.log('');
@@ -5456,6 +5491,7 @@ async function testClipHist() {
         await testCatJump();
         await testBuiltinIcons();
     await testExtremeData();
+    await testSectionReset();
     await testSettingsSearch();
     await testClipHist();
     await testLocalAnswer();

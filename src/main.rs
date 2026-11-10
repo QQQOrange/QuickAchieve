@@ -6819,8 +6819,12 @@ fn icon_data_url_cached(path: &std::path::Path, file: &str) -> Option<String> {
     Some(url)
 }
 
-fn config_view() -> Value {
-    let cfg = cfg_snapshot();
+/// 把一份配置渲染成前端用的 camelCase 视图。
+///
+/// v2.23.88 起 `config_view()` 和 `defaults_view()` 共用这一份实现 ——
+/// 以前只有读当前配置的入口，设置页想拿“默认值”只能在前端硬编码，
+/// 于是 Rust 默认值 / HTML 初值 / JS 常量三份早晚对不上。
+fn config_view_of(cfg: &config::Config) -> Value {
     let mut ov = Map::new();
     for (name, file) in cfg.overrides.iter() {
         if let Some(url) = icon_data_url_cached(&config::icons_dir().join(file), file) {
@@ -7087,6 +7091,16 @@ fn config_view() -> Value {
         "startupPasswordSet": !cfg.startup_password_hash.is_empty(),
     })
 }
+
+/// 当前配置的前端视图。
+fn config_view() -> Value { config_view_of(&cfg_snapshot()) }
+
+/// 一份“默认配置”的前端视图，给设置页的「恢复本节默认」用。
+///
+/// 只返回视图：不写盘、不改当前配置、不触发广播。前端拿它和当前值比对，
+/// 只对用户真正改过的字段发 `set_settings`。
+#[crate::t::command]
+fn defaults_view() -> Value { config_view_of(&config::Config::default()) }
 
 /// 恢复备份时合并自定义引擎：**不许一份缺字段的备份把本机能用的定义打回空值**。
 ///
@@ -22582,6 +22596,8 @@ fn main() {
     crate::t::Builder::default()
         .invoke_handler(crate::t::generate_handler![
             get_config,
+            // v2.23.88：设置页「恢复本节默认」的默认值来源
+            defaults_view,
             // v2.23.36：一键诊断（设置页「关于」里的「复制诊断信息」）
             diagnostics_text,
             copy_diagnostics,
