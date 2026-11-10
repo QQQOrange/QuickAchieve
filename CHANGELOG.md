@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.107 — 2026-11-10
+
+### settings.js 第三刀：搜索运行时拆出
+
+- `bindSettingsSearch`（184 行）+ `findIndex`/`findCursor`/`findClose`/`findReveal`
+  搬到 `ui/settings-search.js`；
+- 依赖用对象传入（`$` / `gotoPane` / `invoke` / `pyInitialsOf`）；
+- settings.js 12,822 → **12,615** 行；搜索模块 76 → 279；
+- 测试保持全局 `bindSettingsSearch()` / `findReveal()` 调用点不变。
+
+---
+
 ## v2.23.106 — 2026-11-10
 
 ### bar.js 第四刀：renderPanel 整体拆出

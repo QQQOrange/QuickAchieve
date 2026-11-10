@@ -3904,57 +3904,27 @@ function qsSetText(id, s) {
     if (el) el.textContent = s;
 }
 
-/* ==================== 设置项搜索（v2.23.41） ====================
- *
- * 这个页面有十来个分页、上千行说明。用户想找"顺带把横条收起"只能翻三分钟，
- * 所以顶栏加了搜索框：输入 → 出结果（带所属分页）→ ↑↓ 选择 → 回车跳过去并闪一下。
- *
- * 索引不是一次性死表：分页里的列表（引擎 / 收藏 / 软件）会被配置广播重建，
- * 而**设置行本身**（.row）是静态 HTML，不会重建 —— 所以索引可以只建一次；
- * 真要碰上元素被换掉（比如某个卡片被整体重画），跳转时会按"标题文字"重新查一次。
- */
-let findIndex = null;
+/* ==================== 设置项搜索（v2.23.41） ==================== */
+let findCursor = -1;
 
 function findBuildIndex() {
     const out = window.QSSearch ? window.QSSearch.buildIndex(pyInitialsOf) : [];
-    findIndex = out;
     return out;
 }
 
 function findClose() {
-    const list = $('setSearchList');
-    if (list) {
-        list.hidden = true;
-        list.textContent = '';
-    }
-    findCursor = -1;
+    if (window.QSSearch) window.QSSearch.close();
 }
 
-let findCursor = -1;
-
-/** 把一个元素"亮出来"：摘掉祖先上的 hidden，滚到视野中间，闪一下。 */
 function findReveal(el) {
-    for (let n = el; n && n !== document.body; n = n.parentElement) {
-        if (n.hidden) n.hidden = false;
-        /* 折叠的 `<details>` 也要打开：帮助页 / 本地 OCR 环境那些说明都在
-         * `<details>` 里，只摘 `hidden` 的话跳过去看到的是一片空白。 */
-        if (n.tagName === 'DETAILS') n.open = true;
-    }
-    try {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    } catch (_) { }
-    el.classList.remove('find-hit');
-    // 强制回流，保证同一元素连续跳两次也会重播动画
-    void el.offsetWidth;
-    el.classList.add('find-hit');
-    setTimeout(() => el.classList.remove('find-hit'), 1400);
+    if (window.QSSearch) window.QSSearch.reveal(el);
 }
 
-/** 配置写盘失败的红条（v2.23.44）。
- *
- * 后端每次保存失败都会记下**具体原因**（磁盘满 / 目录只读 / 被占用），
- * 随 config_view 一起广播过来；这里只在非空时显示一条红条。
- * 以前只有托盘气泡，用户没看到就以为"设置生效了"，重启才发现回滚了。 */
+function bindSettingsSearch() {
+    if (!window.QSSearch) return;
+    window.QSSearch.bind({ $, gotoPane, invoke, pyInitialsOf });
+}
+
 function syncSaveErrorBanner() {
     const b = $('saveErrBanner');
     if (!b) return;
@@ -4058,190 +4028,6 @@ function bindClipHist() {
         });
     }
     loadClipHist();
-}
-function bindSettingsSearch() {
-    const input = $('setSearch');
-    const list = $('setSearchList');
-    if (!input || !list) return;
-
-    /* 查询串是不是 initials 的**子序列**（"zd" ⊂ "zidongshouqi"）。
-     * 只对纯字母查询生效：中文查询走"包含"那条路。 */
-    const isSubseq = (q, s) => {
-        let i = 0;
-        for (let j = 0; j < s.length && i < q.length; j++) if (s[j] === q[i]) i++;
-        return i === q.length;
-    };
-    const matches = (it, q) => {
-        if ((it.label + ' ' + it.body).replace(/\s+/g, '').toLowerCase().includes(q)) return true;
-        return /^[a-z0-9]+$/.test(q) && q.length >= 2 && it.py && isSubseq(q, it.py);
-    };
-
-    /* 最近点过的 5 项：空着搜索框时直接列出来。
-     * 存 localStorage（不是配置）—— 它只是"这个窗口里的使用痕迹"，
-     * 不值得进备份、也不该跨机器同步。 */
-    const RECENT_KEY = 'qsFindRecent';
-    const readRecent = () => {
-        try {
-            const a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-            return Array.isArray(a) ? a.slice(0, 5) : [];
-        } catch (_) { return []; }
-    };
-    const pushRecent = (it) => {
-        try {
-            const a = readRecent().filter((x) => !(x.pane === it.pane && x.label === it.label));
-            a.unshift({ pane: it.pane, paneName: it.paneName, label: it.label });
-            localStorage.setItem(RECENT_KEY, JSON.stringify(a.slice(0, 5)));
-        } catch (_) { }
-    };
-
-    /** 画一组"可以直接点"的条目（最近用过的）。 */
-    const paintRecent = () => {
-        const recent = readRecent();
-        list.textContent = '';
-        if (!recent.length) {
-            list.hidden = true;
-            return;
-        }
-        const head = document.createElement('div');
-        head.className = 'find-empty';
-        head.textContent = '最近改过的';
-        list.appendChild(head);
-        recent.forEach((it) => {
-            const row = document.createElement('div');
-            row.className = 'find-item';
-            const t = document.createElement('span');
-            t.className = 'fi-t';
-            t.textContent = it.label;
-            const p = document.createElement('span');
-            p.className = 'fi-p';
-            p.textContent = it.paneName || '';
-            row.appendChild(t);
-            row.appendChild(p);
-            row.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                findPick(it);
-            });
-            list.appendChild(row);
-        });
-        list.hidden = false;
-        findCursor = -1;
-    };
-
-    const paint = () => {
-        const q = String(input.value || '').replace(/\s+/g, '').toLowerCase();
-        list.textContent = '';
-        findCursor = -1;
-        if (!q) {
-            paintRecent();
-            return;
-        }
-        const idx = findIndex || findBuildIndex();
-        /* 排序：标题里直接包含查询串的最相关，其次正文包含，最后才是拼音命中。
-         * 不排的话"zdsq"这种拼音查询会把一堆正文里恰好包含 z…d… 的行排在前面。 */
-        const score = (it) => {
-            if (it.label.replace(/\s+/g, '').toLowerCase().includes(q)) return 0;
-            if (it.body.replace(/\s+/g, '').toLowerCase().includes(q)) return 1;
-            return 2;
-        };
-        const hits = idx
-            .map((it, i) => ({ it, i }))
-            .filter(({ it }) => matches(it, q))
-            .sort((a, b) => score(a.it) - score(b.it) || a.i - b.i)
-            .slice(0, 20)
-            .map(({ it }) => it);
-        if (!hits.length) {
-            const d = document.createElement('div');
-            d.className = 'find-empty';
-            d.textContent = '没找到相关设置';
-            list.appendChild(d);
-            list.hidden = false;
-            return;
-        }
-        hits.forEach((it, i) => {
-            const row = document.createElement('div');
-            row.className = 'find-item' + (i === 0 ? ' on' : '');
-            const t = document.createElement('span');
-            t.className = 'fi-t';
-            t.textContent = it.label;
-            const p = document.createElement('span');
-            p.className = 'fi-p';
-            p.textContent = it.paneName;
-            row.appendChild(t);
-            row.appendChild(p);
-            row.dataset.i = String(i);
-            row.addEventListener('mousedown', (e) => {
-                e.preventDefault();   // 别让输入框先失焦导致列表先关
-                findPick(hits[i]);
-            });
-            list.appendChild(row);
-        });
-        findCursor = 0;
-        list.hidden = false;
-    };
-
-    const findPick = (it) => {
-        findClose();
-        input.blur();
-        input.value = '';
-        pushRecent(it);
-        // 动作：走原有按钮的点击路径（同一条代码路径，不会出现两套行为）
-        if (it.action) {
-            if (it.action.click) {
-                const b = $(it.action.click);
-                if (b) { b.click(); return; }
-            }
-            if (it.action.invoke) { invoke(it.action.invoke).catch(() => { }); return; }
-        }
-        if (it.pane) gotoPane(it.pane);
-        /* 元素可能已经被重画过：按标题文字在那一页里重新找一遍。 */
-        let el = it.el;
-        if (!el || !el.isConnected) {
-            const paneEl = document.querySelector('.pane[data-pane="' + it.pane + '"]');
-            el = paneEl ? [...paneEl.querySelectorAll('.row, .tools-title')]
-                .find((x) => {
-                    const b = x.querySelector('.rt > b, .rt b');
-                    return String((b || x).textContent).replace(/\s+/g, ' ').trim() === it.label;
-                }) : null;
-        }
-        if (el) findReveal(el);
-    };
-
-    input.addEventListener('input', paint);
-    input.addEventListener('focus', () => paint());
-    input.addEventListener('blur', () => setTimeout(findClose, 120));
-    input.addEventListener('keydown', (e) => {
-        const items = [...list.querySelectorAll('.find-item')];
-        if (e.key === 'Escape') {
-            input.value = '';
-            findClose();
-            input.blur();
-            return;
-        }
-        if (!items.length) return;
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault();
-            const step = e.key === 'ArrowDown' ? 1 : -1;
-            findCursor = (findCursor + step + items.length) % items.length;
-            items.forEach((x, i) => x.classList.toggle('on', i === findCursor));
-            items[findCursor].scrollIntoView({ block: 'nearest' });
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            const idx = findIndex || findBuildIndex();
-            const q = String(input.value || '').replace(/\s+/g, '').toLowerCase();
-            const hits = idx.filter((it) => matches(it, q));
-            const pick = hits[Math.max(0, findCursor)];
-            if (pick) findPick(pick);
-        }
-    });
-
-    /* 全局快捷键：Ctrl+F 直接聚焦搜索框（设置页里也符合直觉）。 */
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-            e.preventDefault();
-            input.focus();
-            input.select();
-        }
-    });
 }
 function bindSwitches() {
     applyTheme();
