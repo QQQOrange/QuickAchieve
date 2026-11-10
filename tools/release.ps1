@@ -96,7 +96,7 @@ $rt = cargo test -- --test-threads=1 2>&1 | Select-String -Pattern '^test result
         Write-Host $cov
         Fail 'tools/check-all.js：前端自检有失败项（含英文覆盖超阈值）'
     }
-    Ok '前端四项自检（UI / 页面 / 命令表 / 英文覆盖）全部通过'
+    Ok '前端五项自检（UI / 页面 / 命令表 / 英文覆盖）全部通过'
 
     Step '3/7 构建 release'
     $env:ORT_SKIP_DOWNLOAD = '1'
