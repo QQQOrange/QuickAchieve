@@ -5,6 +5,19 @@
 
 ---
 
+## v2.23.99 — 2026-11-10
+
+### 前端拆分第一刀：bar-panel-lazy.js
+
+- 引擎面板懒建/分片填充（`panelFillOne`、`panelFillAllChunked`、`panelWatch`、
+  `schedulePanelPush`）搬到 `ui/bar-panel-lazy.js`（99 行）；
+- `bar.js` 7,229 → **7,128** 行；
+- 新增 `window.QSBar` 依赖桥（getter），解决 jsdom 逐脚本 eval 时顶层
+  `let/const` 不共享的问题；index.html 与测试加载顺序同步调整；
+- UI 887 / 页面 56 / E2E 3/3 全绿。
+
+---
+
 ## v2.23.98 — 2026-11-10
 
 ### 拆分 main.rs 第六刀：capture_env 补前台/终端判断

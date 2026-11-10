@@ -1403,7 +1403,7 @@ async function testBar() {
     console.log('');
     console.log('=== 横条（ui/index.html）===');
     const env = makeEnv('ui/index.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/bar.js', 'ui/glass.js']);
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js', 'ui/glass.js']);
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
     /* ⚠ jsdom 不加载 <link> 外链 CSS，而 #148 起 --qs-bg 改由样式表两套
@@ -3400,7 +3400,7 @@ async function testTrans() {
      *   哨兵在配置里仍保留（用户下次开开关它就回到原位）。 */
     {
         const env = makeEnv('ui/index.html', baseConf({ barList: ['百度', '@trans', 'Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/bar.js', 'ui/glass.js']);
+        runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js', 'ui/glass.js']);
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
         const styleEl = w.document.createElement('style');
@@ -4587,7 +4587,7 @@ async function testFavTools() {
         ],
         barList: ['百度', '@fav:g1', '@fav:g2'],
     }));
-    runScripts(env, ['ui/shared.js', 'ui/bar.js', 'ui/glass.js']);
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js', 'ui/glass.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -4649,7 +4649,7 @@ async function testPanelNoFlicker() {
     console.log('');
     console.log('=== 更多引擎面板：打开不重建 / 收起还原过滤 ===');
     const env = makeEnv('ui/index.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/bar.js']);
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -4697,7 +4697,7 @@ async function testCatJump() {
     console.log('');
     console.log('=== 更多引擎面板：分类跳转的吸附头补偿 ===');
     const env = makeEnv('ui/index.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/bar.js']);
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -5388,7 +5388,7 @@ async function testLocalAnswer() {
     console.log('=== 本地答案（横条那颗按钮）===');
 
     const env = makeEnv('ui/index.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/bar.js']);
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js']);
     await flush();
 
     const win = env.w;
