@@ -77,6 +77,7 @@ mod clip_open;
 mod capture_env;
 mod settings_view;
 mod settings_apply;
+mod tasks;
 mod grid_cmds;
 use capture_env::{
     clipboard_owned_by, clipboard_owner_trusted, foreground_is_self_any, foreground_still_target,
@@ -4954,7 +4955,7 @@ fn __probe_inject_drag_in(label: String) -> bool {
 /// 这个入口把 show_bar 放进一个 spawn 出来的线程，专治这类回归。
 #[crate::t::command]
 fn __probe_bg_show(text: String) -> bool {
-    std::thread::spawn(move || {
+    crate::tasks::spawn(move || {
         show_bar(text, false, false, None);
     });
     true
@@ -6644,8 +6645,7 @@ fn open_lock_window(a: &AppHandle) {
                 Ok(w) => {
                     win::log("lock: 窗口已建，等页面 ready");
                     let w2 = w.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(180));
+                    crate::tasks::spawn_later(Duration::from_millis(180), move || {
                         let _ = w2.show();
                         let _ = w2.set_focus();
                     });
@@ -6791,8 +6791,7 @@ fn post_unlock_startup() {
      * 140ms 是给锁屏窗留的销毁时间：`destroy()` 只是投递到事件循环，而锁屏窗
      * 带 always_on_top，同一瞬间弹横条会被它压住。横条自己失焦 / 按 Esc 就收起，
      * 不会赖在屏幕上。 */
-    std::thread::spawn(|| {
-        std::thread::sleep(Duration::from_millis(140));
+    crate::tasks::spawn_later(Duration::from_millis(140), || {
         show_bar(String::new(), true, false, None);
     });
 }
@@ -8623,8 +8622,7 @@ fn show_update_window(a: &AppHandle) {
                 Ok(w) => {
                     win::log("update: 窗口已建");
                     let w2 = w.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(180));
+                    crate::tasks::spawn_later(Duration::from_millis(180), move || {
                         let _ = w2.show();
                         let _ = w2.set_focus();
                     });
@@ -9994,8 +9992,7 @@ fn open_trans_window(text: String, target: String) {
                 });
                 // 兜底显示：ready 信号没来（页面脚本异常）也不能让窗口挂着不出现
                 let w2 = w.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(2500));
+                crate::tasks::spawn_later(Duration::from_millis(2500), move || {
                     if !w2.is_visible().unwrap_or(false) {
                         win::log("trans win: ready 超时，兜底显示");
                         let _ = w2.show();
@@ -10581,14 +10578,13 @@ fn open_ocr_window(text: String) {
                     // 兜底显示：ready 信号 2.5 秒还没来就直接亮出来，
                     // 不能因为页面脚本异常就让窗口永远显示不出来。
                     let w2 = w.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(2500));
-                        if !w2.is_visible().unwrap_or(false) {
-                            win::log("ocr win: ready 超时，兜底显示");
-                            let _ = w2.show();
-                            let _ = w2.set_focus();
-                        }
-                    });
+                    crate::tasks::spawn_later(Duration::from_millis(2500), move || {
+                    if !w2.is_visible().unwrap_or(false) {
+                        win::log("ocr win: ready 超时，兜底显示");
+                        let _ = w2.show();
+                        let _ = w2.set_focus();
+                    }
+                });
                 }
                 Err(e) => win::log(&format!("ocr win: build failed: {e}")),
             }
@@ -12405,14 +12401,13 @@ fn open_qr_window() {
                 Ok(w) => {
                     win::log("qr win: built (hidden, 等页面 ready)");
                     let w2 = w.clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(2500));
-                        if !w2.is_visible().unwrap_or(false) {
-                            win::log("qr win: ready 超时，兜底显示");
-                            let _ = w2.show();
-                            let _ = w2.set_focus();
-                        }
-                    });
+                    crate::tasks::spawn_later(Duration::from_millis(2500), move || {
+                    if !w2.is_visible().unwrap_or(false) {
+                        win::log("qr win: ready 超时，兜底显示");
+                        let _ = w2.show();
+                        let _ = w2.set_focus();
+                    }
+                });
                 }
                 Err(e) => win::log(&format!("qr win: build failed: {e}")),
             }
@@ -12592,14 +12587,13 @@ fn open_qrgen_window() {
                     win::log("qrgen win: built (hidden, 等页面 ready)");
                     let w2 = w.clone();
                     // 与其它结果窗同一条兜底：ready 信号没来也要亮出来
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_millis(2500));
-                        if !w2.is_visible().unwrap_or(false) {
-                            win::log("qrgen win: ready 超时，兜底显示");
-                            let _ = w2.show();
-                            let _ = w2.set_focus();
-                        }
-                    });
+                    crate::tasks::spawn_later(Duration::from_millis(2500), move || {
+                    if !w2.is_visible().unwrap_or(false) {
+                        win::log("qrgen win: ready 超时，兜底显示");
+                        let _ = w2.show();
+                        let _ = w2.set_focus();
+                    }
+                });
                 }
                 Err(e) => win::log(&format!("qrgen win: build failed: {e}")),
             }
@@ -15263,8 +15257,7 @@ fn open_icon_edit_win(key: &str, src: String, vector: bool) -> bool {
                 });
                 // 兜底：ready 信号 2.5 秒没来也亮出来，不能开着看不见
                 let w2 = w.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(2500));
+                crate::tasks::spawn_later(Duration::from_millis(2500), move || {
                     if !w2.is_visible().unwrap_or(false) {
                         win::log("iconedit: ready 超时，兜底显示");
                         let _ = w2.show();
@@ -19041,8 +19034,7 @@ fn open_settings_win(focus: Option<String>, tab: Option<String>) {
                 // 隐藏窗口拿不到焦点，不在这里 set_focus（见 show_after_ready）
                 // 兜底：ready 信号没来也要把窗口亮出来，不能开着看不见
                 let w2 = w.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(2500));
+                crate::tasks::spawn_later(Duration::from_millis(2500), move || {
                     if !w2.is_visible().unwrap_or(false) {
                         win::log("settings: ready 超时，兜底显示");
                         let _ = w2.show();
