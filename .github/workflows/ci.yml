@@ -3,7 +3,7 @@ name: CI
 # 为什么要有这个（v2.23.43 补的）：
 # 在这之前所有校验都只在开发者的机器上手动跑（tools/release.ps1 里），
 # 一旦某次改动把测试跑红了、或者 clippy 冒出新警告，只有到"发版那一步"才会发现。
-# 现在每次 push / PR 都自动过一遍：clippy（零警告门槛）+ 单测 + 三个前端自检。
+# 现在每次 push / PR 都自动过一遍：clippy（零警告门槛）+ 单测 + 前端自检与 E2E 静态检查。
 on:
   push:
     branches: [main]
@@ -40,7 +40,7 @@ jobs:
           node-version: "24"
 
       # v2.23.55：**必须装 jsdom**。
-      # 三个前端自检脚本都 `require('jsdom')`，CI 里从来没装过 —— 于是
+      # 前端自检与 E2E 静态检查脚本都 `require('jsdom')`，CI 里从来没装过 —— 于是
       # 「前端自检」这一步一直是 `Cannot find module 'jsdom'`。
       # package.json / package-lock.json 都在 tools/ 下（早就提交了），
       # 用 `npm ci` 按锁文件装，版本可复现。
@@ -66,3 +66,15 @@ jobs:
       #   check-all   —— 上面两个 + 命令表一致性 + 英文覆盖率
       - name: 前端自检（UI / 页面 / 命令表 / 英文覆盖）
         run: node tools/check-all.js
+
+      # v2.23.104：E2E 场景也进 CI。真机运行需要 Windows 桌面会话（GitHub
+      # runner 上跑不了 WebView2 + 真实指针），但**语法和场景清单**可以静态验：
+      # 哪个文件写坏了、run.js 里登记漏了，这里立刻红。
+      - name: E2E 场景语法与清单（不需要桌面会话）
+        shell: pwsh
+        run: |
+          Get-ChildItem tools/e2e/*.js | ForEach-Object {
+            node --check $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "语法错误：$($_.Name)" }
+          }
+          node tools/e2e/run.js --list

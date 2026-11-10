@@ -98,6 +98,16 @@ $rt = cargo test -- --test-threads=1 2>&1 | Select-String -Pattern '^test result
     }
     Ok '前端五项自检（UI / 页面 / 命令表 / 英文覆盖 / 设置项）全部通过'
 
+    # v2.23.104：E2E 场景语法/清单。真机跑（node tools/e2e/run.js）仍要桌面会话，
+    # 这里只做不依赖 GUI 的静态检查，保证场景文件没写坏、run.js 登记没漏。
+    Get-ChildItem tools/e2e/*.js | ForEach-Object {
+        node --check $_.FullName 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Fail "E2E 语法错误：$($_.Name)" }
+    }
+    node tools/e2e/run.js --list 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail 'tools/e2e/run.js --list 失败（场景登记有误）' }
+    Ok 'E2E 场景语法与清单（4 个场景）'
+
     Step '3/7 构建 release'
     $env:ORT_SKIP_DOWNLOAD = '1'
     cargo build --release --message-format=short 2>&1 |
