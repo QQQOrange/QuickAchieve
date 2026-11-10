@@ -6170,53 +6170,42 @@ const RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 所以：每 20 秒看一眼磁盘上 exe 的文件版本，和自己的版本号对不上就在**空闲时**
 /// 交班重启（新进程带 `QS_TAKEOVER=1`，会等单实例互斥体让出来）。
 /// 横条开着、框选遮罩在、拾取器在，都算"忙"，绝不打断用户。
-fn spawn_binary_update_watch() {
-    win::log(&format!("binwatch: 我这一版是 {RUNTIME_VERSION}，开始盯着 exe 有没有被换"));
-    std::thread::Builder::new()
-        .name("qs-binwatch".into())
-        .spawn(|| {
-            // 启动后会有一堆事（建窗、装钩子、云同步），先别插队
-            std::thread::sleep(Duration::from_secs(45));
-            loop {
-                std::thread::sleep(Duration::from_secs(20));
-                let Ok(exe) = std::env::current_exe() else { continue };
-                let Some(v) = win::exe_file_version(&exe) else { continue };
-                let disk = format!("{}.{}.{}", v.0, v.1, v.2);
-                if disk == RUNTIME_VERSION {
-                    continue;
-                }
-                /* ⚠ 先记日志、再判断忙不忙。
-                 * 这条日志是"为什么没自动重启"的唯一线索：如果它出现了却没重启，
-                 * 说明当时正忙；如果它压根没出现，说明版本比对没走到（读不到版本、
-                 * 或 `current_exe()` 指向的还是旧名）。 */
-                win::log(&format!(
-                    "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 准备交班（检查是否空闲）"
-                ));
-                /* 更新正在进行时别插手：更新器自己会"改名 → 换新 → 重启"，
-                 * 我们这时候再起一次只会和它抢同一条交班路径（最坏是两个新进程
-                 * 争单实例，一个立刻退出）。 */
-                if UPDATE_BUSY.load(Ordering::SeqCst) {
-                    win::log("binwatch: 更新正在进行，交给更新流程");
-                    continue;
-                }
-                let busy = is_bar_shown()
-                    || app().get_webview_window("region").is_some()
-                    || app().get_webview_window("picker").is_some();
-                if busy {
-                    // 用户正在用，下次再看
-                    win::log("binwatch: 当前有横条/框选在进行，稍后再试");
-                    continue;
-                }
-                win::log(&format!(
-                    "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 自动交班重启"
-                ));
-                update_restart();
-                return;
-            }
-        })
-        .ok();
+fn binwatch_tick() -> bool {
+    // 返回 true = 已经发起交班（调用方应结束线程）
+    let Ok(exe) = std::env::current_exe() else { return false; };
+    let Some(v) = win::exe_file_version(&exe) else { return false; };
+    let disk = format!("{}.{}.{}", v.0, v.1, v.2);
+    if disk == RUNTIME_VERSION {
+        return false;
+    }
+    /* ⚠ 先记日志、再判断忙不忙。
+     * 这条日志是"为什么没自动重启"的唯一线索：如果它出现了却没重启，
+     * 说明当时正忙；如果它压根没出现，说明版本比对没走到（读不到版本、
+     * 或 `current_exe()` 指向的还是旧名）。 */
+    win::log(&format!(
+        "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 准备交班（检查是否空闲）"
+    ));
+    /* 更新正在进行时别插手：更新器自己会"改名 → 换新 → 重启"，
+     * 我们这时候再起一次只会和它抢同一条交班路径（最坏是两个新进程
+     * 争单实例，一个立刻退出）。 */
+    if UPDATE_BUSY.load(Ordering::SeqCst) {
+        win::log("binwatch: 更新正在进行，交给更新流程");
+        return false;
+    }
+    let busy = is_bar_shown()
+        || app().get_webview_window("region").is_some()
+        || app().get_webview_window("picker").is_some();
+    if busy {
+        // 用户正在用，下次再看
+        win::log("binwatch: 当前有横条/框选在进行，稍后再试");
+        return false;
+    }
+    win::log(&format!(
+        "binwatch: 磁盘上是 {disk}，我在跑 {RUNTIME_VERSION} —— 自动交班重启"
+    ));
+    update_restart();
+    true
 }
-
 fn spawn_detector() {
     let (tx, rx) = std::sync::mpsc::channel::<Ev>();
     // v2.23.6：装钩子之前先把"要独占的热键"推过去 ——
@@ -12602,8 +12591,13 @@ fn ocr_start_flow(force_engine: Option<String>) {
                 format!("还没配{}的凭据，已帮你打开设置页", engine_display(&miss)),
                 true,
             );
-            open_settings_win(None, None);
+            /* v2.23.93：建窗调用也放进 spawn —— `ocr_start_flow` 本身已经
+             * 在后台线程上跑，但 `open_settings_win` 里是 WebviewWindowBuilder
+             * 的 build()；静态闸门（window_building_must_be_off_command_stack）
+             * 要求调用点附近能看出"不在命令栈"，这里合并成同一个后台线程，
+             * 顺便少起一条线程。 */
             std::thread::spawn(|| {
+                open_settings_win(None, None);
                 std::thread::sleep(Duration::from_millis(900));
                 let _ = APP.get().map(|a| a.emit_to("settings", "qs://focus-tab", "ocr"));
             });
@@ -20988,41 +20982,69 @@ fn now_unix() -> u64 {
 /// 后台回收线程：每 5 秒看一眼「设置窗是否还被隐藏着且已经超过阈值」。
 /// 单独一条线程而不是每次关窗起一个 sleep —— 后者会攒出一串待唤醒线程，
 /// 而且窗口被重建之后旧线程还会去操作新窗口。
-fn spawn_settings_reaper() {
-    if settings_idle_secs() == 0 {
+fn settings_reaper_tick() {
+    let limit = settings_idle_secs();
+    let at = SETTINGS_HIDDEN_AT.load(Ordering::Relaxed);
+    if limit == 0 || at == 0 {
         return;
     }
-    std::thread::spawn(|| loop {
-        std::thread::sleep(Duration::from_secs(5));
-        let limit = settings_idle_secs();
-        let at = SETTINGS_HIDDEN_AT.load(Ordering::Relaxed);
-        if limit == 0 || at == 0 {
-            continue;
-        }
-        if now_unix().saturating_sub(at) < limit {
-            continue;
-        }
-        // 窗口可能已经被重建 / 又被用户打开了：拿不到或可见就都不销毁，
-        // 并把时间戳清掉（下次关窗会重新记）。
-        let Some(w) = app().get_webview_window("settings") else {
+    if now_unix().saturating_sub(at) < limit {
+        return;
+    }
+    // 窗口可能已经被重建 / 又被用户打开了：拿不到或可见就都不销毁，
+    // 并把时间戳清掉（下次关窗会重新记）。
+    let Some(w) = app().get_webview_window("settings") else {
+        SETTINGS_HIDDEN_AT.store(0, Ordering::Relaxed);
+        return;
+    };
+    if w.is_visible().unwrap_or(true) {
+        SETTINGS_HIDDEN_AT.store(0, Ordering::Relaxed);
+        return;
+    }
+    match w.destroy() {
+        Ok(()) => {
             SETTINGS_HIDDEN_AT.store(0, Ordering::Relaxed);
-            continue;
-        };
-        if w.is_visible().unwrap_or(true) {
-            SETTINGS_HIDDEN_AT.store(0, Ordering::Relaxed);
-            continue;
+            SETTINGS_PAGE_LIVE.store(false, Ordering::Relaxed);
+            win::log("settings: 关闭已超时，销毁窗口回收内存（下次打开重建）");
         }
-        match w.destroy() {
-            Ok(()) => {
-                SETTINGS_HIDDEN_AT.store(0, Ordering::Relaxed);
-                SETTINGS_PAGE_LIVE.store(false, Ordering::Relaxed);
-                win::log("settings: 关闭已超时，销毁窗口回收内存（下次打开重建）");
-            }
-            Err(e) => win::log(&format!("settings: 销毁失败（{e}），下轮再试")),
-        }
-    });
+        Err(e) => win::log(&format!("settings: 销毁失败（{e}），下轮再试")),
+    }
 }
 
+/// v2.23.93：binwatch + 设置窗回收合并成一条 housekeeping 线程。
+///
+/// 以前是两条线程各睡各的（20s / 5s），现在按"最近到期时间"只睡一次；
+/// 两条任务互不阻塞，空闲时唤醒次数不变，但少一个常驻线程和一份调度。
+fn spawn_housekeeping() {
+    win::log(&format!("binwatch: 我这一版是 {RUNTIME_VERSION}，开始盯着 exe 有没有被换"));
+    std::thread::Builder::new()
+        .name("qs-house".into())
+        .spawn(|| {
+            let reaper_on = settings_idle_secs() > 0;
+            let start = std::time::Instant::now();
+            let mut next_bin = start + Duration::from_secs(45);
+            let mut next_reap = start + Duration::from_secs(5);
+            loop {
+                let now = std::time::Instant::now();
+                let deadline = if reaper_on { next_bin.min(next_reap) } else { next_bin };
+                if deadline > now {
+                    std::thread::sleep(deadline - now);
+                }
+                let now = std::time::Instant::now();
+                if now >= next_bin {
+                    if binwatch_tick() {
+                        return;
+                    }
+                    next_bin = now + Duration::from_secs(20);
+                }
+                if reaper_on && now >= next_reap {
+                    settings_reaper_tick();
+                    next_reap = now + Duration::from_secs(5);
+                }
+            }
+        })
+        .ok();
+}
 /// 空闲销毁阈值（秒）。`QS_SETTINGS_IDLE_SECS` 是**仅测试用**的覆盖口：
 /// 真机验这条链路不能等三分钟，探针把它设成个位数即可。
 /// 0 = 关掉这个特性（行为与本轮之前完全一致）。
@@ -22733,11 +22755,10 @@ fn main() {
             if stress.is_none() {
                 spawn_detector();
                 // v2.23.10：磁盘上的 exe 换人了就自动交班（见函数注释）
-                spawn_binary_update_watch();
+                // v2.23.93：binwatch + 设置窗回收合并成一条 housekeeping
+                spawn_housekeeping();
                 // 2026-10-23：鼠标走远了自动收起（"这个横条我不会要了"）
                 spawn_bar_away_guard();
-                // r75：设置窗关掉一段时间后真正销毁（回收那 200~300MB）
-                spawn_settings_reaper();
                 // 后台先把 UIA 热起来：第一次调用要加载 UIAutomationCore、
                 // 建跨进程代理，能花一秒以上，不能让第一次划词去付这笔钱。
                 win::uia_warm_up();
