@@ -2263,7 +2263,7 @@ dependencies = [
 
 [[package]]
 name = "quick-achieve"
-version = "2.23.90"
+version = "2.23.91"
 dependencies = [
  "aes-gcm",
  "argon2",
