@@ -14,6 +14,7 @@ const SCENARIOS = {
     away: { file: 'away.js', desc: '鼠标移远就收起：不动不收、移开 0.35s 内收' },
     frost: { file: 'frost-static.js', desc: '静态磨砂：不抓屏、无 backdrop-filter、底板 alpha' },
     reset: { file: 'settings-reset.js', desc: '设置页每节恢复默认，磨砂强度回 12' },
+    search: { file: 'settings-search.js', desc: '设置页搜索：结果列表、跳分页、动作、Esc' },
 };
 
 async function main() {

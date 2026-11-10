@@ -33,7 +33,10 @@ module.exports = async function run() {
         await sleep(1200);
         const p0 = cursorPos();
         if (Math.abs(p0.x - 1200) > 2 || Math.abs(p0.y - 800) > 2) {
-            s.skip('等待期间指针被外部移动，跳过“静止”断言', JSON.stringify(p0));
+            /* 指针被外部移动 = “静止”这个前提已经不成立，整场无法判；
+             * 只 skip 一条断言会把后面的步骤也带偏，直接收场。 */
+            s.skip('等待期间指针被外部移动，跳过场景', JSON.stringify(p0));
+            return s.done();
         }
         const stationary = await bar.invoke('bar_auto_state');
         if (stationary && stationary.shown === true) {
@@ -44,10 +47,9 @@ module.exports = async function run() {
              * 没出现才判失败，并把日志附上。 */
             const tail = app.logTail(60);
             if (/bar-away: 指针移动 ≥6px/.test(tail)) {
-                s.skip('指针没动时不会自己收起（环境干扰：检测到外部指针移动，重开一次）',
+                s.skip('指针没动时不会自己收起（环境干扰：检测到外部指针移动），跳过场景',
                     tail.split('\n').slice(-4).join('\n'));
-                await bar.invoke('grid_trigger_from_ui');
-                await sleep(700);
+                return s.done();
             } else {
                 s.ok('指针没动时不会自己收起', false,
                     `${JSON.stringify(stationary)}\n${tail.split('\n').slice(-12).join('\n')}`);

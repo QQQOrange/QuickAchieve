@@ -13,7 +13,7 @@
 ```powershell
 node tools/e2e/run.js            # 全部
 node tools/e2e/run.js away       # 只跑移远收起
-node tools/e2e/run.js frost reset
+node tools/e2e/run.js frost reset search
 node tools/e2e/run.js --list
 ```
 
@@ -34,6 +34,7 @@ node tools/e2e/run.js --list
 | `away` | 指针不动不收起；移开 500px 后 ~0.35s 收起；日志有「指针移动 ≥6px」 |
 | `frost` | 静态磨砂不抓屏（captures=0）、无 backdrop-filter、底板 alpha=0.45、雾面在 `::before` |
 | `reset` | 设置页每张卡片有「恢复本节默认」；磨砂卡片恢复 `barBlur=12`、`barBgAlpha=55` |
+| `search` | 设置页搜索：结果列表出现、点结果跳到 `#s-barBlur` 所在分页、动作「导出配置备份」可搜、Esc 收起 |
 
 ## 加场景
 
@@ -43,7 +44,7 @@ node tools/e2e/run.js --list
    const { App, Suite, sleep } = require('./harness');
    module.exports = async function run() {
        const s = new Suite('我的场景');
-       const app = new App({ tag: 'mine', port: 9898 });
+       const app = new App({ tag: 'mine', port: 9899 });
        let bar = null;
        try {
            await app.launch();
