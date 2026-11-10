@@ -75,6 +75,7 @@ pub fn ui_root() -> std::path::PathBuf {
 mod clip;
 mod clip_open;
 mod capture_env;
+mod grid_cmds;
 use capture_env::{
     clipboard_owned_by, clipboard_owner_trusted, foreground_is_self_any, foreground_still_target,
     is_console_window, is_wechat_pid, same_app_pid,
@@ -3129,47 +3130,26 @@ fn grid_page_add(name: String) -> Result<String, String> {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    if cfg.grid_pages.len() >= 20 {
-        return Err("最多 20 个网格页".into());
-    }
-    // 生成一个没被占用的 id：p1 / p2 / …
-    let mut n = 1usize;
-    let id = loop {
-        let cand = format!("p{n}");
-        if config::grid_page_index(&cfg, &cand).is_none() {
-            break cand;
-        }
-        n += 1;
-    };
-    let name = name.trim().to_string();
-    let name = if name.is_empty() { format!("网格页 {}", cfg.grid_pages.len() + 1) } else { name };
-    cfg.grid_pages.push(config::GridPage { id: id.clone(), name: name.clone(), items: Vec::new() });
+    let (id, page_name) = grid_cmds::page_add(&mut cfg, name)?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
-    win::log(&format!("grid: 新建页「{name}」（{id}）"));
+    win::log(&format!("grid: 新建页「{page_name}」（{id}）"));
     Ok(id)
 }
 
 /// 改页名（id 不变 —— 应用绑定靠 id，改名不会把绑定弄丢）。
 #[crate::t::command]
 fn grid_page_rename(id: String, name: String) -> Result<(), String> {
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err("页名不能为空".into());
-    }
     let mut cfg = match st().cfg.lock() {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    let Some(i) = config::grid_page_index(&cfg, &id) else {
-        return Err("找不到这个网格页".into());
-    };
-    cfg.grid_pages[i].name = name.clone();
+    grid_cmds::page_rename(&mut cfg, id.clone(), name.clone())?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
-    win::log(&format!("grid: 页 {id} 改名为「{name}」"));
+    win::log(&format!("grid: 页 {id} 改名为「{}」", name.trim()));
     Ok(())
 }
 
@@ -3180,29 +3160,12 @@ fn grid_page_delete(id: String) -> Result<(), String> {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    if cfg.grid_pages.len() <= 1 {
-        return Err("至少要保留一个网格页".into());
-    }
-    let Some(i) = config::grid_page_index(&cfg, &id) else {
-        return Err("找不到这个网格页".into());
-    };
-    let removed = cfg.grid_pages.remove(i);
-    let before = cfg.grid_app_pages.len();
-    cfg.grid_app_pages.retain(|b| b.page != id);
-    if cfg.grid_default_page == id {
-        cfg.grid_default_page = cfg.grid_pages.first().map(|p| p.id.clone()).unwrap_or_default();
-    }
-    cfg.grid_list = config::grid_page_index(&cfg, &cfg.grid_default_page)
-        .and_then(|i| cfg.grid_pages.get(i))
-        .map(|p| p.items.clone())
-        .unwrap_or_default();
-    let pruned = before - cfg.grid_app_pages.len();
+    let (removed, pruned) = grid_cmds::page_delete(&mut cfg, id)?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
     win::log(&format!(
-        "grid: 删除页「{}」（顺带剪掉 {pruned} 条应用绑定）",
-        removed.name
+        "grid: 删除页「{removed}」（顺带剪掉 {pruned} 条应用绑定）"
     ));
     Ok(())
 }
@@ -3214,14 +3177,7 @@ fn grid_page_set_default(id: String) -> Result<(), String> {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    if config::grid_page_index(&cfg, &id).is_none() {
-        return Err("找不到这个网格页".into());
-    }
-    cfg.grid_default_page = id.clone();
-    cfg.grid_list = config::grid_page_index(&cfg, &id)
-        .and_then(|i| cfg.grid_pages.get(i))
-        .map(|p| p.items.clone())
-        .unwrap_or_default();
+    grid_cmds::page_set_default(&mut cfg, id.clone())?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
@@ -3232,49 +3188,35 @@ fn grid_page_set_default(id: String) -> Result<(), String> {
 /// 「这个应用默认用哪一页」。同名应用再调一次就是**改绑定**（不会重复）。
 #[crate::t::command]
 fn grid_app_page_set(app: String, page: String) -> Result<(), String> {
-    let app = app.trim().to_string();
-    if app.is_empty() {
-        return Err("应用名不能为空（填进程名，如 chrome.exe；可用 * 通配）".into());
-    }
     let mut cfg = match st().cfg.lock() {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    if config::grid_page_index(&cfg, &page).is_none() {
-        return Err("目标网格页不存在".into());
-    }
-    if let Some(b) = cfg.grid_app_pages.iter_mut().find(|b| b.app.eq_ignore_ascii_case(&app)) {
-        b.page = page.clone();
-    } else {
-        if cfg.grid_app_pages.len() >= 60 {
-            return Err("最多 60 条应用绑定".into());
-        }
-        cfg.grid_app_pages.push(config::GridAppPage { app: app.clone(), page: page.clone() });
-    }
+    grid_cmds::app_page_set(&mut cfg, app.clone(), page.clone())?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
-    win::log(&format!("grid: 应用 {app} → 页 {page}"));
+    win::log(&format!("grid: 应用 {} → 页 {page}", app.trim()));
     Ok(())
 }
 
 /// 解除某个应用的绑定。传空串 = 清空全部绑定。
 #[crate::t::command]
 fn grid_app_page_remove(app: String) -> Result<(), String> {
-    let app = app.trim().to_string();
     let mut cfg = match st().cfg.lock() {
         Ok(c) => c,
         Err(_) => return Err("内部状态异常，请重开设置页".into()),
     };
-    if app.is_empty() {
-        cfg.grid_app_pages.clear();
-    } else {
-        cfg.grid_app_pages.retain(|b| !b.app.eq_ignore_ascii_case(&app));
-    }
+    grid_cmds::app_page_remove(&mut cfg, app.clone())?;
     config::save(&cfg);
     drop(cfg);
     broadcast();
-    win::log(&format!("grid: 解除应用绑定「{app}」"));
+    let app = app.trim();
+    win::log(&if app.is_empty() {
+        "grid: 已清空全部应用绑定".to_string()
+    } else {
+        format!("grid: 解除应用绑定「{app}」")
+    });
     Ok(())
 }
 

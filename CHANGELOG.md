@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.109 — 2026-11-10
+
+### main.rs 第七刀：grid 页管理命令拆出
+
+- `grid_page_add/rename/delete/set_default`、`grid_app_page_set/remove`
+  的实现搬到 `src/grid_cmds.rs`，只改 Config，不落盘/不广播/不写日志；
+- main 保留命令壳，负责锁、`config::save`、`broadcast`、日志；
+- 新增 2 条单测，Rust 测试 474 → **476** 全过；
+- `main.rs` 25,338 → **25,280** 行。
+
+---
+
 ## v2.23.108 — 2026-11-10
 
 ### settings.js 第四刀：剪贴板历史拆出
