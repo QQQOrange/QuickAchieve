@@ -7342,9 +7342,6 @@ mod sanitize_tests {
     /// 2026-10-23：横条「自己收起来」两条阈值的读入归一。
     ///
     /// 配置文件是明文可编辑的，也可能是老版本/别的机器恢复过来的 ——
-    /// `bar_idle_sec: 99999`（永远不收）和 `bar_away_px: -20`（一动就收）都得夹回去；
-    /// 而 **0 是"关掉这条"的合法值**，不能被当成非法值改回默认。
-    #[test]
     /// v2.23.83：磨砂底板透明度的默认值与归一。
     ///
     /// 默认 **55**（透明磨砂）；超过 100 的脏值回到默认；0 是合法的
@@ -7361,6 +7358,9 @@ mod sanitize_tests {
         assert_eq!(sanitize(zero).bar_bg_alpha, 0, "0 是合法的完全透明");
     }
 
+    /// `bar_idle_sec: 99999`（永远不收）和 `bar_away_px: -20`（一动就收）都得夹回去；
+    /// 而 **0 是"关掉这条"的合法值**，不能被当成非法值改回默认。
+    #[test]
     fn sanitize_clamps_bar_auto_hide_thresholds() {
         let _serial = big_lock();
         let c = Config::default();

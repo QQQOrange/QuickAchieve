@@ -5,6 +5,18 @@
 
 ---
 
+## v2.23.95 — 2026-11-10
+
+### 拆分 main.rs 第三刀：text_ops.rs + clippy 闸门修复
+
+- 包裹符号与文本处理的纯函数（`WRAP_PAIRS`、wrap 核心、智能去空格/标点全半角/
+  标题/句首大写）搬到 `src/text_ops.rs`（243 行）；
+- `main.rs` 25,824 → **25,591** 行（三刀累计 -516）；
+- 修掉 CI 里原本就红的 clippy 问题：clip.rs 孤立 doc、config.rs `#[test]`
+  错位、两处多余借用、拆分后的多余 import；`-D warnings` 全绿。
+
+---
+
 ## v2.23.94 — 2026-11-10
 
 ### 拆分 main.rs 第二刀：ocr_plan.rs
