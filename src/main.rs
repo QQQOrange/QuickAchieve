@@ -1113,10 +1113,8 @@ fn layout_bar(
     // 给"刚显示"打时间戳：`bar-away` 据此在头几百毫秒内不做收起判断，
     // 避开"窗口还没挪出屏外坐标"的那个空档（见 BAR_SHOWN_MS 的注释）。
     BAR_SHOWN_MS.store(mono_ms(), std::sync::atomic::Ordering::SeqCst);
-    // 右键轮询线程平时挂在条件变量上省电，横条真显示了才把它叫醒（见 spawn_rbutton_watch）
-    if first_show {
-        wake_rbutton_watch();
-    }
+    /* v2.23.91：右键兜底轮询已并入 bar-away 循环（横条显示时 70ms 一拍），
+     * 这里不需要再唤醒独立线程。 */
 
     /* ⭐ 液态玻璃的背景抓取：横条**首次上屏前**抓一块它将要占据的屏幕矩形。
      *
@@ -5939,77 +5937,6 @@ fn point_over_own_window(x: i32, y: i32, labels: &[&str]) -> bool {
 /// 本机上注入的右键一个都进不了鼠标钩子，所以干脆不靠钩子：
 /// 每 20ms 读一次按键状态，按下瞬间且光标在横条上就开菜单。
 /// 20ms 的轮询基本感觉不出来，CPU 开销可以忽略。
-/// 右键轮询线程的「横条显示了」信号（值 = 有没有待处理的唤醒）。
-///
-/// 为什么需要它：这条线程平时**挂在这里等唤醒**，而不是 20ms 空转一轮
-/// —— 见 `spawn_rbutton_watch` 的注释。
-static RBTN_PARK: (std::sync::Mutex<bool>, std::sync::Condvar) =
-    (std::sync::Mutex::new(false), std::sync::Condvar::new());
-
-/// 叫醒右键轮询线程。由 `layout_bar` 在横条**首次显示**那一刻调用。
-fn wake_rbutton_watch() {
-    let (m, cv) = &RBTN_PARK;
-    if let Ok(mut g) = m.lock() {
-        *g = true;
-        cv.notify_all();
-    }
-}
-
-/// 横条上的右键：**轮询**兜底（钩子那条主路见 `hook.rs` 的 `Ev::RDown`）。
-///
-/// 为什么还要一条轮询：别的鼠标钩子可能把 `WM_RBUTTONDOWN` 吃掉，那条主路就哑了。
-///
-/// ⚠ 但它**只在横条显示着的时候**才 20ms 轮询：横条没显示时谁也不会在它上面
-///   右键，而 20ms 空转等于给整机加了 **50 次/秒** 的常驻定时唤醒（后台程序在
-///   笔记本上会顶住待机功耗）。没显示就挂在 `RBTN_PARK` 上等 `layout_bar` 唤醒，
-///   1s 兜底超时只是防漏唤醒，正常路径用不到。
-fn spawn_rbutton_watch() {
-    std::thread::Builder::new()
-        .name("qs-rbtn".into())
-        .spawn(|| {
-            let mut was = false;
-            loop {
-                if !is_bar_shown() {
-                    if let Ok(mut g) = RBTN_PARK.0.lock() {
-                        /* ⚠ 先看标志再看等：`layout_bar` 可能正好在
-                         * `is_bar_shown()` 与 `lock()` 之间把标志立起来 ——
-                         * 那时 notify 已经发过了，直接 wait 会白等满 1s，
-                         * 这一秒里的右键就漏了。
-                         * ⚠ 标志必须**消费掉**（置回 false）：不然横条收起后
-                         * 这里会一直命中"有待处理唤醒"→ 空转烧 CPU。 */
-                        if *g {
-                            *g = false;
-                        } else {
-                            if let Ok((mut g2, _)) = RBTN_PARK.1.wait_timeout(g, Duration::from_millis(1000)) { *g2 = false }
-                        }
-                    }
-                    was = false;
-                    continue;
-                }
-                std::thread::sleep(Duration::from_millis(20));
-                let down = win::rbutton_down();
-                if down && !was && is_bar_shown() {
-                    let p = win::cursor_pos();
-                    if is_bar_inner(p.x, p.y) {
-                        if let Some(r) = win::window_rect(bar_hwnd()) {
-                            let scale = win::dpi_scale(bar_hwnd());
-                            let cx = (p.x - r.left) as f64 / scale;
-                            let cy = (p.y - r.top) as f64 / scale;
-                            win::log(&format!("rbtn poll -> css ({cx:.0},{cy:.0})"));
-                            let _ = app().emit_to(
-                                "bar",
-                                "qs://rclick",
-                                serde_json::json!({ "x": cx, "y": cy }),
-                            );
-                        }
-                    }
-                }
-                was = down;
-            }
-        })
-        .ok();
-}
-
 /// 「鼠标走远了就把横条收了」（用户 2026-10-23 要求）。
 ///
 /// 用户原话：「如果横条出来之后，如果鼠标移动了很大的一个范围，那么就说明这个
@@ -6055,6 +5982,9 @@ fn spawn_bar_away_guard() {
             let mut base: Option<(i32, i32)> = None;
             let mut armed = false;
             let mut last_topmost = std::time::Instant::now();
+            /* v2.23.91：右键兜底轮询并入本循环（原 qs-rbtn 线程 20ms 一轮）。
+             * 钩子主路仍然即时；这里 70ms 一次只兜“别的钩子吃掉右键”的情况。 */
+            let mut last_rbtn = false;
             loop {
             let shown = bar_rects().is_some();
             std::thread::sleep(Duration::from_millis(
@@ -6071,6 +6001,7 @@ fn spawn_bar_away_guard() {
                 away_since = None;
                 base = None;
                 armed = false;
+                last_rbtn = false;
                 continue;
             };
             /* v2.23.89：原先独立的 qs-bartop 线程（每 800ms 重申置顶）并到这里。
@@ -6090,7 +6021,26 @@ fn spawn_bar_away_guard() {
                 away_since = None;
                 base = None;
                 armed = false;
+                last_rbtn = false;
             }
+            let c = win::cursor_pos();
+            /* 右键兜底：钩子主路（hook.rs 的 Ev::RDown）即时；这里防别的
+             * 钩子把 WM_RBUTTONDOWN 吃掉。70ms 一次，最多多等一拍。 */
+            let rdown = win::rbutton_down();
+            if rdown && !last_rbtn && is_bar_inner(c.x, c.y) {
+                if let Some(r) = win::window_rect(bar_hwnd()) {
+                    let scale = win::dpi_scale(bar_hwnd());
+                    let cx = (c.x - r.left) as f64 / scale;
+                    let cy = (c.y - r.top) as f64 / scale;
+                    win::log(&format!("rbtn poll -> css ({cx:.0},{cy:.0})"));
+                    let _ = app().emit_to(
+                        "bar",
+                        "qs://rclick",
+                        serde_json::json!({ "x": cx, "y": cy }),
+                    );
+                }
+            }
+            last_rbtn = rdown;
             /* 刚补进文字 / 刚重新摆过窗口：从这一刻重新给用户 1.8s。 */
             let activity = BAR_ACTIVITY.load(Ordering::SeqCst);
             if activity != last_activity {
@@ -6112,7 +6062,6 @@ fn spawn_bar_away_guard() {
                 away_since = None;
                 continue;   // 用户把这条关了
             }
-            let c = win::cursor_pos();
             /* 弹出位置记一次；之后按位移武装（见 AWAY_HOLD_MS 上方注释）。 */
             if base.is_none() {
                 base = Some((c.x, c.y));
@@ -22913,7 +22862,6 @@ fn main() {
             // 钩子再来凑热闹会把结果搅乱。
             if stress.is_none() {
                 spawn_detector();
-                spawn_rbutton_watch();
                 // v2.23.10：磁盘上的 exe 换人了就自动交班（见函数注释）
                 spawn_binary_update_watch();
                 // 2026-10-23：鼠标走远了自动收起（"这个横条我不会要了"）
