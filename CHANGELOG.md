@@ -5,6 +5,17 @@
 
 ---
 
+## v2.23.97 — 2026-11-10
+
+### 拆分 main.rs 第五刀：capture_env.rs
+
+- 剪贴板 owner 是否可信、`clipboard_owned_by`、微信进程判断、`same_app_pid`
+  搬到 `src/capture_env.rs`（99 行）；
+- `main.rs` 25,490 → **25,397** 行（五刀累计 -710）；
+- `is_wechat_exe_name` 的单测跟着改 import，其它调用点不变。
+
+---
+
 ## v2.23.96 — 2026-11-10
 
 ### 拆分 main.rs 第四刀：text_ops 补齐智能换行
