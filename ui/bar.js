@@ -2001,7 +2001,7 @@ function applyEngineFilter(raw) {
      *
      * ⚠ 空壳 grid 在下面的循环里被当成"不确定"，所以不会因为"格子里没命中"
      *   被整块隐藏 —— 分片填到它之后那次重算会给出最终结论。 */
-    if (q) panelFillAllChunked();
+    if (q || (window.QSBar && window.QSBar.hasFilteredFill())) panelFillAllChunked();
     for (const cell of panelBody.querySelectorAll('.grid > .cell')) {
         // 软件格子（#135 进平铺视图的那批）没有 dataset.engine，名字在
         // dataset.appName 上 —— 两种格子的过滤口径必须一致。
@@ -7135,6 +7135,8 @@ window.QSBar = {
     PANEL_SUB_FALLBACK: () => PANEL_SUB_FALLBACK,
     panelSubFilter: () => panelSubFilter,
     panelCatFilter: () => panelCatFilter,
+    engineMatches: (n, q) => engineMatches(n, q),
+    hasFilteredFill: () => panelFillers.some((it) => it.filteredFor),
     getConf: () => CONF,
     panelGroupFilter: () => panelGroupFilter,
     panelRenderSig: () => panelRenderSig,

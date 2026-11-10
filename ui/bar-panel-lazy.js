@@ -59,7 +59,49 @@ let panelFillJob = 0;
  *  没有待填格子 → 返回 false（调用方可以立刻做后面的过滤）。
  *  有 → 起一个后台分片任务，返回 true（这一趟先只用已有格子过滤）。 */
 function panelFillAllChunked() {
-    const todo = qsb().panelFillers().filter((it) => !it.done);
+    /* v2.23.114：搜索/过滤时**按数据过滤**，只建命中的格子。
+     * 旧行为是把 260 个格子全建出来、再按 DOM 隐藏 —— 等于为了搜索
+     * 先付一次全量渲染。现在每个 filler 带 `renderList`：
+     *   · 过滤词变了 → 清掉旧格子，只留匹配行；
+     *   · 过滤词清空 → 恢复完整 list（下一帧分片补回）；
+     *   · 没命中的 grid 直接标 filled + hidden，不建任何格子。
+     * 非搜索态不调用本函数（懒建仍按滚动观察器走）。 */
+    const q = String(qsb().engineFilterText() || '').trim().toLowerCase();
+    for (const it of qsb().panelFillers()) {
+        if (q) {
+            if (it.filteredFor === q) continue;
+            it.filteredFor = q;
+            it.done = false;
+            it.grid.textContent = '';
+            it.grid.dataset.filled = '0';
+            it.renderList = it.list.filter((row) => qsb().engineMatches(
+                row.appName || row.name || row.engine || '', q));
+        } else if (it.filteredFor) {
+            it.filteredFor = '';
+            it.done = false;
+            it.grid.textContent = '';
+            it.grid.dataset.filled = '0';
+            it.renderList = null;
+        }
+    }
+    const fillers = qsb().panelFillers();
+    if (!q) {
+        /* 清空过滤词：恢复完整列表。面板多半已 hidden（关闭路径），
+         * 这里同步补齐 260 格，保证下次打开就是完整 DOM；隐藏状态下
+         * 用户看不到这次重排，也符合旧的"收起再打开列表完整"行为。 */
+        for (const it of fillers) {
+            if (it.done) continue;
+            if (it.renderList && it.renderList.length === 0) {
+                it.done = true;
+                it.grid.dataset.filled = '1';
+                it.grid.hidden = true;
+            } else {
+                panelFillOne(it);
+            }
+        }
+        return true;
+    }
+    const todo = fillers.filter((it) => !it.done);
     if (!todo.length) return false;
     const id = ++panelFillJob;   // 新的任务作废旧任务
     let i = 0;
@@ -68,7 +110,15 @@ function panelFillAllChunked() {
         const t0 = performance.now();
         // 8ms ≈ 半帧：再长就会掉帧
         while (i < todo.length && performance.now() - t0 < 8) {
-            panelFillOne(todo[i++]);
+            const it = todo[i++];
+            if (it.renderList && it.renderList.length === 0) {
+                // 这一节一个都没命中：标成已填，让 applyEngineFilter 藏掉它
+                it.done = true;
+                it.grid.dataset.filled = '1';
+                it.grid.hidden = true;
+            } else {
+                panelFillOne(it);
+            }
         }
         if (i < todo.length) {
             setTimeout(step, 0);
@@ -77,7 +127,8 @@ function panelFillAllChunked() {
         panelFillJob = 0;
         // 填完了：按当前过滤词再收一遍（新出现的格子必须参与过滤，
         // 否则用户会看到"搜索了，但列表里还留着没命中的旧格子"）
-        if (qsb().engineFilterText()) qsb().applyEngineFilter(qsb().engineFilterText());
+        const cur = String(qsb().engineFilterText() || '').trim().toLowerCase();
+        if (cur) qsb().applyEngineFilter(cur);
     };
     setTimeout(step, 0);
     return true;
