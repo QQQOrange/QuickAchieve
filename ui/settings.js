@@ -4140,9 +4140,21 @@ function bindSwitches() {
                 CONF[key] = Number(el.value);
                 renderPreview();
             }
+            /* v2.23.116：磨砂强度 / 底板透明度**拖动中就落库**。
+             * 以前只在 change（松手）时发，用户拖的时候横条完全不变，
+             * 看起来就像"调了没生效"。120ms 防抖，不会把 IPC 打爆；
+             * change 会清掉计时器再发一次，保证最终值一定落盘。 */
+            if (key === 'barBlur' || key === 'barBgAlpha') {
+                clearTimeout(el._qsLiveSave);
+                el._qsLiveSave = setTimeout(() =>
+                    invoke('set_setting', { key, value: Number(el.value) })
+                        .catch(() => { }), 120);
+            }
         });
-        el.addEventListener('change', () =>
-            invoke('set_setting', { key, value: Number(el.value) }));
+        el.addEventListener('change', () => {
+            clearTimeout(el._qsLiveSave);
+            invoke('set_setting', { key, value: Number(el.value) });
+        });
     }
 
     for (const [id, key] of TEXTS) {

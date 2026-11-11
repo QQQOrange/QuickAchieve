@@ -18890,6 +18890,11 @@ fn qs_page_ack() {
  *   所以不会和 prevent_close 那条路互相咬着；回收前再核一次 is_visible，
  *   用户在这几秒里又打开了就不销毁。 */
 static SETTINGS_HIDDEN_AT: AtomicU64 = AtomicU64::new(0);
+/// 建窗互斥：设置窗的 build() 是异步的，双击/菜单可能同时进来两次；
+/// 两个 WebView2 同时建同一个 label 会以 0x80010108（RPC 断开）失败。
+static SETTINGS_BUILDING: AtomicBool = AtomicBool::new(false);
+/// 建窗失败后的自动重试次数（只在主线程里读写）。
+static SETTINGS_BUILD_RETRY: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 /// 设置窗口关掉后多久真正销毁（秒）。0 = 关闭这个特性（与旧行为完全一致）。
 const SETTINGS_IDLE_DESTROY_SECS: u64 = 180;
 
@@ -19000,11 +19005,15 @@ fn open_settings_win(focus: Option<String>, tab: Option<String>) {
         return;
     }
 
+    if SETTINGS_BUILDING.swap(true, Ordering::SeqCst) {
+        win::log("settings: 已有一次建窗在进行，忽略重复请求");
+        return;
+    }
     win::log("settings: building window");
     let a2 = a.clone();
     let f2 = focus.clone();
     let t2 = tab.clone();
-    let _ = a.run_on_main_thread(move || {
+    let queued = a.run_on_main_thread(move || {
         let mut sb = WebviewWindowBuilder::new(&a2, "settings", WebviewUrl::App("settings.html".into()))
             .title("Quick Achieve 设置")
             .inner_size(780.0, 660.0)
@@ -19029,6 +19038,8 @@ fn open_settings_win(focus: Option<String>, tab: Option<String>) {
         match built {
             Ok(w) => {
                 win::log("settings: built ok (hidden, 等页面 ready)");
+                SETTINGS_BUILDING.store(false, Ordering::SeqCst);
+                SETTINGS_BUILD_RETRY.store(0, Ordering::SeqCst);
                 // r75：新窗口从"隐藏待销毁"的候选里摘出去
                 SETTINGS_HIDDEN_AT.store(0, Ordering::Relaxed);
                 // 隐藏窗口拿不到焦点，不在这里 set_focus（见 show_after_ready）
@@ -19071,9 +19082,29 @@ fn open_settings_win(focus: Option<String>, tab: Option<String>) {
                     });
                 }
             }
-            Err(e) => win::log(&format!("settings: build failed: {e}")),
+            Err(e) => {
+                SETTINGS_BUILDING.store(false, Ordering::SeqCst);
+                win::log(&format!("settings: build failed: {e}"));
+                /* 0x80010108 这类 RPC 断开会偶发在窗口刚销毁 / 另一个
+                 * WebView2 正在建的时候。自动重试两次；仍失败就让用户再点，
+                 * 不再无限重试（真的没有运行时的话重试多少次都没用）。 */
+                let n = SETTINGS_BUILD_RETRY.load(Ordering::SeqCst);
+                if n < 2 {
+                    SETTINGS_BUILD_RETRY.store(n + 1, Ordering::SeqCst);
+                    let f = f2.clone();
+                    let t = t2.clone();
+                    win::log(&format!("settings: 250ms 后自动重试（第 {} 次）", n + 1));
+                    crate::tasks::spawn_later(Duration::from_millis(250), move || {
+                        open_settings_win(f, t);
+                    });
+                }
+            }
         }
     });
+    if queued.is_err() {
+        SETTINGS_BUILDING.store(false, Ordering::SeqCst);
+        win::log("settings: run_on_main_thread 失败，已复位建窗标记");
+    }
 }
 
 #[crate::t::command]
@@ -19440,6 +19471,7 @@ fn tray_is_double_click() -> bool {
 /// 打开设置窗口。同一个手势可能被两条路各触发一次（原生 DBLCLK + 自己判的），
 /// 500ms 内只放一次 —— 那点时间里建两次窗纯属给自己添乱。
 fn tray_open_settings() {
+    win::log("tray: 打开设置（双击 / 菜单）");
     let now = std::time::Instant::now();
     {
         let mut g = match TRAY_LAST_OPEN.lock() {
@@ -19491,9 +19523,7 @@ fn build_tray(a: &AppHandle) -> crate::t::Result<()> {
         .on_menu_event(|a, e| match e.id().as_ref() {
             // ⚠ 建窗/弹窗类一律脱开本次调用栈（理由见 open_settings 注释：
             //   主线程里就地 build() 建 WebView2 会等一把没释放的锁 → 死锁）。
-            "settings" => {
-                let _ = std::thread::spawn(|| open_settings_win(None, None));
-            }
+            "settings" => tray_open_settings(),
             "toggle" => set_paused(a, !is_paused()),
             "ocr" => {
                 let _ = std::thread::spawn(|| ocr_start_flow(None));
