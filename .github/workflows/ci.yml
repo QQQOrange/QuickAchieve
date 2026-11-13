@@ -48,8 +48,18 @@ jobs:
         run: npm ci --prefix tools
 
       # clippy 用 -D warnings 当门槛：现在已经是 0 警告，以后谁写出新警告就红。
+      # v2.23.123：失败时把 error/warning 行打成 GitHub 注解（::error::），
+      # 这样在 Actions 页面和 check-runs API 里都能直接看到是哪一条 —— 不用登进去翻日志。
       - name: clippy（零警告门槛）
-        run: cargo clippy --all-targets -- -D warnings
+        shell: pwsh
+        run: |
+          cargo clippy --all-targets --color never -- -D warnings 2>&1 | Tee-Object -FilePath clippy.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content clippy.log | Select-String -Pattern '^(error|warning)' | ForEach-Object {
+              Write-Host "::error::$($_.Line)"
+            }
+            exit 1
+          }
 
       # v2.23.55：**串行跑**。
       # `crypto::tests::salt_is_reused_but_nonce_is_fresh` 断言"同一密码两次加密
