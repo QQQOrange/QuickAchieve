@@ -57,6 +57,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
      * 注册的）只有它唤得起来，`SendInput` 不行（见 `send_hotkey` 里的实测表）。
      * 它已被微软标为 legacy，但这里关系到**功能能不能用**，不是口味问题。 */
     keybd_event, KEYBD_EVENT_FLAGS,
+    // 把键盘焦点交还目标窗口（focus_for_copy）
+    SetFocus,
 };
 use windows::Win32::UI::Shell::{IsUserAnAdmin, ShellExecuteW};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -3487,6 +3489,74 @@ pub fn force_foreground(hwnd: HWND) {
         if attached {
             let _ = AttachThreadInput(me_tid, fg_tid, false);
         }
+    }
+}
+
+/// 某个窗口线程此刻的键盘焦点窗口（拿不到就返回 null）。
+///
+/// 只看 `GetForegroundWindow` 不够：前台是 Edge，键盘焦点却可能还在
+/// 我们横条的 WebView 上 —— 这时合成的 Ctrl+C 会打到自己身上。
+pub fn gui_focus(hwnd: HWND) -> HWND {
+    unsafe {
+        let tid = GetWindowThreadProcessId(hwnd, None);
+        if tid == 0 {
+            return HWND(std::ptr::null_mut());
+        }
+        let mut gti = GUITHREADINFO {
+            cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+            ..Default::default()
+        };
+        if GetGUIThreadInfo(tid, &mut gti).is_ok() {
+            gti.hwndFocus
+        } else {
+            HWND(std::ptr::null_mut())
+        }
+    }
+}
+
+/// 把目标窗口顶回前台，并把键盘焦点交还给它自己的内容窗口。
+///
+/// 和 `force_foreground` 的区别：那个只保证「前台是它」，这个还管
+/// 「键盘焦点在它里面」。横条刚弹出来时 WebView2 会拿着焦点，只切前台
+/// 往往不够 —— Ctrl+C 仍然可能落在还没交出焦点的横条上。
+///
+/// 做法是经典的 attach 两步：先挂到当前前台线程，再挂到目标线程，
+/// 切前台后把焦点设回目标线程自己的 `hwndFocus`，最后按相反顺序 detach。
+pub fn focus_for_copy(root: HWND) -> bool {
+    unsafe {
+        if root.0.is_null() {
+            return false;
+        }
+        let me = GetCurrentThreadId();
+        let fg = GetForegroundWindow();
+        let fg_tid = if fg.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(fg, None)
+        };
+        let tgt_tid = GetWindowThreadProcessId(root, None);
+        let mut a_fg = false;
+        let mut a_tgt = false;
+        if fg_tid != 0 && fg_tid != me {
+            a_fg = AttachThreadInput(me, fg_tid, true).as_bool();
+        }
+        if tgt_tid != 0 && tgt_tid != me && tgt_tid != fg_tid {
+            a_tgt = AttachThreadInput(me, tgt_tid, true).as_bool();
+        }
+        let _ = SetForegroundWindow(root);
+        /* 焦点交回目标线程自己的焦点窗口（通常是渲染子窗/编辑框）。
+         * 不要硬塞 root：Chrome 的 root 是框架窗，焦点给它反而收不到 Ctrl+C。 */
+        let focus = gui_focus(root);
+        if !focus.0.is_null() && focus.0 != root.0 {
+            let _ = SetFocus(Some(focus));
+        }
+        if a_tgt {
+            let _ = AttachThreadInput(me, tgt_tid, false);
+        }
+        if a_fg {
+            let _ = AttachThreadInput(me, fg_tid, false);
+        }
+        GetForegroundWindow().0 == root.0
     }
 }
 

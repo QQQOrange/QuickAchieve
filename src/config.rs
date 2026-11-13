@@ -3055,7 +3055,9 @@ pub fn webview_data_dir() -> PathBuf {
                 )),
             }
         }
-        sweep_stale_webview_dirs();
+        /* 清残骸放到后台：删几十 MB 的旧缓存可能上百毫秒，
+         * 不该挡在第一个窗口建起来之前。 */
+        std::thread::spawn(sweep_stale_webview_dirs);
         /* 目录名带 PID：① 新实例永远不会撞上旧实例的目录（退出清理助手可以放心删）；
          * ② 崩溃留下的残骸下次启动由 `sweep_stale_webview_dirs` 统一清掉。 */
         let p = std::env::temp_dir().join(format!("{WEBVIEW_TMP_PREFIX}{}", std::process::id()));

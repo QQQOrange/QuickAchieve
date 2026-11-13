@@ -518,7 +518,7 @@ fn current_theme() -> Value {
      * 整块丢掉，只拿静态 UI 的亮度做决定。判断不出来（全在动 / 灰区）就
      * 落回系统偏好，不会硬猜。 */
     if theme == "page" {
-        if let Some(dark) = crate::autotheme::detect() {
+        if let Some(dark) = crate::autotheme::detect_cached() {
             return json!({ "dark": dark, "bg": Value::Null });
         }
         win::log("autotheme: 判不出来（画面在动/灰区）—— 落回系统偏好");
@@ -18416,6 +18416,28 @@ fn main() {
             Some(windows::Win32::Foundation::POINT { x, y })
         });
         win::uia_probe(pt);
+        std::process::exit(0);
+    }
+    // --copy-probe：验证「前台程序到底吃不吃我们这套合成 Ctrl+C」。
+    //
+    // 用法：先在目标程序里选中一段文字并保持焦点，然后跑：
+    //   QuickAchieve.exe --copy-probe
+    // 输出发送前后的剪贴板序号、归属与文字长度，用来把「我们的注入有问题」
+    // 和「这个程序不响应合成复制」分开。
+    if flag("--copy-probe") {
+        let before = clip::seq();
+        let fg = win::foreground_window();
+        let pid = win::window_pid(fg);
+        println!("copy-probe: 前台 hwnd={:?} pid={pid} exe={:?}", fg, win::process_exe(pid));
+        println!("copy-probe: 发送前 seq={before} 格式={}", clip::describe_formats());
+        let sent = win::send_ctrl_c();
+        println!("copy-probe: send_ctrl_c={sent}");
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        let after = clip::seq();
+        let text = clip::read_text_any().unwrap_or_default();
+        println!("copy-probe: 发送后 seq={after}（Δ={}）文字={} 字 预览={:?}",
+            after.wrapping_sub(before) as i32, text.chars().count(),
+            text.chars().take(40).collect::<String>());
         std::process::exit(0);
     }
     // --webdav-list <url> <user> <pass> <file>

@@ -14,6 +14,9 @@
 //! 用户实际在看的、横条要叠上去的，就是光标附近那块 —— 浏览器里是网页内容，
 //! 别的软件里就是它自己的界面。取整屏会把任务栏 / 别的窗口也算进来。
 
+use std::sync::Mutex;
+use std::time::Instant;
+
 use crate::glass;
 use crate::win;
 
@@ -60,6 +63,53 @@ pub fn detect() -> Option<bool> {
         ));
     }
     out
+}
+
+/// 同一个窗口的判定结果复用多久（毫秒）。
+///
+/// 自动明暗一次要等 4×55ms 再抓 5 帧，实测约 255ms；用户连续划词时同一个
+/// 窗口的底色不会变，没必要每次都等。窗口一换就重新判定，所以不会把上一个
+/// 程序的肤色带过来。
+const CACHE_TTL_MS: u128 = 3000;
+
+struct Cached {
+    hwnd: isize,
+    at: Instant,
+    dark: bool,
+}
+
+static CACHE: Mutex<Option<Cached>> = Mutex::new(None);
+
+/// 带缓存的 [`detect`]：同一前台窗口 3 秒内只判定一次。
+///
+/// 只缓存“判出来了”的结果；判不出来（视频/灰区）不缓存 —— 那种情况本来就
+/// 该按当时的画面重新看，缓存 None 会把静态 UI 也一起误判。
+pub fn detect_cached() -> Option<bool> {
+    let hwnd = win::foreground_window().0 as isize;
+    if let Ok(g) = CACHE.lock() {
+        if let Some(c) = g.as_ref() {
+            if cache_hit(c.hwnd, c.at.elapsed().as_millis(), hwnd, CACHE_TTL_MS) {
+                win::log("autotheme: 复用 3 秒内的判定");
+                return Some(c.dark);
+            }
+        }
+    }
+    let out = detect();
+    if let Some(dark) = out {
+        if let Ok(mut g) = CACHE.lock() {
+            *g = Some(Cached {
+                hwnd,
+                at: Instant::now(),
+                dark,
+            });
+        }
+    }
+    out
+}
+
+/// 纯逻辑：缓存是否还能用。抽出来是为了能单测时间/窗口两条边界。
+fn cache_hit(cached_hwnd: isize, age_ms: u128, hwnd: isize, ttl_ms: u128) -> bool {
+    cached_hwnd == hwnd && age_ms < ttl_ms
 }
 
 /// 以光标为中心取一块，钳在虚拟屏幕内。
@@ -212,5 +262,13 @@ mod tests {
     fn 帧数不够不猜() {
         assert_eq!(decide(&[]), None);
         assert_eq!(decide(&[snap(10, 10, [0, 0, 0])]), None);
+    }
+
+    #[test]
+    fn 缓存只认同一窗口且未过期() {
+        assert!(cache_hit(7, 0, 7, CACHE_TTL_MS), "同一窗口、刚判定过");
+        assert!(cache_hit(7, CACHE_TTL_MS - 1, 7, CACHE_TTL_MS), "差 1ms 到期");
+        assert!(!cache_hit(7, CACHE_TTL_MS, 7, CACHE_TTL_MS), "到期必须重判");
+        assert!(!cache_hit(7, 0, 8, CACHE_TTL_MS), "换了窗口必须重判");
     }
 }

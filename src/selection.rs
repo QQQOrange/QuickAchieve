@@ -594,11 +594,22 @@ pub(crate) fn capture_selection_fast(
             }
         });
         if let Some(h) = restore {
-            win::force_foreground(h);
-            std::thread::sleep(Duration::from_millis(50));
+            /* v2.23.122：不只切前台，还要把键盘焦点交回目标线程 ——
+             * 横条的 WebView 可能还攥着焦点，Ctrl+C 会打在我们自己身上。 */
+            let ok = win::focus_for_copy(h);
+            let t = std::time::Instant::now();
+            while t.elapsed() < Duration::from_millis(250) {
+                if win::window_pid(win::foreground_window()) != std::process::id() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
             let now = win::window_pid(win::foreground_window());
+            let focus = win::gui_focus(win::foreground_window());
             win::log(&format!(
-                "capture(exact): 前台是我们自己 —— 已把焦点还给目标窗口再复制（pid={now}）"
+                "capture(exact): 前台是我们自己 —— 已把焦点还给目标窗口再复制（ok={ok} pid={now} focus={:?} class={}）",
+                focus.0,
+                win::class_name(focus)
             ));
         }
     }
@@ -617,6 +628,19 @@ pub(crate) fn capture_selection_fast(
     if is_console_window(fg_final) || is_console_window(win::root_window(fg_final)) {
         win::log("capture(exact): 前台是终端 —— 绝不发 Ctrl+C");
         return None;
+    }
+    /* 诊断：前台 vs 键盘焦点。只在前台/焦点不是目标时多打一行，避免日志噪音；
+     * 真出问题时能一眼看出"前台是 Edge，焦点却还在横条"。 */
+    let focus_final = win::gui_focus(fg_final);
+    if win::window_pid(focus_final) == std::process::id() {
+        win::log(&format!(
+            "capture(exact): 焦点还在本程序（fg pid={} focus={:?} class={}）—— 先交还焦点再发",
+            win::window_pid(fg_final),
+            focus_final.0,
+            win::class_name(focus_final)
+        ));
+        let _ = win::focus_for_copy(win::root_window(fg_final));
+        std::thread::sleep(Duration::from_millis(30));
     }
     if win::send_ctrl_c() {
         // 正常通道
@@ -693,8 +717,12 @@ pub(crate) fn capture_selection_fast(
                  * 身上，日志只会留下"两个通道都没写"。 */
                 if win::window_pid(win::foreground_window()) == std::process::id() {
                     if let Some(h) = target_hwnd.map(win::root_window) {
-                        win::force_foreground(h);
+                        let ok = win::focus_for_copy(h);
                         std::thread::sleep(Duration::from_millis(40));
+                        win::log(&format!(
+                            "capture(exact): 降级通道前把目标顶回前台（ok={ok} 现在 pid={}）",
+                            win::window_pid(win::foreground_window())
+                        ));
                     }
                 }
                 win::log("capture(exact): Ctrl+C 没写剪贴板 —— 改发 Ctrl+Insert + WM_COPY 再试");

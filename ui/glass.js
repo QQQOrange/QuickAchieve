@@ -396,6 +396,14 @@ var barGhost = false;
         return [r.left / vw, r.top / vh, r.width / vw, r.height / vh];
     }
 
+    /* v2.23.122：`draw()` 里还在用 `isFrost(c)`，但 v2.23.85 把磨砂改走
+     * CSS 管线时把定义删了 —— 于是每次绘制都抛 ReferenceError，画布停在
+     * 第一帧（甚至一帧都没画），液态玻璃看起来"不生效"。这里补回判据；
+     * 磨砂本身不画 WebGL，这个分支只在配置临时切回磨砂、画布还没关掉时兜底。 */
+    function isFrost(c) {
+        return !!c && c.barGlass === false && (Number(c.barBlur) || 0) > 0;
+    }
+
     function glassOn(c) {
         return !!c && c.barGlass !== false;
     }
