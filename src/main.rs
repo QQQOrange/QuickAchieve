@@ -3787,37 +3787,7 @@ fn show_bar_at(
      * 选窗口的顺序：鼠标底下那个**别的进程**的顶层窗口 → 当前前台窗口（同样得是别人）。
      * 两个都指向我们自己（例如从设置页/托盘唤起的）→ 没有可注入的目标，
      * 条目一律走复制到剪贴板。 */
-    let trigger_pt = {
-        let c = win::cursor_pos();
-        (c.x, c.y)
-    };
-    let trigger_hwnd = trigger_target_window();
-    let trigger_has_text = trigger_hwnd.map(win::has_text_focus).unwrap_or(false);
-    /* 前台窗口（我们自己不算）：键盘触发时它才是"用户正在操作的那个软件"，
-     * 详见 Geo::trigger_fg 的注释。 */
-    let trigger_fg = {
-        let fg = win::foreground_window();
-        if fg.0.is_null() || win::window_pid(fg) == std::process::id() {
-            0
-        } else {
-            fg.0 as isize
-        }
-    };
-    /* 触发这次唤起的**应用进程名**（如 `chrome.exe`）。
-     * 网格页「按应用切换」全靠它：判断"这次该给哪一页"。
-     * 取不到（受保护进程 / 已退出）就是空串 —— 空串永远走默认页，不会误绑。 */
-    let trigger_app = {
-        let h = if trigger_fg != 0 {
-            trigger_fg
-        } else {
-            trigger_hwnd.map(|x| x.0 as isize).unwrap_or(0)
-        };
-        if h == 0 {
-            String::new()
-        } else {
-            win::process_exe(win::window_pid(HWND(h as *mut c_void))).unwrap_or_default()
-        }
-    };
+    let TriggerSite { hwnd: trigger_hwnd, has_text: trigger_has_text, fg: trigger_fg, app: trigger_app, pt: trigger_pt } = trigger_site();
     win::log(&format!(
         "show_bar: 触发现场 hwnd=0x{:x} 「{}」 有可用文本框={} 鼠标=({},{})",
         trigger_hwnd.map(|h| h.0 as usize).unwrap_or(0),
@@ -3827,22 +3797,7 @@ fn show_bar_at(
         trigger_pt.1
     ));
 
-    /* 上一根横条还亮着就先把它挪出屏幕。
-     *
-     * ⚠ 一是挪动必须**同步**：以前用 Tauri 的 `set_position`（投递到事件循环的
-     *    异步调用），然后盲等 36ms 猜它什么时候生效 —— 既慢又不准。改成直接
-     *    `win::move_only`（一次 SetWindowPos，返回时窗口已经在屏幕外了）。
-     * ⚠ 二是「为什么还需要挪」：自动取色删掉后（#148），「采到自己」的动机
-     *    没了，但**液态玻璃的抓屏还吃这一趟** —— layout_bar 首次上屏前要
-     *    BitBlt 一块干净桌面当玻璃纹理（见那儿的注释），旧横条若留在原地，
-     *    抓到的就是它自己上一帧的玻璃渲染（纹理自拍）。所以挪照旧，
-     *    无条件挪；只为抓屏干净，不需要再等 DWM 合成。 */
-    if is_bar_shown() {
-        let h = bar_hwnd();
-        if !h.0.is_null() {
-            win::move_only(h, OFFSCREEN, OFFSCREEN);
-        }
-    }
+    park_previous_bar();
     let t_off = t0.elapsed();
 
     let theme = current_theme();
@@ -3975,6 +3930,83 @@ fn show_bar_at(
         t0.elapsed().as_millis()
     ));
 
+    spawn_bar_fallback(gen);
+    gen
+}
+
+/// 这次唤起是在哪个软件、什么位置发生的 —— 收藏夹注入与网格页「按应用」都要用。
+///
+/// 必须在横条弹出**之前**采：横条一出现前台就变成我们自己，那两个问题当场就问不出来了。
+struct TriggerSite {
+    hwnd: Option<HWND>,
+    has_text: bool,
+    fg: isize,
+    app: String,
+    pt: (i32, i32),
+}
+
+fn trigger_site() -> TriggerSite {
+    let trigger_pt = {
+        let c = win::cursor_pos();
+        (c.x, c.y)
+    };
+    let trigger_hwnd = trigger_target_window();
+    let trigger_has_text = trigger_hwnd.map(win::has_text_focus).unwrap_or(false);
+    /* 前台窗口（我们自己不算）：键盘触发时它才是"用户正在操作的那个软件"，
+     * 详见 Geo::trigger_fg 的注释。 */
+    let trigger_fg = {
+        let fg = win::foreground_window();
+        if fg.0.is_null() || win::window_pid(fg) == std::process::id() {
+            0
+        } else {
+            fg.0 as isize
+        }
+    };
+    /* 触发这次唤起的**应用进程名**（如 `chrome.exe`）。
+     * 网格页「按应用切换」全靠它：判断"这次该给哪一页"。
+     * 取不到（受保护进程 / 已退出）就是空串 —— 空串永远走默认页，不会误绑。 */
+    let trigger_app = {
+        let h = if trigger_fg != 0 {
+            trigger_fg
+        } else {
+            trigger_hwnd.map(|x| x.0 as isize).unwrap_or(0)
+        };
+        if h == 0 {
+            String::new()
+        } else {
+            win::process_exe(win::window_pid(HWND(h as *mut c_void))).unwrap_or_default()
+        }
+    };
+    TriggerSite {
+        hwnd: trigger_hwnd,
+        has_text: trigger_has_text,
+        fg: trigger_fg,
+        app: trigger_app,
+        pt: trigger_pt,
+    }
+}
+
+fn park_previous_bar() {
+    /* 上一根横条还亮着就先把它挪出屏幕。
+     *
+     * ⚠ 一是挪动必须**同步**：以前用 Tauri 的 `set_position`（投递到事件循环的
+     *    异步调用），然后盲等 36ms 猜它什么时候生效 —— 既慢又不准。改成直接
+     *    `win::move_only`（一次 SetWindowPos，返回时窗口已经在屏幕外了）。
+     * ⚠ 二是「为什么还需要挪」：自动取色删掉后（#148），「采到自己」的动机
+     *    没了，但**液态玻璃的抓屏还吃这一趟** —— layout_bar 首次上屏前要
+     *    BitBlt 一块干净桌面当玻璃纹理（见那儿的注释），旧横条若留在原地，
+     *    抓到的就是它自己上一帧的玻璃渲染（纹理自拍）。所以挪照旧，
+     *    无条件挪；只为抓屏干净，不需要再等 DWM 合成。 */
+    if is_bar_shown() {
+        let h = bar_hwnd();
+        if !h.0.is_null() {
+            win::move_only(h, OFFSCREEN, OFFSCREEN);
+        }
+    }
+}
+
+/// 前端 420ms 内没回 layout_bar 就用上次尺寸兜底显示，别让用户觉得没反应。
+fn spawn_bar_fallback(gen: usize) {
     // 前端万一没回，就用上次的尺寸兜底显示，别让用户觉得没反应
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(420));
@@ -3998,8 +4030,8 @@ fn show_bar_at(
         };
         layout_bar(w, h, ix, iy, iw, ih, bh, px, py, sx, ox, oy, None);
     });
-    gen
 }
+
 
 /* ================================================================== */
 /* 事件消费线程                                                        */
