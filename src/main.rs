@@ -517,13 +517,18 @@ fn current_theme() -> Value {
      * 判据是**多帧稳定性**（见 `autotheme`）：视频/动画的像素帧间变化大，
      * 整块丢掉，只拿静态 UI 的亮度做决定。判断不出来（全在动 / 灰区）就
      * 落回系统偏好，不会硬猜。 */
-    if theme == "page" {
+    if crate::autotheme::needs_detection(&theme) {
         if let Some(dark) = crate::autotheme::detect_cached() {
             return json!({ "dark": dark, "bg": Value::Null });
         }
         win::log("autotheme: 判不出来（画面在动/灰区）—— 落回系统偏好");
     }
-    let dark = theme_dark_from(&theme, win::apps_use_light_theme());
+    // 显式的亮/暗不需要读系统偏好；只有「跟随系统」或自动取色兜底才查。
+    let dark = match theme.as_str() {
+        "light" => false,
+        "dark" => true,
+        _ => theme_dark_from(&theme, win::apps_use_light_theme()),
+    };
     json!({ "dark": dark, "bg": Value::Null })
 }
 
