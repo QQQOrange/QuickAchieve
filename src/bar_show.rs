@@ -10,7 +10,7 @@ use windows::Win32::Foundation::{HWND, POINT};
 use crate::config;
 use crate::t::Emitter;
 use crate::win;
-use crate::{app, app_locked, bar_hwnd, cfg_snapshot, cfg_with, current_theme, focus_lock_window, is_bar_shown, layout_bar, remember_text, selection_box_from_drag, st, trigger_target_window};
+use crate::{app, app_locked, bar_hwnd, cfg_with, current_theme, focus_lock_window, is_bar_shown, layout_bar, remember_text, selection_box_from_drag, st, trigger_target_window};
 use crate::{sel_urls_snapshot, BAR_ACTIVITY, GEN, GRID_PENDING, OCR_ONLY, OFFSCREEN, SHOW_T0};
 
 /// 横条实体：把「这次要显示什么」决定好，发给前端去画。
@@ -62,8 +62,10 @@ pub(crate) fn show_bar_at(
     //      只认它的话「上方/下方」两个选项完全没差别（用户报的 bug）；
     //   ② **多行选区**时真光标在最后一行，按它判「上方」会把横条摆到最后一行
     //      上面、盖住上面几行；拖选轨迹跨所有行，才是"选区整块"的范围。
-    let cfg = cfg_snapshot();
-    let (caret, caret_src) = if at_mouse || cfg.anchor_at_mouse {
+    /* 只读一个布尔值：整份 Config 里可能有收藏夹图片的 dataURL（几 MB），
+     * 每次划词都克隆一遍纯属浪费（这是弹出路径上的热调用）。 */
+    let anchor_at_mouse = cfg_with(|c| c.anchor_at_mouse);
+    let (caret, caret_src) = if at_mouse || anchor_at_mouse {
         (None, "none")
     } else {
         match sel {
@@ -85,7 +87,7 @@ pub(crate) fn show_bar_at(
     };
     win::log(&format!(
         "show_bar: atMouse={at_mouse} cfgMouse={} caret={:?} src={caret_src} anchor=({},{})",
-        cfg.anchor_at_mouse, caret, anchor.x, anchor.y
+        anchor_at_mouse, caret, anchor.x, anchor.y
     ));
     let t_anchor = t0.elapsed();
 

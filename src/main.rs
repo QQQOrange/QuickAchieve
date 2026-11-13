@@ -3156,8 +3156,15 @@ fn window_is_labeled(h: HWND, label: &str) -> bool {
 ///
 /// 这样"横条刚弹过、前台还是我们"这种情形就自然解决了：鼠标在哪就是哪。
 fn app_allowed(at: Option<(i32, i32)>) -> bool {
-    let cfg = cfg_snapshot();
-    if cfg.filter_mode == "off" || cfg.filter_list.is_empty() {
+    /* 热路径：每次划词/按键都会进来。这里只借锁掏两个小字段，
+     * 不整份克隆 Config —— 收藏夹里的图片是 dataURL，塞满图时能有几 MB，
+     * 在"松手弹条"这一刻克隆一遍纯属浪费。 */
+    let mode = cfg_with(|c| c.filter_mode.clone());
+    if mode == "off" {
+        return true;
+    }
+    let list = cfg_with(|c| c.filter_list.clone());
+    if list.is_empty() {
         return true;
     }
     /* 先看鼠标底下那个窗口；拿不到再退回前台。
@@ -3186,11 +3193,10 @@ fn app_allowed(at: Option<(i32, i32)>) -> bool {
         return true;
     };
     let exe = exe.to_ascii_lowercase();
-    let hit = cfg
-        .filter_list
+    let hit = list
         .iter()
         .any(|x| x.trim().to_ascii_lowercase() == exe);
-    let ok = match cfg.filter_mode.as_str() {
+    let ok = match mode.as_str() {
         "blacklist" => !hit,
         "whitelist" => hit,
         _ => true,
@@ -3198,7 +3204,7 @@ fn app_allowed(at: Option<(i32, i32)>) -> bool {
     if !ok {
         win::log(&format!(
             "filter: {exe} 被 {} 挡掉了（判据=鼠标底下那个窗口）",
-            if cfg.filter_mode == "blacklist" { "黑名单" } else { "白名单" }
+            if mode == "blacklist" { "黑名单" } else { "白名单" }
         ));
     }
     ok
