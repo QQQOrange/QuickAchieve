@@ -1,0 +1,60 @@
+name: Release
+
+# 为什么要有这个（v2.23.123 补的）：
+# 这台机器上没有 gh，也没有把 GitHub token 存进 git credential —— 但 SSH 推 tag
+# 是通的。所以发版改成“推 tag 触发 CI 构建 + 建 Release”，用仓库自带的
+# GITHUB_TOKEN，不再依赖任何个人令牌。
+#
+# 产物名必须是 QuickAchieve.exe —— 应用内更新器按这个名字挑资产
+# （src/update.rs 里写死的），改名会让自动更新找不到包。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # 本程序是 Windows 专用（Win32 / WebView2 / 全局钩子），只能在 windows 上构建
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: 构建 release
+        run: cargo build --release --locked
+
+      - name: 建 Release 并上传 exe
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          $exe = 'target/release/QuickAchieve.exe'
+          if (-not (Test-Path $exe)) { throw "找不到 $exe" }
+
+          $notesPath = "docs/RELEASE-$tag.md"
+          if (-not (Test-Path $notesPath)) { throw "缺少发布说明 $notesPath" }
+
+          # 更新器会从 Release 说明里找 `SHA256: <64 位 hex>` 核对下载到的 exe；
+          # 这里对 CI 刚构建出来的二进制现算，避免说明里的 hash 和资产对不上。
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          $notes = Get-Content $notesPath -Raw
+          $notes += "`n**SHA256: $hash**`n"
+          $tmp = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          [IO.File]::WriteAllText($tmp, $notes, [Text.UTF8Encoding]::new($false))
+
+          gh release create $tag $exe `
+            --title "Quick Achieve $tag" `
+            --notes-file $tmp `
+            --verify-tag `
+            --latest
