@@ -3604,129 +3604,8 @@ fn start_capture(
              *
              * ⚠ 唯一的例外是黑名单（`app_allowed`），那个判断在
              *   `trigger_allowed` 里、比这里更早，没有被我这条改动绕过。 */
-            let (mut text, mut via) = match out {
-                Some((t, v)) => (t, v),
-                None => (String::new(), ""),
-            };
-            /* 已经先弹了空条时，不再做"先确认选区再弹"这一步：
-             * 用户已经看到横条，剩下的只是补字；`post_show_copy_fill` 会继续
-             * 走复制 / 屏幕识别，成功就原地补上。没先弹的那条路（起点不是
-             * I-beam，也不是双击）才需要确认，避免拖滚动条也冒空条。 */
-            if text.trim().is_empty() && need_text {
-                /* v2.23.65：**双击 / 三击选词也算"选中"**（`dbl`）。 */
-                if early_gen.is_some() {
-                    win::log("start_capture: 空条已先弹出，继续后台补字（复制 / UIA）");
-                } else {
-                    if !dragged && !dbl {
-                        win::log(
-                            "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
-                        );
-                        return;
-                    }
-                    match confirm_selection_text(target_pid, drag) {
-                        Some(t) => {
-                            win::log(&format!(
-                                "start_capture: 复核确认选区里有 {} 字 —— 弹条",
-                                t.chars().count()
-                            ));
-                            text = t;
-                            via = "复核";
-                        }
-                        None => {
-                            win::log(
-                                "start_capture: 拖选但没有选区（复制与 UIA 都没拿到字）—— 这次不弹",
-                            );
-                            return;
-                        }
-                    }
-                }
-            }
-            if text.trim().is_empty() {
-                win::log("start_capture: 拖选但没拿到文字 —— 按用户要求仍然弹一条空条");
-            }
-            /* r98：OCR 认出来的文字**经常把网址认错**（用户实测：选中的是
-             * `https://github.com/xanderfrangos/twinkle-tray`，OCR 给的是
-             * `nttos.'//altnuo.corrvxanaenranaos/twlnl<le-tray`），于是
-             * 「这段文字里有没有链接」判不过、直达链接按钮不出现 ——
-             * 而复制路径拿到的是剪贴板原文，按钮正常。这就是用户报的
-             * 「选中网址不弹按钮、复制了却弹」。
-             *
-             * 判据放宽（r97）救不了"认错字"这种噪声，所以这里补一条
-             * **精确复核**：先照旧把横条弹出来（文字是 OCR 的，用户零等待），
-             * 后台再模拟一次 Ctrl+C 把原文读回来，读到了就替换掉 ——
-             * 走的是 Ctrl+C「迟到补」那条现成通道，按钮会跟着亮起来。
-             *
-             * 只在「这段文字里可能藏着网址/路径」时才动剪贴板（见
-             * `exact_reread_why` 的注释），普通中文划词一个字节都不碰。 */
-            let in_browser = win::uia_foreground_is_browser();
-            /* 已经先弹空条的那条路：横条在取词之前就已可见，用户随后可能
-             * 点了别处 / 按 Esc 把它收掉。此时**绝不能**再补弹 —— 但也不能
-             * 因为"取词期间又有一次 mouseup"就把已经显示的那条误判成不要了。
-             * 只以"这条横条现在还在不在、代次对不对"为准。 */
-            let gen = if let Some(g) = early_gen {
-                /* 用户可能在窗口还没完成 layout 时就按了 Esc / 点了别处。
-                 * `dismiss_bar_now` 在这种情况下不会把 `g.shown` 置 true，
-                 * 但会递增 `DISMISS_EPOCH` —— 必须认这个信号，否则取词结束后
-                 * 横条会"自己冒出来"。 */
-                if DISMISS_EPOCH.load(Ordering::SeqCst) != dismiss0 {
-                    win::log("start_capture: 取词期间用户已收起先弹的横条 —— 本次结果丢弃");
-                    return;
-                }
-                /* `show_bar_at` 只是投递了 `qs://show`，真正可见要等前端量完
-                 * 尺寸回填 `geo.shown`。取词很快时（UIA 20~60ms）这里直接
-                 * 查一次会把"横条还没显示"误判成"已被收起"，白丢一份好结果。 */
-                if !win::wait_until(500, || {
-                    GEN.load(Ordering::SeqCst) == g && is_bar_shown()
-                }) {
-                    win::log("start_capture: 先弹的横条 500ms 内未显示/已被换新 —— 本次结果丢弃");
-                    return;
-                }
-                if DISMISS_EPOCH.load(Ordering::SeqCst) != dismiss0 {
-                    win::log("start_capture: 横条显示后被收起 —— 本次结果丢弃");
-                    return;
-                }
-                if !text.trim().is_empty() {
-                    // 原地补字，不重新摆窗、不改变用户已经看到的横条位置。
-                    push_late_text(text.clone(), false);
-                    win::log(&format!(
-                        "start_capture: 先弹后取到 {} 字 —— 已原地补进横条",
-                        text.chars().count()
-                    ));
-                }
-                g
-            } else {
-                /* 没有先弹空条（起点不是 I-beam，也不是双击）：仍按旧逻辑，
-                 * 取词期间用户点了别处就不要这条了。 */
-                if INPUT_EPOCH.load(Ordering::SeqCst) != epoch0 {
-                    win::log("start_capture: 取词期间你又点击/划选了一次 —— 这一次不弹");
-                    return;
-                }
-                /* 把这次拖选的矩形一并带过去：浏览器里真光标取不到，
-                 * 「上方/下方」只能靠它。 */
-                show_bar_at(text.clone(), false, true, Some(drag))
-            };
-            /* ── 方案 C：复制**只在两个条件同时成立时**才执行 ──────────
-             *   ① 横条已经出现：上面刚弹完 / 先弹的空条还在，`gen` 就是它的代次；
-             *   ② 没抓到文字：`text` 为空。
-             *
-             * 顺序是硬性的：**先弹条 → 再判断 → 最后才复制**。
-             * 文字已经正常拿到时，这里根本不会进，一次复制都不会发生。 */
-            if text.trim().is_empty() {
-                let pid = target_pid;
-                std::thread::spawn(move || post_show_copy_fill(gen, pid, drag));
-            }
-            /* ⚠ `via` 为空串 = 三条通道**全都没拿到文字**（OCR 也失败）——
-             * 那也是 OCR 这条路上的失败，同样要复核：用户日志里"选中的是网址，
-             * 横条却是空的"就是这么来的（`show_bar: ""`）。 */
-            if !text.trim().is_empty() && matches!(via, "OCR" | "") {
-                /* 要不要复核、为什么复核，全在 `exact_reread_trigger` 里
-                 * （三条规则 + 理由都写在那儿；2026-10-23 扩的第 ② ③ 条
-                 *   就是用户报的「马尾辫skill安装 → 《马尾辫 sk 泔安装、」）。 */
-                if let Some(why) = exact_reread_trigger(&text, drag, in_browser) {
-                    win::log(&format!("capture(exact): {why} —— 后台精确复核一次"));
-                    spawn_exact_reread(gen, target_pid, text);
-                }
-            }
+            CaptureFinish { target_pid, drag, dbl, need_text, dragged, early_gen, dismiss0 }
+                .run(epoch0, out);
         })
     else {
         BUSY.store(false, Ordering::SeqCst);
@@ -3735,6 +3614,150 @@ fn start_capture(
     };
     drop(handle);   // 故意不等：JoinHandle 丢弃即 detach
 }
+
+/// 一次取词从「已经决定要弹条」到「文字补进横条」的收尾上下文。
+///
+/// `start_capture` 只负责调度（能不能触发、要不要先弹空条、等上一次取词）；
+/// 这里负责收尾：确认选区、原地补字、没字时补一次复制、必要时精确复核。
+/// 字段都是 `start_capture` 当场算好的，行为与拆分前逐行一致。
+struct CaptureFinish {
+    target_pid: u32,
+    drag: (i32, i32, i32, i32),
+    dbl: bool,
+    need_text: bool,
+    dragged: bool,
+    early_gen: Option<usize>,
+    dismiss0: usize,
+}
+
+impl CaptureFinish {
+    fn run(self, epoch0: usize, out: Option<(String, &'static str)>) {
+        let (mut text, mut via) = match out {
+            Some((t, v)) => (t, v),
+            None => (String::new(), ""),
+        };
+        /* 已经先弹了空条时，不再做"先确认选区再弹"这一步：
+         * 用户已经看到横条，剩下的只是补字；`post_show_copy_fill` 会继续
+         * 走复制 / 屏幕识别，成功就原地补上。没先弹的那条路（起点不是
+         * I-beam，也不是双击）才需要确认，避免拖滚动条也冒空条。 */
+        if text.trim().is_empty() && self.need_text {
+            /* v2.23.65：**双击 / 三击选词也算"选中"**（`dbl`）。 */
+            if self.early_gen.is_some() {
+                win::log("start_capture: 空条已先弹出，继续后台补字（复制 / UIA）");
+            } else {
+                if !self.dragged && !self.dbl {
+                    win::log(
+                        "start_capture: 点击且没取到任何文字，且开着「没取到文字就不弹」—— 这次不弹",
+                    );
+                    return;
+                }
+                match confirm_selection_text(self.target_pid, self.drag) {
+                    Some(t) => {
+                        win::log(&format!(
+                            "start_capture: 复核确认选区里有 {} 字 —— 弹条",
+                            t.chars().count()
+                        ));
+                        text = t;
+                        via = "复核";
+                    }
+                    None => {
+                        win::log(
+                            "start_capture: 拖选但没有选区（复制与 UIA 都没拿到字）—— 这次不弹",
+                        );
+                        return;
+                    }
+                }
+            }
+        }
+        if text.trim().is_empty() {
+            win::log("start_capture: 拖选但没拿到文字 —— 按用户要求仍然弹一条空条");
+        }
+        /* r98：OCR 认出来的文字**经常把网址认错**（用户实测：选中的是
+         * `https://github.com/xanderfrangos/twinkle-tray`，OCR 给的是
+         * `nttos.'//altnuo.corrvxanaenranaos/twlnl<le-tray`），于是
+         * 「这段文字里有没有链接」判不过、直达链接按钮不出现 ——
+         * 而复制路径拿到的是剪贴板原文，按钮正常。这就是用户报的
+         * 「选中网址不弹按钮、复制了却弹」。
+         *
+         * 判据放宽（r97）救不了"认错字"这种噪声，所以这里补一条
+         * **精确复核**：先照旧把横条弹出来（文字是 OCR 的，用户零等待），
+         * 后台再模拟一次 Ctrl+C 把原文读回来，读到了就替换掉 ——
+         * 走的是 Ctrl+C「迟到补」那条现成通道，按钮会跟着亮起来。
+         *
+         * 只在「这段文字里可能藏着网址/路径」时才动剪贴板（见
+         * `exact_reread_why` 的注释），普通中文划词一个字节都不碰。 */
+        let in_browser = win::uia_foreground_is_browser();
+        /* 已经先弹空条的那条路：横条在取词之前就已可见，用户随后可能
+         * 点了别处 / 按 Esc 把它收掉。此时**绝不能**再补弹 —— 但也不能
+         * 因为"取词期间又有一次 mouseup"就把已经显示的那条误判成不要了。
+         * 只以"这条横条现在还在不在、代次对不对"为准。 */
+        let gen = if let Some(g) = self.early_gen {
+            /* 用户可能在窗口还没完成 layout 时就按了 Esc / 点了别处。
+             * `dismiss_bar_now` 在这种情况下不会把 `g.shown` 置 true，
+             * 但会递增 `DISMISS_EPOCH` —— 必须认这个信号，否则取词结束后
+             * 横条会"自己冒出来"。 */
+            if DISMISS_EPOCH.load(Ordering::SeqCst) != self.dismiss0 {
+                win::log("start_capture: 取词期间用户已收起先弹的横条 —— 本次结果丢弃");
+                return;
+            }
+            /* `show_bar_at` 只是投递了 `qs://show`，真正可见要等前端量完
+             * 尺寸回填 `geo.shown`。取词很快时（UIA 20~60ms）这里直接
+             * 查一次会把"横条还没显示"误判成"已被收起"，白丢一份好结果。 */
+            if !win::wait_until(500, || {
+                GEN.load(Ordering::SeqCst) == g && is_bar_shown()
+            }) {
+                win::log("start_capture: 先弹的横条 500ms 内未显示/已被换新 —— 本次结果丢弃");
+                return;
+            }
+            if DISMISS_EPOCH.load(Ordering::SeqCst) != self.dismiss0 {
+                win::log("start_capture: 横条显示后被收起 —— 本次结果丢弃");
+                return;
+            }
+            if !text.trim().is_empty() {
+                // 原地补字，不重新摆窗、不改变用户已经看到的横条位置。
+                push_late_text(text.clone(), false);
+                win::log(&format!(
+                    "start_capture: 先弹后取到 {} 字 —— 已原地补进横条",
+                    text.chars().count()
+                ));
+            }
+            g
+        } else {
+            /* 没有先弹空条（起点不是 I-beam，也不是双击）：仍按旧逻辑，
+             * 取词期间用户点了别处就不要这条了。 */
+            if INPUT_EPOCH.load(Ordering::SeqCst) != epoch0 {
+                win::log("start_capture: 取词期间你又点击/划选了一次 —— 这一次不弹");
+                return;
+            }
+            /* 把这次拖选的矩形一并带过去：浏览器里真光标取不到，
+             * 「上方/下方」只能靠它。 */
+            show_bar_at(text.clone(), false, true, Some(self.drag))
+        };
+        /* ── 方案 C：复制**只在两个条件同时成立时**才执行 ──────────
+         *   ① 横条已经出现：上面刚弹完 / 先弹的空条还在，`gen` 就是它的代次；
+         *   ② 没抓到文字：`text` 为空。
+         *
+         * 顺序是硬性的：**先弹条 → 再判断 → 最后才复制**。
+         * 文字已经正常拿到时，这里根本不会进，一次复制都不会发生。 */
+        if text.trim().is_empty() {
+            let pid = self.target_pid;
+            std::thread::spawn(move || post_show_copy_fill(gen, pid, self.drag));
+        }
+        /* ⚠ `via` 为空串 = 三条通道**全都没拿到文字**（OCR 也失败）——
+         * 那也是 OCR 这条路上的失败，同样要复核：用户日志里"选中的是网址，
+         * 横条却是空的"就是这么来的（`show_bar: ""`）。 */
+        if !text.trim().is_empty() && matches!(via, "OCR" | "") {
+            /* 要不要复核、为什么复核，全在 `exact_reread_trigger` 里
+             * （三条规则 + 理由都写在那儿；2026-10-23 扩的第 ② ③ 条
+             *   就是用户报的「马尾辫skill安装 → 《马尾辫 sk 泔安装、」）。 */
+            if let Some(why) = exact_reread_trigger(&text, self.drag, in_browser) {
+                win::log(&format!("capture(exact): {why} —— 后台精确复核一次"));
+                spawn_exact_reread(gen, self.target_pid, text);
+            }
+        }
+    }
+}
+
 
 /// 弹条那一刻「用户是在哪个软件里触发的」—— 即收藏夹条目要注入的目标窗口。
 ///
