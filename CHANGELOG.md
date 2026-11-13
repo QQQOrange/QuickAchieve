@@ -5,6 +5,40 @@
 
 ---
 
+## v2.23.122 — 2026-11-13
+
+> 三项一起做：继续拆 `main.rs`、性能优化、改善 Chrome / Electron 取词（不用 OCR）。
+
+### 结构
+
+- 选区相关代码全部搬进 `src/selection.rs`（875 行）：剪贴板三级通道、编辑控件、UIA、确认、补字、终端保护。
+- 取词调度搬进 `src/capture_flow.rs`（313 行），横条收起/挂起搬进 `src/bar_lifecycle.rs`（139 行），
+  横条展示搬进 `src/bar_show.rs`（344 行），几何判断搬进 `src/bar_geo.rs`（70 行）。
+- `src/main.rs` 25,033 → 23,429 行；函数签名与行为不变。
+
+### 修复
+
+- **取词焦点交还**：新增 `win::gui_focus()` / `win::focus_for_copy()`，复制前把前台与键盘焦点交回目标
+  窗口自己的焦点子窗；重试前再交还一次。解决横条异步抢焦点后 Ctrl+C 打空的问题。
+- **液态玻璃恢复**：`ui/glass.js` 补回 v2.23.85 被删掉的 `isFrost()`；此前每次 `draw()` 都抛
+  `ReferenceError: isFrost is not defined`，画布停更，玻璃样式看起来不生效。
+
+### 性能
+
+- 自动明暗判定加 3 秒缓存（按前台窗口 + 只缓存判出来的结果）：同一页面连续划词
+  `主题` 从 255 ms 降到 0 ms，横条端到端 265 ms → 9 ms。
+- WebView2 旧缓存清扫移到后台线程，不再挡在第一个窗口创建之前。
+- 热路径去掉整份 `Config` 克隆（收藏夹 dataURL 可达数 MB），改为 `cfg_with` 窄读。
+
+### 验证
+
+- `cargo test` 493 passed / 2 ignored；clippy `-D warnings` 干净（仅 vendored `ureq` 一条 warning）。
+- E2E 4/4（away 5 / frost 11 / reset 6 / search 9）；UI 金丝雀 887/887；页面冒烟 56/56。
+- 真机：Edge 文本框“先弹空条 → 后台复制补字”拿到 113 字；连续划词第二次端到端 9 ms；
+  玻璃绘制无 JS 报错。
+
+---
+
 ## v2.23.121 — 2026-11-13
 
 > 按你的要求：备份只留最近 10 份、其余全删；选区取词不再用屏幕 OCR 兜底。
