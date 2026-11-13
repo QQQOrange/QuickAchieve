@@ -1,6 +1,7 @@
-//! 选区确认与补字：从 main.rs 拆出的第一块。
+//! 选区取词 / 确认 / 补字：从 main.rs 拆出的第一块。
 //!
-//! 这里只放「弹条前确认选中了文字」和「弹条后补字」两段流程，
+//! 这里放三条取词路径（剪贴板三级通道、标准编辑控件、UIA）以及
+//! 「弹条前确认选中了文字」「弹条后补字」两段流程，
 //! 不涉及横条布局 / 引擎选择。函数签名与行为跟拆出前完全一致。
 
 use std::ffi::c_void;
@@ -11,10 +12,339 @@ use windows::Win32::Foundation::HWND;
 
 use crate::win;
 use crate::{
-    capture_selection, clip, clipboard_owned_by, foreground_still_target, is_bar_shown,
+    clip, clipboard_owned_by, foreground_still_target, is_bar_shown,
     is_console_window, is_wechat_pid, lock_clip, push_late_text, same_app_pid,
     CaptureInFlight, GEN, LAST_FOREIGN_FG,
 };
+
+/* ---------------- 剪贴板复制通道（SendInput → WM_COPY → 按键消息） ---------------- */
+
+/// 松手后、发 Ctrl+C 之前的稳定期（ms）。
+///
+/// 为什么需要它：很多软件（浏览器富文本区、Electron 应用、Office、
+/// 各种 IDE）并不是在收到 mouseup 的那一刻建立选区，而是把「提交选区」
+/// 丢进自己的消息队列里异步做。我们钩子一收到 mouseup 就立刻发 Ctrl+C，
+/// 复制到的还是上一次的选区（甚至什么都没有）—— 序号没变 = 不弹，
+/// 这就是"有时候不触发"最隐蔽的一因。40ms 足够这类软件把选区建好，
+/// 又短到用户完全感觉不到延迟。
+const SEL_SETTLE_MS: u64 = 40;
+
+/// 重试前额外等待的时间序列（ms）。不同软件响应 Ctrl+C 的快慢能差出
+/// 几百毫秒（远程桌面 / 虚拟机 / 大型文档窗口尤其明显）。序号没变就
+/// 隔一会儿再来一次，直到有一次真的把选区复制进去。
+const SEL_RETRY_BACKOFF_MS: [u64; 2] = [220, 380];
+
+/// 每一轮投递复制请求之后，最多等多久去读剪贴板（ms），按轮次给。
+///
+/// 第一轮给得最长，因为有些客户端（微信 4.x）的复制是**两步**的：
+///   ① `EmptyClipboard` 把剪贴板清空，并且**一直握着不撒手**；
+///   ② 内部渲染 / 助手进程把数据准备好，才真的写进去、才关闭剪贴板。
+/// 第①步到第②步之间，我们连 `OpenClipboard` 都打不开（别人的剪贴板没关），
+/// 只能干等 —— 实测这段时间能到几百毫秒。
+///
+/// ⚠ 所以窗口内**绝不能再投一次复制请求**：重投会让它重新清空剪贴板、
+///   把等待重新计时，于是每一轮都差一点点，永远等不到落地。
+///   这正是"微信里十次有九次不弹、偶尔弹一次"的来源。
+const SEL_READ_WINDOW_MS: [u64; 3] = [1500, 800, 800];
+
+/// 模拟一次 Ctrl+C 把选区拿走，再立刻把原剪贴板还回去。
+///
+/// 结构是「3 个回合、每回合换一条取词通道」：
+///   ① 真实的合成按键（SendInput）—— 对绝大多数程序有效；
+///   ② 窗口消息 `WM_COPY`；
+///   ③ 窗口消息 `Ctrl+C`（`WM_KEYDOWN`/`WM_KEYUP`）。
+/// 任一回合拿到有效文字即返回。
+///
+/// 为什么要换通道：`SendInput` 造出来的按键带 `LLKHF_INJECTED` 标记，
+/// 有些客户端会据此**无视**这些按键（微信 4.x 是 Qt 写的，属于高危对象），
+/// 只走一条路的话这类程序里就会出现「划词永远不弹条」。
+///
+/// `target_pid` = 用户开始拖动的那个窗口所属进程，给剪贴板归属校验用。
+pub(crate) fn capture_selection(target_pid: u32, target_hwnd: Option<HWND>) -> Option<String> {
+    // 仅测试用（和 QS_ALLOW_INJECTED / QS_SKIP_SENDINPUT 同一类逃生口）：
+    // 跳过全部复制通道、直接按“取不到词”处理，用来单独验证兜底表现。
+    if std::env::var("QS_FORCE_OCR").map(|v| v == "1").unwrap_or(false) {
+        win::log("capture: QS_FORCE_OCR=1 —— 跳过复制通道（只用于验证取不到词的表现）");
+        return None;
+    }
+    /* ⚠ 完整通道是最后一道兜底，但**不能盲发**：
+     *   · 前台已经换人 → 复制回来的是别人的选区；
+     *   · 前台是终端 → Ctrl+C 会打断正在跑的命令；
+     *   · 横条自己拿着焦点 → 按键全打在我们身上，还要先还给目标窗口。 */
+    if win::window_pid(win::foreground_window()) == std::process::id() {
+        if let Some(h) = target_hwnd.filter(|h| !h.0.is_null()) {
+            win::force_foreground(h);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    let fg = win::foreground_window();
+    let fg_pid = win::window_pid(fg);
+    if !foreground_still_target(target_pid) {
+        win::log(&format!(
+            "capture: 前台已经换人（目标 pid={target_pid}，当前 pid={fg_pid}）—— 放弃完整复制"
+        ));
+        return None;
+    }
+    if is_console_window(fg) || is_console_window(win::root_window(fg)) {
+        win::log("capture: 当前前台是终端 —— 绝不发 Ctrl+C（会被当成中断信号）");
+        return None;
+    }
+    /* v2.23.81：**用户还按着修饰键时绝不模拟复制**。
+     *
+     * 真实场景：用户用 Ctrl+拖选 / Ctrl+Shift 选了一段文字，松手那一刻
+     * Ctrl 往往还没抬起；或者他刚划完选区就顺手按了 Ctrl+C。这时我们再
+     * 补一次合成 Ctrl+C，手感就是「Ctrl+C 被劫持」—— 在终端 / 游戏 /
+     * 远程桌面里还可能触发别的动作。把这次自动取词让给用户：横条已经
+     * 弹出来的保持原样，用户真的复制完，他自己的 Ctrl+C 会写入剪贴板。
+     *
+     * 只挡 Ctrl / Alt / Win：Shift 在划选收尾时经常还没松，挡它会让
+     * 正常的「Shift+拖选」永远取不到词。 */
+    if win::ctrl_down() || win::alt_down() || win::win_down() {
+        win::log("capture: 用户还按着 Ctrl/Alt/Win —— 不模拟复制（把 Ctrl+C 让给用户）");
+        return None;
+    }
+    // 整段都必须在 CLIP_LOCK 里：中途要和 Ctrl+C 兜底那条线抢同一个剪贴板，
+    // 交错的话 restore 的「先清空再写回」会把用户原本的复制内容冲掉。
+    let _clip = lock_clip();
+    /* ⚠ 快照失败**不再直接放弃**。
+     *
+     * 以前是「snapshot 拿不到就 return None」—— 而微信这类客户端会长时间占着
+     * 剪贴板（它自带剪贴板监听），OpenClipboard 一直拿不到 → 取词在**第一步**
+     * 就整个放弃 → 用户看到的现象正是"在微信里划词永远不弹条"。
+     *
+     * 现在的口径：拿不到快照就不还原（本来也没备到东西），但取词照做。
+     * 最坏结果和用户自己按一次 Ctrl+C 一样（剪贴板被选区覆盖），不会更糟；
+     * 换来的是"一定能弹"。 */
+    /* ⚠ 2026-10-30 改口径：**快照拿不到就不复制**。
+     *
+     * 这里原先刻意"拿不到快照也照做"（理由是微信会长时间占着剪贴板，放弃会让
+     * 微信里永远不弹条）。但用户现在的要求很明确：**复制不能影响原来的剪贴板**。
+     * 没有快照就没有还原的依据，做下去等于直接覆盖用户复制的内容 —— 不能接受。
+     *
+     * 注：这条通道目前只有 `QS_FORCE_COPY=1` 的自检分支在用，改动不影响主链路。 */
+    let Some(snap) = clip::snapshot() else {
+        win::log("capture: 剪贴板快照失败（被占用）—— 不发 Ctrl+C，保持用户剪贴板原样");
+        return None;
+    };
+    let old_text = snap.text().map(|t| t.trim().to_string());
+    /* 这一次取词的"现场记录"。排查时最想知道的三件事就是：目标窗口属于哪个进程、
+     * 快照拿没拿到、复制前剪贴板里是什么 —— 一行写全，省得来回要日志。
+     *
+     * ⚠ v1.4.0：剪贴板内容**只记字数**。以前这里会把前 20 个字原样写进日志，
+     * 那等于把用户上一条复制的内容（可能是密码、可能是私信）明文落盘。 */
+    win::log(&format!(
+        "capture: 开始 目标pid={target_pid} 快照={} 复制前剪贴板={} 字",
+        "ok",
+        old_text.as_deref().map(|s| s.chars().count()).unwrap_or(0)
+    ));
+    /* 先等选区落地，再读「取词前」的序号 —— 顺序反了的话，软件在稳定期
+     * 里自己提交的选区会把 before 带成新值，等我们自己的 Ctrl+C 反而
+     * 「序号没变」，白白漏一次。 */
+    std::thread::sleep(Duration::from_millis(SEL_SETTLE_MS));
+    let before = clip::seq();
+    let last_round = SEL_RETRY_BACKOFF_MS.len();
+    let mut got: Option<String> = None;
+    /* v2.23.32：**第一次发模拟复制之前**的序号。和 `before` 不同就说明
+     * 这段窗口里已经有人写过剪贴板（用户自己复制了），那种情况下不能还原。 */
+    let mut pre_send_seq: Option<u32> = None;
+    // v2.23.32：这一轮有没有"用户先复制"的情况（见下面还原处的注释）
+    let mut user_wrote_first = false;
+    for round in 0..=last_round {
+        if round > 0 {
+            std::thread::sleep(Duration::from_millis(SEL_RETRY_BACKOFF_MS[round - 1]));
+        }
+        // 仅测试用的逃生口（和 QS_ALLOW_INJECTED / QS_INSTANCE_TAG 同一类）：
+        // 跳过 SendInput 那一轮，直接从「窗口消息」通道开始 —— 用来单独验证
+        // 新加的通道本身能不能取到词，正式启动不会带上。
+        let skip_sendinput = std::env::var("QS_SKIP_SENDINPUT")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+        let copy_round = if skip_sendinput { 0 } else { 1 };
+        if pre_send_seq.is_none() {
+            pre_send_seq = Some(clip::seq());
+        }
+        let ch: String = if round == 0 && !skip_sendinput {
+            /* v2.23.32：send_ctrl_c 现在会告诉我们"没发"（用户正按着修饰键）。
+             * 没发就如实标出来 —— 不假装成功，也不马上换下一条通道去抢：
+             * 等一拍再看剪贴板（用户自己那次 Ctrl+C 多半就在这一刻落地）。 */
+            if win::send_ctrl_c() {
+                "SendInput".to_string()
+            } else {
+                win::log("capture: 这一轮跳过模拟复制（用户正在按键），先看剪贴板会不会自己变");
+                "跳过(用户按键)".to_string()
+            }
+        } else if round == copy_round {
+            let ok = win::post_copy_to_focus();
+            format!("WM_COPY{}", if ok { "" } else { "(投递失败)" })
+        } else {
+            /* ⚠ v2.11.6：这条"窗口消息按键"通道**默认关闭**。
+             *
+             * 用户报「输入框里会莫名多出字母 c」，就是它干的：
+             * `post_ctrl_c_to_focus` 往焦点窗口直接 Post 一条
+             * `WM_KEYDOWN(VK_C)`。Ctrl 的按下状态只存在于**线程级**键盘状态里
+             * （还要先 AttachThreadInput 才共享），一旦 attach 失败、或者焦点
+             * 控件属于另一个线程，目标收到就是**一个光秃秃的 c 键**——
+             * 编辑框照单全收，直接打出一个 'c'。
+             *
+             * 而这条通道实测也没换来什么：微信 4.x 收到它照样不复制
+             * （`changed=false`），其它程序有 SendInput / WM_COPY 就够了。
+             * v2.23.121 起选区不再做屏幕识别，这条通道本就没有兜底作用，
+             * 丢掉它不影响取词。
+             * 排障时可以用 QS_ALLOW_KEYMSG=1 临时打开。 */
+            let allowed = std::env::var("QS_ALLOW_KEYMSG")
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            if allowed {
+                let ok = win::post_ctrl_c_to_focus();
+                format!("按键消息{}", if ok { "" } else { "(投递失败)" })
+            } else {
+                win::log("capture: 跳过「窗口消息按键」通道（它会往输入框里打 c，默认关闭）");
+                "跳过".to_string()
+            }
+        };
+        /* 投完复制请求后**轮询读**，而不是"等序号一变就读一次"。
+         *
+         * 两个理由，都是实测踩出来的：
+         *   ① 延迟渲染：有些宿主先 `EmptyClipboard` + `SetClipboardData(NULL)`
+         *      声明格式，等别人来要数据时才真的填进去。序号在"声明"那一刻就变了，
+         *      可那一刻剪贴板里还是空的 —— 只读一次会稳定读到空。
+         *   ② 复制可能是异步的（UI 进程把活儿交给渲染/助手进程），序号变了
+         *      不等于数据已经就位。
+         * 所以：轮询到 460ms，期间只要出现**和复制前不一样的非空文本**就算成功。
+         * 读的时候走 `clip::read_text_any()`（UTF-16 → ANSI → OEM → CF_HTML），
+         * 不再只认 CF_UNICODETEXT。 */
+        /* 窗口长度分两档：
+         *   · 一开始只给 250ms —— "压根没选中东西"（序号都不动）是最常见的
+         *     情况，不能让它白占 1.5s（那会把取词线程占住，用户紧接着划第二下
+         *     就被顶掉了）；
+         *   · 一旦看到序号变了（说明复制**正在发生**，只是数据还没落地），
+         *     立刻把窗口拉长到这一轮的上限，安心等它写完。 */
+        let long_ms = SEL_READ_WINDOW_MS[round.min(SEL_READ_WINDOW_MS.len() - 1)];
+        let t0 = std::time::Instant::now();
+        let mut deadline = t0 + Duration::from_millis(250);
+        let mut changed = false;
+        let mut got_text: Option<String> = None;
+        let mut probe: Option<String> = None;
+        /* 等待期间按时间采样剪贴板状态。排查"对方到底写没写进来"只有这一条路：
+         * 光看结束时的状态分不清"从没写过"和"写过又被谁抹了"。 */
+        let mut last_sample = std::time::Instant::now();
+        loop {
+            if last_sample.elapsed() >= Duration::from_millis(300) {
+                last_sample = std::time::Instant::now();
+                win::log(&format!(
+                    "capture: 等待中 round={round} seqΔ={} 剪贴板={}",
+                    clip::seq().wrapping_sub(before) as i32,
+                    clip::describe_formats()
+                ));
+            }
+            if clip::seq() != before {
+                if !changed {
+                    deadline = t0 + Duration::from_millis(long_ms);
+                }
+                changed = true;
+            }
+            if changed {
+                if let Some(t) = clip::read_text_any() {
+                    let t = t.trim().to_string();
+                    if !t.is_empty() {
+                        /* ⚠ 不能要求"内容必须和复制前不同"：
+                         * 用户完全可能选中的就是剪贴板里已有的那段文字
+                         * （刚复制过、又回去重新选一次）。这时序号变了、
+                         * owner 也是目标程序，却因为内容相同被判"没选中"，
+                         * 横条永远是空的 —— 日志里的 `fresh=false valid=false`
+                         * 加 `读到=N 字` 就是它。
+                         * 序号变化 + 归属校验才是硬证据；内容相同也算。 */
+                        if t.chars().count() <= 20000 {
+                            got_text = Some(t.clone());
+                            probe = Some(t);
+                            break;
+                        }
+                        probe = Some(t);
+                    }
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(40));
+        }
+        /* v2.23.32：**复制前剪贴板就已经被改过** = 用户自己先复制了（右键菜单"复制"、
+     * 或者他的 Ctrl+C 抢在我们前面落地）。那种情况下哪怕是同一段文字，
+     * 还原也会把他这次复制抹掉 —— 所以只看"改动发生在谁之后"。 */
+    user_wrote_first = matches!(pre_send_seq, Some(s) if s != before);
+    let owned = changed && clipboard_owned_by(target_pid);
+        // 日志里展示"最后读到的那一份"（不管接不接受），排查时信息更全
+        let raw = probe.clone();
+        let text = got_text.clone();
+        /* 「内容确实和复制前不一样」比序号更硬的证据：序号变了但内容没变，
+         * 说明是别的程序在还原/整理剪贴板，不是选区。 */
+        let fresh = matches!((&old_text, &text), (Some(o), Some(n)) if n != o);
+        /* 前两轮严格（归属校验必须过）；**最后一轮放宽到"内容确实变了"** ——
+         * 因为再不放这一轮就什么都不弹了，而用户要的是能弹出来。
+         * 放宽的代价有界：要在 460ms 窗口里恰好有第三方程序改写剪贴板，
+         * 且写进去的内容和复制前不一样，才会误弹一次（日志留痕）。 */
+        let valid = text.is_some() && (owned || (round == last_round && fresh));
+        // ⚠ v1.4.0：读到的东西**只记字数**（内容属于用户数据，不落明文日志）
+        win::log(&format!(
+            "capture: round={round} ch={ch} changed={changed} owned={owned} fresh={fresh} valid={valid} \
+             目标={target_pid} owner={} 前台={} 读到={} 字",
+            win::window_pid(win::clipboard_owner()),
+            win::window_pid(win::foreground_window()),
+            raw.as_deref().map(|s| s.chars().count()).unwrap_or(0)
+        ));
+        if !valid {
+            /* 读不到就**把剪贴板上挂着的格式列出来**。这次排查就是因为缺这一行
+             * 才多花了两轮：微信里"序号变了、owner 也对，内容却是空的"，
+             * 有格式列表一眼就能看出该读哪种格式。 */
+            win::log(&format!(
+                "capture: round={round} 未取到词 changed={changed} 剪贴板={}",
+                clip::describe_formats()
+            ));
+        }
+        if valid {
+            got = text;
+            break;
+        }
+        // 没拿到有效文字：可能软件还没反应过来，换条通道重试一轮
+    }
+    /* ⚠ **无条件还原**，快照是空的也要还原。
+     *
+     * 用户的硬要求是「选中就弹条，不是选中就复制」—— 取词借用了剪贴板，就必须
+     * 保证剪贴板**看不出被动过**。快照为空时跳过还原（我上一版为了"别抹掉对端
+     * 迟到写入的数据"这么改过）会让选区留在剪贴板里，用户一眼就看到"选中就复制了"，
+     * 这是实打实的体验事故。空快照的还原 = EmptyClipboard，正是我们要的"恢复到空"。
+     *
+     * ⚠ 但「还原」不能无条件：先把剪贴板序号和我们刚写完那一刻比一比，
+     *   第三方在中间写过东西的话就**放手**（见 `clip::restore_if_unchanged`）。 */
+    /* ⚠ 还原前必须把基准挪到"我们自己刚写完那一刻"。
+     *
+     * `snapshot()` 记的是**复制前**的序号；而中间那次 `send_ctrl_c()` /
+     * `post_copy_to_focus()` 是**我们自己**在写剪贴板，序号必然变。
+     * 不重新对齐的话 `restore_if_unchanged` 会把"我们自己的写入"误判成
+     * "第三方改过"，于是**永远跳过还原** —— 选中的文字就永久留在剪贴板里，
+     * 正是用户明确禁止的「选中就复制」。
+     *
+     * 对齐之后，基准 = 我们写完那一刻；此后若再有写入（用户手动 Ctrl+C、
+     * 别的程序写了东西），才是真的"别人动过"，那时跳过还原才是对的。 */
+    /* v2.23.31：**还原前要比内容，不能只信序号**。
+     *
+     * 这里原来是 `snap.note_our_write()` —— 把"此刻"的序号当成我们写的。
+     * 但用户完全可能在这一瞬间自己按了 Ctrl+C（横条弹出来他觉得没复制上、
+     * 或者他本来就想复制），那一刻的序号是**他的**写入。基准被骗过去之后
+     * 下面的还原会把我们备份的旧内容写回剪贴板 —— 用户刚复制的东西就没了，
+     * 表现正是他报的「Ctrl+C 有时候没复制上」。
+     *
+     * 现在交给 `restore_if_still_holds`：剪贴板里还是我们取走的那段文字才还原，
+     * 出现了别的新内容就放手。 */
+    if user_wrote_first {
+        win::log("capture: 复制前剪贴板就已经变过（用户自己先复制了）—— 不还原，保住他那次复制");
+    } else {
+        clip::restore_if_still_holds(&snap, got.as_deref());
+    }
+    let t = got?;
+    win::log(&format!("capture: 最终拿到 {} chars", t.chars().count()));
+    Some(t)
+}
 
 pub(crate) fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
     let _busy = CaptureInFlight::acquire();
