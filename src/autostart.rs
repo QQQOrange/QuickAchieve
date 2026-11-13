@@ -763,8 +763,10 @@ mod tests {
         let mixed = format!("{d}\\sub\\.\\..\\q.exe", d = dir.display());
         assert_eq!(normalize_path(&dotted), normalize_path(&plain));
         assert_eq!(normalize_path(&mixed), normalize_path(&plain));
-        /* abs_path 也一样：写进注册表/任务前必须把 `.` 折掉。 */
-        assert_eq!(abs_path(&dotted), plain);
+        /* abs_path 也一样：写进注册表/任务前必须把 `.` 折掉。
+         * 注意跟 plain 的**规范形式**比：CI 的 TEMP 可能是 8.3 短名
+         * （RUNNER~1），canonicalize 会把它展开成长名，直接跟原串比会假失败。 */
+        assert_eq!(abs_path(&dotted), abs_path(&plain));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
