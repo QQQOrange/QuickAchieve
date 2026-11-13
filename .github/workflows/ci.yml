@@ -68,7 +68,15 @@ jobs:
       # 单独跑 6/6 通过、整跑在 2 核 runner 上必挂，就是并发时序问题，不是产品 bug。
       # 串行之后这条断言重新变成确定性的；总耗时多十几秒，值得。
       - name: 单元测试
-        run: cargo test -- --test-threads=1
+        shell: pwsh
+        run: |
+          cargo test --color never -- --test-threads=1 2>&1 | Tee-Object -FilePath test.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content test.log | Select-String -Pattern '^(test .* FAILED|failures:|thread .* panicked|assertion)' | ForEach-Object {
+              Write-Host "::error::$($_.Line)"
+            }
+            exit 1
+          }
 
       # 这三个脚本是前端唯一的自动化保障：
       #   test-ui     —— jsdom 里跑真页面，钉住"哪些行为不能变"
