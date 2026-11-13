@@ -124,8 +124,12 @@ async function measure(label, exe) {
             const lines = fresh.split(/\r?\n/);
             const tOf = (re) => {
                 for (const l of lines) {
-                    const m = /intervals:\s*(\d+)/.exec(l);
-                    if (m && re.test(l)) return Number(m[1]);
+                    if (!re.test(l)) continue;
+                    let m = /intervals:\s*(\d+)/.exec(l);
+                    if (m) return Number(m[1]);
+                    /* v2.23.117：新日志是本地时间，换算成"100ns 计数"同量纲 */
+                    m = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\]/.exec(l);
+                    if (m) return (Date.parse(m[1].replace(' ', 'T')) + 11644473600000) * 10000;
                 }
                 return null;
             };

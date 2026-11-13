@@ -87,13 +87,19 @@ const logTail = () => {
     try { return fs.readFileSync(LOG, 'utf8').slice(offset); } catch (e) { return ''; }
 };
 
-/* 日志行 -> { t: 毫秒（仅用于做差）, m: 正文 } */
-const TS = /^\[SystemTime \{ intervals: (\d+) \}\] (.*)$/;
+/* 日志行 -> { t: 毫秒（仅用于做差）, m: 正文 }
+ *
+ * v2.23.117 起日志时间戳是可读的本地时间（`[2026-11-13 10:04:36.123]`），
+ * 旧格式（`[SystemTime { intervals: N }]`）仍然认 —— 老日志文件照常能读。 */
+const TS_OLD = /^\[SystemTime \{ intervals: (\d+) \}\] (.*)$/;
+const TS_NEW = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] (.*)$/;
 function parseLines(s) {
     const out = [];
     for (const line of s.split('\n')) {
-        const m = TS.exec(line);
-        if (m) out.push({ t: parseInt(m[1], 10) / 10000, m: m[2] });
+        let m = TS_OLD.exec(line);
+        if (m) { out.push({ t: parseInt(m[1], 10) / 10000, m: m[2] }); continue; }
+        m = TS_NEW.exec(line);
+        if (m) out.push({ t: Date.parse(m[1].replace(' ', 'T')), m: m[2] });
     }
     return out;
 }

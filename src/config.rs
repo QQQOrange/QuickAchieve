@@ -2672,13 +2672,13 @@ fn portable_dir_adopted(new_name: &str, old_name: &str) -> PathBuf {
     let old = base.join(old_name);
     if !new.exists() && old.exists() {
         match std::fs::rename(&old, &new) {
-            Ok(_) => crate::win::log(&format!(
+            Ok(_) => push_dir_note(format!(
                 "rename: 目录已更名 {} → {}",
                 old.display(),
                 new.display()
             )),
             Err(e) => {
-                crate::win::log(&format!(
+                push_dir_note(format!(
                     "rename: {} → {} 失败（{e}）—— 继续使用老目录，数据不受影响",
                     old.display(),
                     new.display()
@@ -2720,11 +2720,219 @@ fn test_scratch_dir() -> PathBuf {
     .clone()
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+ * v2.23.118：默认「单 EXE 模式」—— 运行时数据放 %APPDATA%，exe 旁边只有 exe
+ *
+ * 用户原话：「我只想 QuickAchieve 只保留一个单 exe 文件……不会另外生成文件夹」。
+ *
+ * 硬约束：WebView2（Chromium 内核）**必须**有一个磁盘上的用户数据目录，
+ * 放不了内存；程序本身也要存配置 / 日志 / 备份。所以能做的是"搬家"：
+ *
+ *   · **默认（单 EXE 模式）**：
+ *       `%APPDATA%\QuickAchieve\`       配置 / 图标 / 日志 / WebView2 缓存
+ *       `%APPDATA%\QuickAchieve\back\`  备份
+ *   · **便携模式**：exe 旁边放一个 `portable.flag` →
+ *       `Quick Achieve data\` + `Quick Achieve back\`（拷走整个文件夹就能换机）
+ *
+ * 老用户（exe 旁边已经有 `Quick Achieve data\config.json`）第一次跑新版时
+ * **自动迁移**：先复制、逐项校验（config 大小 / 图标与备份的文件数与大小），
+ * 全部对得上才删旧目录；任何一步不对就继续用旧目录，数据一个字节都不动。
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/// 便携模式标记文件（放在 exe 旁边）。存在 = 数据跟 exe 走。
+#[allow(dead_code)] // 测试构建走不到生产分支
+pub const PORTABLE_FLAG: &str = "portable.flag";
+
+/// exe 旁边的便携标记路径。
+#[allow(dead_code)] // 测试构建走不到生产分支
+pub fn portable_flag_path() -> PathBuf {
+    exe_dir().join(PORTABLE_FLAG)
+}
+
+/// 这次运行用的是哪种存储方式。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // 测试构建只会用到 Custom
+pub enum Storage {
+    /// exe 旁边（`Quick Achieve data` + `Quick Achieve back`）。
+    Portable,
+    /// `%APPDATA%\QuickAchieve`（默认：exe 旁边只有一个 exe）。
+    AppData,
+    /// `QS_DATA_DIR` 指定的目录（测试 / 调试 / 用户自定义）。
+    Custom,
+}
+
+static STORAGE: std::sync::OnceLock<Storage> = std::sync::OnceLock::new();
+
+/// `data_dir()` 解析过程中产生的说明（**不能在那里直接写日志**）。
+///
+/// 为什么不能直接 `win::log`：`win::log` 的开关判定会回头调 `data_dir()`，
+/// 而那时 `OnceLock` 正在初始化 —— 同一个线程二次进入就是死锁
+/// （老代码在"便携目录不可写"那条分支里就有这个隐患）。先攒起来，
+/// 等 `data_dir()` 定下来之后由 `main` 调 [`take_data_dir_notes`] 补写。
+static DIR_NOTES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn push_dir_note(msg: String) {
+    if let Ok(mut g) = DIR_NOTES.lock() {
+        g.push(msg);
+    }
+}
+
+/// 取走 `data_dir()` 解析期间攒下的说明（每条一行日志）。
+pub fn take_data_dir_notes() -> Vec<String> {
+    DIR_NOTES
+        .lock()
+        .map(|mut g| std::mem::take(&mut *g))
+        .unwrap_or_default()
+}
+
+/// 当前的存储方式。
+#[allow(dead_code)]
+pub fn storage_mode() -> Storage {
+    #[cfg(test)]
+    {
+        Storage::Custom
+    }
+    #[cfg(not(test))]
+    {
+        if let Some(s) = STORAGE.get() {
+            return *s;
+        }
+        let _ = data_dir(); // 触发解析（里面会 set）
+        STORAGE.get().copied().unwrap_or(Storage::AppData)
+    }
+}
+
+/// 便携模式（数据跟 exe 走）。
+pub fn portable_mode() -> bool {
+    storage_mode() == Storage::Portable
+}
+
+/// `%APPDATA%\QuickAchieve`（拿不到 APPDATA 时退回 exe 旁边，至少能跑）。
+#[allow(dead_code)] // 测试构建走不到生产分支
+fn appdata_data_dir() -> PathBuf {
+    match std::env::var("APPDATA") {
+        Ok(base) if !base.trim().is_empty() => PathBuf::from(base).join(APP_DIR),
+        _ => {
+            let p = portable_data_dir();
+            let _ = std::fs::create_dir_all(&p);
+            p
+        }
+    }
+}
+
+/// 递归复制目录，返回复制的文件数。
+fn copy_tree(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<u64> {
+    let mut n = 0u64;
+    std::fs::create_dir_all(dst)?;
+    for ent in std::fs::read_dir(src)? {
+        let ent = ent?;
+        let from = ent.path();
+        let to = dst.join(ent.file_name());
+        if from.is_dir() {
+            n += copy_tree(&from, &to)?;
+        } else if from.is_file() {
+            std::fs::copy(&from, &to).map_err(|e| {
+                std::io::Error::new(
+                    e.kind(),
+                    format!("{} → {}：{e}", from.display(), to.display()),
+                )
+            })?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+/// 逐文件核对"副本和原件大小一致"（目录结构也要对得上）。
+fn tree_same(src: &std::path::Path, dst: &std::path::Path) -> bool {
+    let Ok(rd) = std::fs::read_dir(src) else {
+        return false;
+    };
+    for ent in rd.flatten() {
+        let from = ent.path();
+        let to = dst.join(ent.file_name());
+        if from.is_dir() {
+            if !to.is_dir() || !tree_same(&from, &to) {
+                return false;
+            }
+        } else if from.is_file() {
+            let a = std::fs::metadata(&from).map(|m| m.len());
+            let b = std::fs::metadata(&to).map(|m| m.len());
+            if a.is_err() || a.ok() != b.ok() {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// 把 exe 旁边的便携安装搬到 `%APPDATA%\QuickAchieve`。
+///
+/// 顺序是「**先复制、再校验、最后才删**」：
+///   · 复制：配置 / 图标 / 日志 / 各种标记文件 + 备份目录；
+///   · 校验：`config.json` 存在且大小一致、图标目录逐文件大小一致、备份逐文件一致；
+///   · 只有校验全过，才删旧目录（删不掉也只是留个文件夹，不报错）。
+fn migrate_portable_install(
+    portable_data: &std::path::Path,
+    src_backup: &std::path::Path,
+    appdata: &std::path::Path,
+) -> Result<String, String> {
+    let _ = std::fs::create_dir_all(appdata);
+    let files = copy_tree(portable_data, appdata)
+        .map_err(|e| format!("复制数据目录失败：{e}"))?;
+    let cfg_ok = portable_data
+        .join("config.json")
+        .metadata()
+        .map(|m| m.len())
+        .ok()
+        .zip(appdata.join("config.json").metadata().map(|m| m.len()).ok())
+        .map(|(a, b)| a == b)
+        .unwrap_or(false);
+    if !cfg_ok {
+        return Err("复制后 config.json 缺失或大小不一致".to_string());
+    }
+    let icons_ok = match portable_data.join("icons").is_dir() {
+        true => tree_same(&portable_data.join("icons"), &appdata.join("icons")),
+        false => true,
+    };
+    if !icons_ok {
+        return Err("图标目录校验没通过".to_string());
+    }
+    let mut backup_files = 0u64;
+    if src_backup.is_dir() {
+        let dst_back = appdata.join("back");
+        backup_files = copy_tree(src_backup, &dst_back)
+            .map_err(|e| format!("复制备份目录失败：{e}"))?;
+        if !tree_same(src_backup, &dst_back) {
+            return Err("备份目录校验没通过".to_string());
+        }
+    }
+    /* 校验全过 —— 现在才删旧目录（删不掉不算失败：数据已经在 AppData 里了）。 */
+    let mut old_left = Vec::new();
+    for d in [portable_data.to_path_buf(), src_backup.to_path_buf()] {
+        if d.exists() && std::fs::remove_dir_all(&d).is_err() {
+            old_left.push(d.display().to_string());
+        }
+    }
+    let mut msg = format!(
+        "已迁移到单 EXE 模式：{}（{files} 个文件，备份 {backup_files} 份）",
+        appdata.display()
+    );
+    if !old_left.is_empty() {
+        msg.push_str(&format!(
+            "；旧目录删不掉（可能被占用），可手工删除：{}",
+            old_left.join("、")
+        ));
+    }
+    Ok(msg)
+}
+
 pub fn data_dir() -> PathBuf {
     // ① 显式覆盖（测试、调试、以及"我想把数据放别处"的用户）
     if let Ok(d) = std::env::var("QS_DATA_DIR") {
         let d = d.trim();
         if !d.is_empty() {
+            let _ = STORAGE.set(Storage::Custom);
             return PathBuf::from(d);
         }
     }
@@ -2733,7 +2941,7 @@ pub fn data_dir() -> PathBuf {
     {
         test_scratch_dir()
     }
-    // ③ 生产：便携目录优先，只读位置兜底 %APPDATA%（结果缓存，含探测）
+    // ③ 生产：默认 %APPDATA%（单 EXE 模式）；exe 旁边有 portable.flag 才便携
     #[cfg(not(test))]
     {
         static C: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
@@ -2744,22 +2952,229 @@ pub fn data_dir() -> PathBuf {
              * 更名前的 `QuickSearch back`，看起来像"没迁干净"。这一步只算路径
              * + 改名，不会创建任何文件。 */
             let _ = portable_backup_dir();
-            if ensure_writable(&portable) {
-                return portable;
+
+            if portable_flag_path().exists() {
+                if ensure_writable(&portable) {
+                    let _ = STORAGE.set(Storage::Portable);
+                    push_dir_note(format!(
+                        "config: 检测到 {PORTABLE_FLAG}，使用便携模式（{}）",
+                        portable.display()
+                    ));
+                    return portable;
+                }
+                push_dir_note(format!(
+                    "config: 检测到 {PORTABLE_FLAG}，但 exe 旁边的数据目录不可写 —— 改用 %APPDATA%"
+                ));
+            } else if portable.join("config.json").is_file() {
+                /* 老用户：exe 旁边有数据 → 迁到 %APPDATA%。 */
+                let appdata = appdata_data_dir();
+                if appdata.join("config.json").exists() {
+                    push_dir_note(format!(
+                        "config: exe 旁边和 %APPDATA% 都有配置；这次用 %APPDATA%（旧目录 {} 可手工删）",
+                        portable.display()
+                    ));
+                } else {
+                    match migrate_portable_install(&portable, &portable_backup_dir(), &appdata) {
+                        Ok(n) => push_dir_note(format!("config: {n}")),
+                        Err(e) => {
+                            push_dir_note(format!(
+                                "config: 迁移到 %APPDATA% 失败（{e}）—— 继续用 exe 旁边的数据目录，数据未改动"
+                            ));
+                            let _ = STORAGE.set(Storage::Portable);
+                            return portable;
+                        }
+                    }
+                }
             }
-            let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-            let fallback = PathBuf::from(base).join(APP_DIR);
-            let _ = std::fs::create_dir_all(&fallback);
-            crate::win::log(&format!(
-                "config: exe 旁边的数据目录不可写（{}），退回 {}",
-                portable.display(),
-                fallback.display()
-            ));
-            fallback
+
+            let appdata = appdata_data_dir();
+            let _ = std::fs::create_dir_all(&appdata);
+            let _ = STORAGE.set(Storage::AppData);
+            appdata
         })
         .clone()
     }
 }
+
+/// 临时 WebView2 目录的名字前缀（`%TEMP%\QuickAchieve-WebView2-<pid>`）。
+const WEBVIEW_TMP_PREFIX: &str = "QuickAchieve-WebView2-";
+
+/// 本次运行用的临时缓存目录（`persist` / 自定义模式下为 `None`）。
+static EPHEMERAL_WEBVIEW: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+/// WebView2 的用户数据目录（缓存 / GPU 着色器 / localStorage）。
+///
+/// # 位置（v2.23.119 起）
+///
+/// * **默认：`%TEMP%\QuickAchieve-WebView2-<pid>`，退出即删。**
+///   磁盘上不再长期留一份几十 MB 的 Chromium 缓存；持久数据只剩
+///   `%APPDATA%\QuickAchieve` 里的配置 / 图标 / 日志 / 备份（几 MB）。
+///   代价：每次启动缓存重建（首个窗口慢 1~2 秒），localStorage 不保留。
+/// * `QS_WEBVIEW_CACHE=persist` → `<数据目录>\WebView2`（启动更快，占几十 MB）。
+/// * `QS_WEBVIEW_CACHE_DIR=<目录>` → 用指定目录（调试 / 想放别处）。
+///
+/// 顺带把旧版本留在 exe 旁边的 `<exe>.WebView2`（以及 `*.old-*.WebView2`）
+/// 和以前放在数据目录下的 `WebView2` 都清掉 —— 那时还没建任何 WebView，删得掉。
+pub fn webview_data_dir() -> PathBuf {
+    static C: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    C.get_or_init(|| {
+        /* ① 显式指定目录（调试 / 想放别处） */
+        if let Ok(d) = std::env::var("QS_WEBVIEW_CACHE_DIR") {
+            let d = d.trim();
+            if !d.is_empty() {
+                let p = PathBuf::from(d);
+                let _ = std::fs::create_dir_all(&p);
+                let _ = EPHEMERAL_WEBVIEW.set(None);
+                return p;
+            }
+        }
+        /* ② 想保留缓存（启动更快）：QS_WEBVIEW_CACHE=persist */
+        if std::env::var("QS_WEBVIEW_CACHE")
+            .map(|v| v.eq_ignore_ascii_case("persist"))
+            .unwrap_or(false)
+        {
+            let p = data_dir().join("WebView2");
+            let _ = std::fs::create_dir_all(&p);
+            cleanup_legacy_webview_dirs();
+            let _ = EPHEMERAL_WEBVIEW.set(None);
+            return p;
+        }
+        /* ③ 默认：%TEMP% 下的临时目录，退出即删。
+         *
+         * 这样磁盘上就不会长期留一份几十 MB 的 Chromium 缓存 ——
+         * 持久数据只剩配置 / 图标 / 日志 / 备份（几 MB）。
+         * 代价：每次启动缓存重建（首个窗口慢 1~2 秒），
+         *       localStorage（设置页搜索历史）不保留。 */
+        cleanup_legacy_webview_dirs();
+        /* 旧版本把缓存放在数据目录下 —— 那份现在没人用了，顺手删掉 */
+        let stale_data = data_dir().join("WebView2");
+        if stale_data.is_dir() {
+            match std::fs::remove_dir_all(&stale_data) {
+                Ok(_) => crate::win::log("wv2: 已删除数据目录下的旧缓存（现在改用临时目录）"),
+                Err(e) => crate::win::log(&format!(
+                    "wv2: 数据目录下的旧缓存删不掉（{e}）—— 下次启动再试"
+                )),
+            }
+        }
+        sweep_stale_webview_dirs();
+        /* 目录名带 PID：① 新实例永远不会撞上旧实例的目录（退出清理助手可以放心删）；
+         * ② 崩溃留下的残骸下次启动由 `sweep_stale_webview_dirs` 统一清掉。 */
+        let p = std::env::temp_dir().join(format!("{WEBVIEW_TMP_PREFIX}{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p); // PID 复用：先清掉同名残骸
+        if std::fs::create_dir_all(&p).is_err() {
+            /* TEMP 不可写（极端情况）→ 退回数据目录，别让程序起不来 */
+            let fb = data_dir().join("WebView2");
+            let _ = std::fs::create_dir_all(&fb);
+            let _ = EPHEMERAL_WEBVIEW.set(None);
+            return fb;
+        }
+        let _ = EPHEMERAL_WEBVIEW.set(Some(p.clone()));
+        p
+    })
+    .clone()
+}
+
+/// 本次运行用的临时 WebView2 目录；`persist` / 自定义模式，或还没初始化时为 `None`。
+///
+/// 刻意**不**触发 `webview_data_dir()`：退出清理时如果目录压根没建过，
+/// 就不该为了删它而先建一个。
+pub fn ephemeral_webview_dir() -> Option<PathBuf> {
+    EPHEMERAL_WEBVIEW.get().cloned().flatten()
+}
+
+/// **退出时**清掉临时缓存。
+///
+/// 直接删常常会失败：WebView2 的 `msedgewebview2.exe` 子进程还占着文件。
+/// 所以先试一次，删不掉就把自己再拉起来一份（`--clean-webview <目录> --parent-pid <pid>`），
+/// 让那个小助手**等主进程真的退出**之后再删 —— 它不建窗口、不读配置、不写日志。
+pub fn cleanup_ephemeral_webview_on_exit() {
+    let Some(p) = ephemeral_webview_dir() else {
+        return;
+    };
+    if !p.is_dir() {
+        return;
+    }
+    if std::fs::remove_dir_all(&p).is_ok() {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let _ = std::process::Command::new(exe)
+        .arg("--clean-webview")
+        .arg(&p)
+        .arg("--parent-pid")
+        .arg(std::process::id().to_string())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+}
+
+/// 清掉 `%TEMP%` 下以前运行遗留的 `QuickAchieve-WebView2-<pid>` 目录。
+fn sweep_stale_webview_dirs() {
+    let Ok(rd) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    let mine = format!("{WEBVIEW_TMP_PREFIX}{}", std::process::id());
+    let mut removed = 0usize;
+    for ent in rd.flatten() {
+        let p = ent.path();
+        let Some(n) = p.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if n == mine || !n.starts_with(WEBVIEW_TMP_PREFIX) || !p.is_dir() {
+            continue;
+        }
+        if std::fs::remove_dir_all(&p).is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        crate::win::log(&format!("wv2: 清掉 {removed} 个上次遗留的临时缓存目录"));
+    }
+}
+/// 删掉 exe 旁边由旧版本留下的 WebView2 缓存目录。
+fn cleanup_legacy_webview_dirs() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let Some(dir) = exe.parent() else {
+        return;
+    };
+    let Some(name) = exe.file_name().and_then(|s| s.to_str()) else {
+        return;
+    };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for ent in rd.flatten() {
+        let p = ent.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let Some(n) = p.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        // 当前 exe 的默认 UDF、以及「升级时改名留下」的那些
+        let is_legacy = n == format!("{name}.WebView2")
+            || (n.starts_with(&format!("{name}.old-")) && n.ends_with(".WebView2"));
+        if !is_legacy {
+            continue;
+        }
+        match std::fs::remove_dir_all(&p) {
+            Ok(_) => crate::win::log(&format!(
+                "wv2: 已清理旧的缓存目录 {}（现在统一放在数据目录下）",
+                p.display()
+            )),
+            Err(e) => crate::win::log(&format!(
+                "wv2: 旧缓存目录 {} 删不掉（{e}）—— 下次启动再试",
+                p.display()
+            )),
+        }
+    }
+}
+
 
 pub fn icons_dir() -> PathBuf {
     data_dir().join("icons")
@@ -3386,10 +3801,15 @@ pub fn rolling_backup_name(stamp: &str) -> String {
     format!("config.auto({stamp}).QuickAchieve")
 }
 
-/// 默认备份目录：exe 旁边的 `Quick Achieve back`（v1.4.0 起）。
+/// 默认备份目录。
 ///
-/// 用户要求：「所有备份的文件也要备份在这个文件夹里面」。建不出来（只读位置）
-/// 就退回数据目录 —— 备份绝不能因为"目录不可写"而整个失败。
+/// v2.23.118 起跟着存储模式走：
+///   · 便携模式 → exe 旁边的 `Quick Achieve back`（拷走文件夹就换机）；
+///   · 单 EXE / 自定义数据目录 → `<数据目录>\back`
+///     （默认就是 `%APPDATA%\QuickAchieve\back`，exe 旁边不留东西）。
+///
+/// 建不出来（只读位置 / 盘满）就退回数据目录 —— 备份绝不能因为"目录不可写"
+/// 而整个失败。
 pub fn default_backup_dir() -> PathBuf {
     #[cfg(test)]
     {
@@ -3400,7 +3820,18 @@ pub fn default_backup_dir() -> PathBuf {
     {
         static C: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
         C.get_or_init(|| {
-            let p = portable_backup_dir();
+            if portable_mode() {
+                let p = portable_backup_dir();
+                if ensure_writable(&p) {
+                    return p;
+                }
+                crate::win::log(&format!(
+                    "config: 备份目录 {} 不可写，退回数据目录",
+                    p.display()
+                ));
+                return data_dir();
+            }
+            let p = data_dir().join("back");
             if ensure_writable(&p) {
                 p
             } else {
@@ -3415,6 +3846,17 @@ pub fn default_backup_dir() -> PathBuf {
     }
 }
 
+/// 两个路径是不是同一个（大小写 / 斜杠 / 尾部分隔符不敏感）。
+fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    fn norm(p: &std::path::Path) -> String {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    }
+    norm(a) == norm(b)
+}
+
 /// 本地备份目录：用户在设置里指定的；没指定（或指定的不可用）就用默认备份目录。
 /// 滚动备份、立即备份、WebDAV 同步前的时间戳快照、导出文件都落在这里。
 pub fn backup_dir_of(cfg: &Config) -> PathBuf {
@@ -3423,6 +3865,12 @@ pub fn backup_dir_of(cfg: &Config) -> PathBuf {
         return default_backup_dir();
     }
     let p = PathBuf::from(d);
+    /* v2.23.118：配置里可能还留着"便携时代的 exe 旁边备份目录"。
+     * 单 EXE 模式下再往那儿写，等于又把 `Quick Achieve back` 建回 exe 旁边 ——
+     * 直接忽略它，用默认备份目录（`%APPDATA%\QuickAchieve\back`）。 */
+    if !portable_mode() && same_path(&p, &portable_backup_dir()) {
+        return default_backup_dir();
+    }
     // 目录不存在就试着建；建不出来（盘没了/权限）就退回默认目录，
     // 备份这件事绝不能因为"用户填了个怪路径"而整个失败。
     if std::fs::create_dir_all(&p).is_ok() && p.is_dir() {
@@ -4791,11 +5239,24 @@ fn configured_string(path: &std::path::Path, key_name: &str) -> Option<String> {
 
 /// 是不是「滚动备份」—— save_to 每次保存时留下的那一份。
 /// 名字形如 `config(2026-10-12 06-30-37).QuickAchieve`。
-pub fn is_rolling_backup(p: &std::path::Path) -> bool {
-    let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
-        return false;
-    };
+fn is_rolling_name(name: &str) -> bool {
     name.starts_with("config.auto(") && backup_name_has_ext(name)
+}
+
+pub fn is_rolling_backup(p: &std::path::Path) -> bool {
+    p.file_name().and_then(|s| s.to_str()).map(is_rolling_name).unwrap_or(false)
+}
+
+/// 旧版 QuickSearch 留下的「坏配置 / 被清空配置」存档，也属于配置备份一族。
+/// 用户口径是「只留最近 10 份，其他都删掉」，这些同样按时间参与淘汰。
+fn is_legacy_dump(name: &str) -> bool {
+    (name.starts_with("config.broken(") || name.starts_with("config.wiped("))
+        && backup_name_has_ext(name)
+}
+
+/// 备份目录里「算一份备份」的文件名（滚动 / 立即 / 恢复前快照 / 旧版存档）。
+pub fn is_backup_name(name: &str) -> bool {
+    is_rolling_name(name) || is_manual_backup(name) || is_snapshot(name) || is_legacy_dump(name)
 }
 
 /// 是不是「立即备份」产生的备份文件（本地与云端同名的那一族）。
@@ -4813,6 +5274,66 @@ pub fn is_manual_backup(name: &str) -> bool {
 /// 老版本还留过 `config.before-webdav-*.json`，两种都得算进来。
 pub fn is_snapshot(name: &str) -> bool {
     name.starts_with("config.before-")
+}
+
+/// 备份目录里最多留几份：滚动 + 立即 + 恢复前快照，**合起来**算。
+///
+/// 用户口径（v2.23.121）：「只保留最近的 10 份，其他的就都删掉。」
+/// 旧版本按"完整度"保护高价值备份，结果目录只增不减（203 份 / 63 MB）。
+pub const MAX_BACKUPS: usize = 10;
+
+/// 按时间只留最新 `keep` 份备份，其余删除；返回删掉的份数。
+///
+/// 只认备份族的三种文件名：
+///   · `config.auto(...)` —— 每次保存的滚动备份；
+///   · `config(...)` —— 「立即备份」/ WebDAV 同步在本地留的那份；
+///   · `config.before-*` —— 恢复前快照。
+/// 用户自己放进备份目录的其它文件一概不碰。
+///
+/// 排序只看文件名里的时间戳（`YYYY-MM-DD HH-MM-SS`，零填充），不读内容、
+/// 不解密 —— 所以旧密码加密、本进程读不出来的备份同样按时间淘汰。
+fn backup_stamp_of(name: &str) -> &str {
+    name.split_once('(')
+        .and_then(|(_, rest)| rest.split_once(')'))
+        .map(|(stamp, _)| stamp)
+        .unwrap_or(name)
+}
+
+pub fn prune_backups(dir: &std::path::Path, keep: usize) -> usize {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut files: Vec<(String, PathBuf)> = Vec::new();
+    for e in rd.filter_map(|e| e.ok()) {
+        let p = e.path();
+        if !p.is_file() {
+            continue;
+        }
+        let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if is_backup_name(name) {
+            files.push((name.to_string(), p));
+        }
+    }
+    if files.len() <= keep {
+        return 0;
+    }
+    /* ⚠ 不能直接按整个文件名排序：`config(...)` 与 `config.auto(...)`
+     * 前缀不同，先按前缀分组就会把"最新的一份手动备份"排在"最旧的滚动备份"
+     * 后面。时间戳都在括号里，按括号内那一段排才是真正的时间序。 */
+    files.sort_by(|a, b| backup_stamp_of(&b.0).cmp(backup_stamp_of(&a.0))); // 新 → 旧
+    let mut removed = 0usize;
+    for (name, p) in files.into_iter().skip(keep) {
+        match std::fs::remove_file(&p) {
+            Ok(()) => {
+                crate::win::log(&format!("config: 备份超过 {keep} 份，清掉最旧的 {name}"));
+                removed += 1;
+            }
+            Err(e) => crate::win::log(&format!("config: 清不掉旧备份 {name}：{e}")),
+        }
+    }
+    removed
 }
 
 /// 把坏内容留档，别直接覆盖掉 —— 用户还能手工捞。
@@ -5091,88 +5612,23 @@ pub fn save_to(path: &std::path::Path, cfg: &Config) -> bool {
          * 只是少了一份滚动备份，属于降级而不是失败。 */
         return true;
     }
-    /* ══════════════════════════════════════════════════════════════════
-     * r92：滚动备份**不再"只留一份"**（这是数据丢失的最后一环）
+    /* v2.23.121：保留策略 = **只留最近 10 份**（用户口径：「只保留最近的 10 份。
+     * 其他的就都删掉」）。
      *
-     * 用户报「这次更新把一切设置都恢复成默认」—— 事故链的最后一步在这里：
-     *   1. config.json 损坏 → 恢复失败 → 用默认配置启动；
-     *   2. 程序随即 `save`（把默认配置写回）；
-     *   3. **这里把同目录所有其他滚动备份全删了** ——
-     *      包括那份"恢复失败但内容完好"的加密备份；
-     *   4. 于是退路被自己销毁，用户再也没法捞回来。
+     * 旧策略（v2.23.117）是"普通备份留 8 份 + 比本次更有价值的额外保护 +
+     * 总数硬上限 40"。它有两个实际代价：
+     *   · 每次保存都要把每份旧备份**解密**算完整度，份数一多保存就变慢；
+     *   · "受保护"的备份永远不淘汰，目录会一直涨（用户机器上已攒到 203 份）。
      *
-     * 现在的规则：
-     *   · 最多保留 `MAX_ROLLING` 份（按时间留最新的）；
-     *   · **绝不删除"比本次写下的这份更有价值"的备份** ——
-     *     用 `backup_quality` 比：一份含自定义引擎/OCR key/收藏的备份，
-     *     不能被一份"默认配置"挤掉。这条是关键：
-     *     恢复失败后用默认配置启动时，那份好备份必须活着。
-     * ══════════════════════════════════════════════════════════════════ */
-    const MAX_ROLLING: usize = 8;
-    let new_quality = backup_quality(cfg);
-    /* ⚠ v2.23.26：**先数一数，超了才读内容**。
+     * 现在只按时间淘汰：文件名里的时间戳是零填充的，字典序就是时间序；
+     * 连同本次刚写下的这份，一共留 `MAX_BACKUPS` 份，其余直接删。不再解密、
+     * 不再按内容打分，保存开销恒定。
      *
-     * 下面这段轮转要给每份旧备份算"完整度" —— 也就是**把每一份读出来解密**。
-     * 它跑在**每一次 `save`** 里（改一个设置就一次）。实测用户的备份目录里
-     * 攒了 27 份时，一次保存要解密 27 次，日志也刷 27 行"已解开" ——
-     * 拖个滑块那种连续保存的场景直接卡。
-     *
-     * 而现在只有"份数超过上限"时才真的需要淘汰谁，
-     * 所以先只做一个廉价的目录列举：没超就直接返回。 */
-    let rolling_count = std::fs::read_dir(&bdir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.is_file() && p != &bak && is_rolling_backup(p))
-                .count()
-        })
-        .unwrap_or(0);
-    if rolling_count <= MAX_ROLLING {
-        return true;
-    }
-    let mut keep: Vec<(String, i32, PathBuf)> = Vec::new();   // (文件名, 分数, 路径)
-    if let Ok(rd) = std::fs::read_dir(&bdir) {
-        for e in rd.filter_map(|e| e.ok()) {
-            let p = e.path();
-            if !p.is_file() || p == bak || !is_rolling_backup(&p) {
-                continue;
-            }
-            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
-            /* ⚠ v2.23.17：**读不出来的备份不参与轮转删除**。
-             *
-             * 原来把"读不出内容"当成完整度 0（`unwrap_or(0)`）—— 于是换过备份
-             * 密码之后旧备份全变 0 分，下面那条"比本次更有价值的备份一律不删"
-             * 直接失效（`0 > new_quality` 恒假），几轮保存就把 8 份旧备份全删光。
-             * 而它们也许正是用户还能用旧密码打开的唯一存档。
-             *
-             * 现在：解不开/读不出 = "不知道它多重要" → 一律保留，
-             * 只按时间淘汰**确认可读**的那些。 */
-            let q = match read_backup_config(&p, &backup_pw) {
-                Some(c) => backup_quality(&c),
-                None => {
-                    crate::win::log(&format!(
-                        "config: 旧备份 {name} 读不出来（可能是旧密码），不参与轮转删除"
-                    ));
-                    continue;
-                }
-            };
-            /* ⚠ 核心保护：**比本次更有价值的备份一律不删**。
-             *   本次写的是"默认配置"（q=0）时，所有有内容的旧备份都会被保住。 */
-            if q > new_quality {
-                crate::win::log(&format!(
-                    "config: 保留旧备份 {name}（完整度 {q} > 本次 {new_quality}）"
-                ));
-                continue;
-            }
-            keep.push((name, q, p));
-        }
-    }
-    // 按文件名（含时间戳）从新到旧排序，只保留前 MAX_ROLLING-1 份（加上本次那份）
-    keep.sort_by(|a, b| b.0.cmp(&a.0));
-    for (name, _, p) in keep.into_iter().skip(MAX_ROLLING.saturating_sub(1)) {
-        crate::win::log(&format!("config: 轮转清掉旧备份 {name}"));
-        let _ = std::fs::remove_file(&p);
-    }
+     * ⚠ 删除范围严格限定在备份族的文件名（滚动 / 立即 / 恢复前快照），
+     *   用户自己放进备份目录的其它文件一概不碰。旧密码加过密、本进程读不
+     *   出来的备份也会按时间淘汰 —— 这是用户明确要求的"其他的都删掉"。 */
+    prune_backups(&bdir, MAX_BACKUPS);
+
     true
 }
 
@@ -5474,6 +5930,57 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// v2.23.118：便携安装 → `%APPDATA%` 的迁移。
+    ///
+    /// 这条路的破坏性在于"最后会删旧目录"，所以必须钉住三件事：
+    ///   ① 内容真的复制过去了（配置 / 图标 / 备份）；
+    ///   ② 校验通过之后旧目录才消失；
+    ///   ③ 有一项对不上就报错、且**旧数据原样保留**。
+    #[test]
+    fn portable_install_migrates_and_cleans_after_verify() {
+        let _serial = big_lock();
+        let t = TempDir::new("migrate");
+        let src = t.0.join("Quick Achieve data");
+        let back = t.0.join("Quick Achieve back");
+        let dst = t.0.join("appdata").join("QuickAchieve");
+        std::fs::create_dir_all(src.join("icons")).unwrap();
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(src.join("config.json"), b"{\"x\":1}").unwrap();
+        std::fs::write(src.join("icons").join("a.png"), b"1234567890").unwrap();
+        std::fs::write(src.join("elevate.pref"), b"1").unwrap();
+        std::fs::write(back.join("config.auto(1).QuickAchieve"), b"bak").unwrap();
+
+        let msg = migrate_portable_install(&src, &back, &dst).expect("迁移应该成功");
+        assert!(msg.contains("已迁移到单 EXE 模式"), "{msg}");
+        assert_eq!(std::fs::read(dst.join("config.json")).unwrap(), b"{\"x\":1}");
+        assert_eq!(
+            std::fs::read(dst.join("icons").join("a.png")).unwrap(),
+            b"1234567890"
+        );
+        assert!(dst.join("back").join("config.auto(1).QuickAchieve").is_file());
+        assert!(!src.exists(), "校验通过后旧数据目录应被删掉");
+        assert!(!back.exists(), "校验通过后旧备份目录应被删掉");
+    }
+
+    /// 迁移的"校验不过就不删"：目标目录被一个同名**目录**占住（
+    /// config.json 传不过去）→ 必须报错，且源目录一个字节都不能动。
+    #[test]
+    fn portable_migration_failure_keeps_source() {
+        let _serial = big_lock();
+        let t = TempDir::new("migratefail");
+        let src = t.0.join("Quick Achieve data");
+        let back = t.0.join("Quick Achieve back");
+        let dst = t.0.join("appdata");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("config.json"), b"{\"keep\":true}").unwrap();
+        // 目标目录里先放一个**名为 config.json 的目录**：fs::copy 会失败
+        std::fs::create_dir_all(dst.join("config.json")).unwrap();
+
+        let err = migrate_portable_install(&src, &back, &dst).expect_err("应该失败");
+        assert!(err.contains("config.json"), "{err}");
+        assert!(src.join("config.json").is_file(), "失败时源数据必须原样保留");
     }
 
     /// v2.23.80：全新安装也要播种网格页。
@@ -7489,5 +7996,75 @@ mod v75_sentinel_tests {
         assert!(is_bar_sentinel(BAR_FAVQUICK));
         assert!(is_bar_sentinel("@ocr"));
         assert!(!is_bar_sentinel("@favquick-typo"));
+    }
+}
+
+#[cfg(test)]
+mod prune_tests {
+    use super::*;
+
+    /// 备份轮转现在只有一条规则：按时间留最新 `keep` 份。
+    /// 这里把三种备份族混在一起，确认排序看的是**括号里的时间戳**，
+    /// 而不是文件名前缀（`config(` 排在 `config.auto(` 前面会排错）。
+    #[test]
+    fn keeps_newest_ten_and_leaves_foreign_files_alone() {
+        let _serial = tests::big_lock();
+        let dir = std::env::temp_dir().join(format!(
+            "qs-prune-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..13 {
+            let stamp = format!("2026-11-{:02} 10-00-00", i + 1);
+            let name = if i % 2 == 0 {
+                rolling_backup_name(&stamp)
+            } else {
+                backup_name(&stamp)
+            };
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        std::fs::write(
+            dir.join("config.before-restore(2026-10-01 00-00-00).QuickAchieve"),
+            b"x",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("config.broken(2026-10-02 00-00-00).QuickSearch"),
+            b"x",
+        )
+        .unwrap();
+        std::fs::write(dir.join("keep-me.txt"), b"user file").unwrap();
+
+        let removed = prune_backups(&dir, MAX_BACKUPS);
+        assert_eq!(removed, 5, "15 份备份族文件，留 10 份、删 5 份");
+
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+            .collect();
+        left.sort();
+        assert_eq!(left.len(), 11, "10 份备份 + 1 个用户文件");
+        assert!(left.iter().any(|n| n == "keep-me.txt"), "非备份文件不能碰");
+        assert!(
+            !left.iter().any(|n| n.contains("2026-11-01")),
+            "最旧的一份应被删掉"
+        );
+        assert!(
+            left.iter().any(|n| n.contains("2026-11-13")),
+            "最新的一份必须保留"
+        );
+        assert!(
+            !left.iter().any(|n| n.contains("2026-10-01")),
+            "最旧的恢复前快照也在淘汰范围内"
+        );
+        assert!(
+            !left.iter().any(|n| n.contains("2026-10-02")),
+            "旧版 QuickSearch 的坏配置存档同样参与淘汰"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -20,7 +20,8 @@
 2. 放到一个单独文件夹里（例如 `D:\软件\QuickAchieve\`），双击运行。
 3. 首次运行**不会出现窗口**，请看任务栏右下角托盘区（可能折叠在 `^` 按钮里）。
 
-> 程序是便携的：配置、图标、日志都会生成在 exe 同级的 `Quick Achieve data\` 目录里。
+> **默认（单 EXE 模式）**：配置、图标、日志、界面缓存都在 `%APPDATA%\QuickAchieve\`，备份在它下面的 `back\` —— exe 旁边只有一个 exe。
+> 想要绿色便携：在 exe 旁边放一个空文件 `portable.flag`，数据就回到 exe 同级的 `Quick Achieve data\` / `Quick Achieve back\`。
 
 ---
 
@@ -394,7 +395,7 @@
 两条机制要知道：
 
 - **图标会跟着新版本走**。升级时程序会自动继承你之前的自定义图标，不用重新设。
-- 在 `Quick Achieve data\icons\` 里放一张**文件名等于引擎名**的图（如 `百度.png`），
+- 在数据目录的 `icons\` 里放一张**文件名等于引擎名**的图（如 `百度.png`；默认目录是 `%APPDATA%\QuickAchieve\icons\`，便携模式是 `Quick Achieve data\icons\`），
   该引擎就会用它——不必逐个去设置里挑。
 
 ---
@@ -403,7 +404,7 @@
 
 ### 本地备份
 
-**数据 → ☁️ 备份与同步** → 手动备份，产物在 exe 同级的 `Quick Achieve back\`，文件名形如
+**数据 → ☁️ 备份与同步** → 手动备份，产物在备份目录（默认 `%APPDATA%\QuickAchieve\back\`；便携模式是 exe 同级的 `Quick Achieve back\`），文件名形如
 `config(2026-10-30 18-11-57).QuickAchieve`。也支持按计划自动备份。
 
 ### 备份密码（重要）
@@ -426,14 +427,21 @@
 
 ## 11. 数据目录
 
+默认（单 EXE 模式，exe 旁边只有一个 exe）：
+
 | 路径 | 内容 |
 |---|---|
-| `<exe 同级>\Quick Achieve data\config.json` | 配置（加密存储） |
-| `<exe 同级>\Quick Achieve data\icons\` | 你的自定义图标 |
-| `<exe 同级>\Quick Achieve data\log.txt` | 运行日志（排障用） |
-| `<exe 同级>\Quick Achieve back\` | 备份文件 |
+| `%APPDATA%\QuickAchieve\config.json` | 配置（加密存储） |
+| `%APPDATA%\QuickAchieve\icons\` | 你的自定义图标 |
+| `%APPDATA%\QuickAchieve\log.txt` | 运行日志（排障用） |
+| `%TEMP%\QuickAchieve-WebView2-<pid>\` | 界面内核（WebView2）的临时缓存，**退出即删**（想保留：设 `QS_WEBVIEW_CACHE=persist`） |
+| `%APPDATA%\QuickAchieve\back\` | 备份文件 |
 
-整个文件夹可以整体拷走。**删除数据目录等于恢复出厂设置。**
+便携模式（exe 旁边有 `portable.flag`）时，数据回到 exe 同级的 `Quick Achieve data\`，备份在 `Quick Achieve back\`，整个文件夹可以整体拷走。
+
+从老版本升级时，exe 旁边原有的 `Quick Achieve data\` 会在第一次启动时自动迁移到 `%APPDATA%\QuickAchieve`（先复制、校验通过才删旧目录）。
+
+**删除数据目录等于恢复出厂设置。**
 
 ---
 
@@ -447,21 +455,21 @@
 点任务栏的 `^` 展开隐藏图标；也可以在系统设置里把它的托盘图标设为「始终显示」。
 
 **图标不显示 / 显示成文字？**
-说明那张图没读到。检查 `Quick Achieve data\icons\` 里文件是否存在；自定义图标可以在设置里
+说明那张图没读到。检查数据目录下的 `icons\` 里文件是否存在；自定义图标可以在设置里
 点「恢复默认」后重设。
 
 **OCR 提示额度用完？**
 如果你用过在线引擎，可能是它的免费额度耗尽了。切到本地引擎即可继续使用，无需联网。
 
 **升级后设置还在吗？**
-在。配置格式与目录位置都没变，覆盖 exe 即可；自定义图标也会自动继承。
+在。第一次启动时数据目录会自动迁移到 `%APPDATA%\QuickAchieve\`，配置、图标、备份原样保留；覆盖 exe 即可。
 
 **怎么彻底卸载？**
-退出程序 → 删除 exe 与 `Quick Achieve data`、`Quick Achieve back` 两个目录 →
+退出程序 → 删除 exe，再删数据目录 `%APPDATA%\QuickAchieve`（便携模式则是 exe 旁的 `Quick Achieve data` / `Quick Achieve back`）→
 如需，删掉开机自启项（任务管理器 → 启动 → Quick Achieve，或设置里的开机自启开关）。
 
 ---
 
 ## 13. 反馈
 
-遇到问题请附上 `Quick Achieve data\log.txt` 的末尾若干行，以及复现步骤。
+遇到问题请附上数据目录里 `log.txt` 的末尾若干行（默认 `%APPDATA%\QuickAchieve\log.txt`），以及复现步骤。

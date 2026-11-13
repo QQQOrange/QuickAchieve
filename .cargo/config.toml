@@ -5,3 +5,16 @@
 # dll 在首次推理时由 libloading 加载，所以只要跳过下载即可。
 [env]
 ORT_SKIP_DOWNLOAD = "1"
+
+# 单元测试默认**串行**跑（v2.23.117）。
+#
+# 为什么：这批测试里有几类动的是**进程级 / 全机器**共享资源 ——
+#   · 剪贴板（clip.rs）：全机器单例，两条测试并行就会互相覆盖；
+#   · 环境变量（config / paths 的测试用 `QS_DATA_DIR` / `APPDATA` 重定向数据目录）：
+#     `std::env::set_var` 与别的线程里的 `env::var`（日志线程读数据目录就在读）
+#     是一对真实的数据竞争。实测并行跑 `cargo test` 会偶发
+#     `STATUS_HEAP_CORRUPTION (0xC0000374)` —— 不是断言红，是整个测试进程崩掉。
+#
+# 串行之后 485 条全绿（14 秒，比并行慢 8 秒，值得）。CI 里本来就带
+# `--test-threads=1`，这里让**本地**的 `cargo test` 与 CI 行为一致。
+RUST_TEST_THREADS = "1"

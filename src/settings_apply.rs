@@ -121,7 +121,17 @@ pub(crate) fn apply_one_setting(cfg: &mut crate::config::Config, key: &str, valu
         "autoStart" => {
             let on = value.as_bool().unwrap_or(false);
             cfg.auto_start = on;
-            crate::win::set_autostart(on);
+            /* v2.23.117：**写完要校验**，而且把结果留在缓存里。
+             *
+             * 旧实现只调 `win::set_autostart(on)` 就完事：注册表写失败
+             * （组策略 / 安全软件 / 键被删）也照样返回，设置页一直显示"开"，
+             * 用户下次开机才发现没生效。现在 apply() 会读回校验，并在
+             * 失败时把原因写进日志；设置页下一次广播会拿到真实状态
+             * （`autoStartState`），显示成"未生效：…"。 */
+            let st = crate::autostart::apply(on, crate::autostart_wants_elevate_for(cfg));
+            if on && !st.active {
+                crate::win::log(&format!("autostart: 打开后仍未生效 — {}", st.summary()));
+            }
         }
         "iconSize" => {
             cfg.icon_size = value.as_u64().unwrap_or(30).clamp(14, 96) as u32;

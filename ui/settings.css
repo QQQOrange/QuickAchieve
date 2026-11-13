@@ -4481,3 +4481,13 @@ main {
     outline-offset: 3px;
     border-radius: var(--radius-lg);
 }
+
+/* v2.23.117：开机自启的真实状态（开关下面那一行）。
+   "已生效" 用强调色，"没生效" 用危险色并露出「立即修复」——
+   以前这一行是死文案，开关开着却没生效时用户完全看不出来。 */
+#s-autoStartState[data-state="ok"] { color: var(--accent); }
+#s-autoStartState[data-state="bad"] { color: var(--danger); }
+#s-autoStartTools { display: flex; gap: 2px; align-items: center; margin-top: 3px; }
+/* ⚠ display:flex 会盖掉浏览器对 [hidden] 的默认 display:none ——
+   没有这一条，两个按钮在"已生效"状态下照样显示。 */
+#s-autoStartTools[hidden] { display: none; }

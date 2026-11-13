@@ -3946,6 +3946,121 @@ function bindClipHist() {
     if (window.QSClipHist) window.QSClipHist.bind({ $, invoke, toast });
 }
 
+/* ==================== 开机自启状态（v2.23.117） ====================
+ *
+ * 这一块只做"显示 + 修复"，真正的落地在 Rust 的 `autostart.rs`。
+ *
+ * 为什么要在界面上单独开一块：以前这一行是一句死文案（"登录 Windows 后
+ * 自动在后台待命"），开关点了就显示"开"，**但那个"开"只代表配置里的
+ * 布尔值**。用户遇到过的情况有：
+ *   · 注册表写失败（组策略 / 安全软件）→ 页面照样显示开；
+ *   · 任务管理器 → 启动 里被关掉（`StartupApproved\Run`）→ 页面照样显示开；
+ *   · exe 换了位置 / 被另一份副本顶掉 → 启动项指向别处，页面照样显示开。
+ * 现在后端每次动手都会读回校验，`CONF.autoStartState` 就是那份真实状态：
+ * 生效了写"已生效：计划任务 / 注册表启动项"，没生效写原因并露出「立即修复」。
+ */
+
+/** 当前界面是不是英文（动态句子不走 i18n 字典，直接给英文）。 */
+function qsIsEn() {
+    return !!(window.CONF && window.CONF.uiLang === 'en');
+}
+
+/** 把后端的真实状态画到开关下面那一行。 */
+function renderAutoStartState() {
+    const hint = $('s-autoStartState');
+    const tools = $('s-autoStartTools');
+    if (!hint) return;
+    const en = qsIsEn();
+    const st = (window.CONF && window.CONF.autoStartState) || null;
+    const on = !!(window.CONF && window.CONF.autoStart);
+    const base = en ? 'Start in the background after you sign in to Windows' : '登录 Windows 后自动在后台待命';
+    const showTools = (v) => { if (tools) tools.hidden = !v; };
+    if (!st) {
+        hint.textContent = base;
+        hint.dataset.state = '';
+        showTools(false);
+        return;
+    }
+    if (on && st.active) {
+        const how = st.mechanism === 'task'
+            ? (en ? 'scheduled task (elevated, no UAC prompt)' : '计划任务（登录即以管理员启动，不弹 UAC）')
+            : (en ? 'registry startup entry' : '注册表启动项');
+        hint.textContent = (en ? 'Active: ' : '已生效：') + how;
+        hint.dataset.state = 'ok';
+        showTools(false);
+        return;
+    }
+    if (on) {
+        /* 没生效：中文模式把后端给的原因原样带上（就是人话）。
+         * 英文模式下原因串仍是中文（后端拼的），所以只给一句通用提示 +
+         * 两个按钮 —— 具体原因在「一键诊断」里（那边也有英文?没有，但至少
+         * 用户能复制出来发给我们）。 */
+        if (en) {
+            hint.textContent = '⚠ Not taking effect — click “Repair now”';
+        } else {
+            const why = st.error || st.summary || '';
+            hint.textContent = '⚠ 没生效' + (why ? '：' + why : '');
+        }
+        hint.dataset.state = 'bad';
+        showTools(true);
+        return;
+    }
+    hint.textContent = base;
+    hint.dataset.state = '';
+    showTools(false);
+}
+
+/** 现查一次（不信缓存）：用户可能刚在任务管理器里改过。 */
+function refreshAutoStartState(announce) {
+    return invoke('autostart_state').then((st) => {
+        if (st && window.CONF) window.CONF.autoStartState = st;
+        renderAutoStartState();
+        /* 打开开关后立刻发现没生效 → 当场说一声。等到下次开机才发现
+         * 就太晚了（那时用户已经以为"设置好了"）。 */
+        if (announce && window.CONF && window.CONF.autoStart && st && !st.active) {
+            const en = qsIsEn();
+            toast((en ? 'Startup did not take effect: ' : '开机自启没能生效：') + (st.error || st.summary || ''));
+        }
+        return st;
+    }).catch(() => null);
+}
+
+function bindAutoStart() {
+    const fix = $('s-autoStartFix');
+    if (fix && !fix.dataset.bound) {
+        fix.dataset.bound = '1';
+        fix.addEventListener('click', () => {
+            const en = qsIsEn();
+            fix.disabled = true;
+            fix.textContent = en ? 'Repairing…' : '正在修复…';
+            invoke('autostart_repair').then((st) => {
+                if (st && window.CONF) window.CONF.autoStartState = st;
+                renderAutoStartState();
+                fix.disabled = false;
+                fix.textContent = en ? 'Repair now' : '立即修复';
+                if (st && st.active) {
+                    toast(en ? 'Startup repaired.' : '开机自启已修复。');
+                } else {
+                    toast((en ? 'Still not working: ' : '仍然没能生效：') + ((st && (st.error || st.summary)) || ''));
+                }
+            }).catch((e) => {
+                fix.disabled = false;
+                fix.textContent = en ? 'Repair now' : '立即修复';
+                toast((en ? 'Repair failed: ' : '修复失败：') + e);
+            });
+        });
+    }
+    const open = $('s-autoStartOpen');
+    if (open && !open.dataset.bound) {
+        open.dataset.bound = '1';
+        open.addEventListener('click', () => {
+            /* 交给系统：本程序在「任务管理器 → 启动」里被禁用时，只有系统
+             * 那个页面能把它拨回去（对应 `StartupApproved\Run` 里的标记）。 */
+            invoke('autostart_open_settings');
+        });
+    }
+}
+
 function bindSwitches() {
     applyTheme();
     syncStyleUI();
@@ -3989,7 +4104,17 @@ function bindSwitches() {
         el.checked = CONF[key] === undefined ? !!SWITCH_DEFAULT[key] : !!CONF[key];
         if (bound) continue;
         el.addEventListener('change', () => {
-            invoke('set_setting', { key, value: el.checked });
+            /* v2.23.117：开机自启改的是**系统**状态（注册表 / 计划任务），
+             * 不是纯配置项 —— 写完必须读回校验。写失败（组策略 / 安全软件 /
+             * 任务管理器里被禁用）要当场告诉用户，而不是等下次开机才发现。 */
+            const p = invoke('set_setting', { key, value: el.checked });
+            if (key === 'autoStart') {
+                if (p && typeof p.then === 'function') {
+                    p.then(() => refreshAutoStartState(true)).catch(() => refreshAutoStartState(true));
+                } else {
+                    setTimeout(() => refreshAutoStartState(true), 200);
+                }
+            }
             /* ⚠ 本地 CONF 也要**立刻**更新，不能等后端广播。
              *
              * 为什么必须这样（r80 探针 2e 抓到的真 bug）：`iconEditorEnabled()`
@@ -10233,9 +10358,23 @@ function tokSay(msg, kind) {
  *      也不要留一个可能是几小时前的数字在那儿冒充"现状"；
  *    · 数字一律先过 `Number()` 再拼进 HTML，不让任何外来字符串碰 DOM。
  * ========================================================================== */
-async function refreshGithubRate() {
+/** 上一次真正查询额度的时刻（节流用，见 refreshGithubRate）。 */
+let GH_RATE_AT = 0;
+
+async function refreshGithubRate(force = false) {
     const el = $('githubRateLine');
     if (!el) return;
+    /* v2.23.117：**节流**。
+     *
+     * 这个函数原来被 `fillAbout()` 每次配置广播都调一次 —— 而配置广播是
+     * 很频繁的（拖一下收藏面板尺寸就是一次）。结果就是每改一个设置就往
+     * GitHub 打一个 HTTPS `/rate_limit`，日志里刷一串「update: 额度 …」，
+     * 没网时还要等超时。额度那一行的精度要求是"分钟级"就绰绰有余，
+     * 这里 60 秒内只真查一次；用户主动操作（保存/清空令牌、检查更新）
+     * 传 `force = true` 立刻刷新。 */
+    const now = Date.now();
+    if (!force && now - GH_RATE_AT < 60_000) return;
+    GH_RATE_AT = now;
     let st = null;
     try {
         st = await invoke('github_rate_state');
@@ -10385,7 +10524,7 @@ function updInit() {
                 .then(() => {
                     tokRefreshSave();
                     // 额度从 60 变 5000（或反过来）—— 那一行必须跟着改
-                    refreshGithubRate();
+                    refreshGithubRate(true);
                 });
         });
     }
@@ -10406,7 +10545,7 @@ function updInit() {
                 .catch((e) => tokSay('清空失败：' + e, 'err'))
                 .then(() => {
                     tokRefreshSave();
-                    refreshGithubRate();
+                    refreshGithubRate(true);
                 });
         });
     }
@@ -10560,8 +10699,9 @@ listen('qs://update', (ev) => {
     if (check) check.disabled = false;
     /* v1.5.10：一次检查 = 一次 API 调用，额度那一行要跟着动。
      * 放最前面：不管后面走哪个分支（有新版本 / 没有 / 失败），
-     * 这次请求都已经花掉了。 */
-    refreshGithubRate();
+     * 这次请求都已经花掉了。v2.23.117：这种"刚花掉一次"的场景必须
+     * 强制刷新（节流会把它挡掉，那一行就永远是旧数字）。 */
+    refreshGithubRate(true);
     const hint = $('updHint');
     if (p.newer) {
         UPD_INFO = {
@@ -10654,6 +10794,9 @@ listen('qs://config', (ev) => {
 /** 广播到达后的整段刷新（拆成函数只是为了给调用处套 try/catch）。 */
 function applyConfigBroadcast() {
     qsSetText('ver', 'v' + (CONF.version || '—'));
+    /* v2.23.117：开机自启的真实状态（后端写完会广播一次）。渲染只读
+     * `CONF.autoStartState`，不现查 —— 现查要跑 schtasks，广播是热路径。 */
+    try { renderAutoStartState(); } catch (e) { console.error('[qs] 自启状态渲染出错', e); }
     // 智能直达：增删改、排序、钉横条都会广播过来，列表跟着重画
     try { renderGoList(); } catch (e) { console.error('[qs] 智能直达列表刷新出错', e); }
     // 网格页同理：尺寸/快捷键/内容一变就同步到表单和列表
@@ -12168,6 +12311,11 @@ function installCardResets(defaults, current) {
      * 只有 renderAllList 一条路（见上面 r73 那段）。 */
 
     CONF = window.CONF = await invoke('get_config');
+    /* v2.23.117：开机自启那一行 —— 绑定「立即修复 / 在系统设置里查看」，
+     * 并**现查一次**真实状态（缓存只反映本进程上次动手的结果；用户可能
+     * 刚在任务管理器里把它关了，或者被优化软件删了启动项）。 */
+    try { bindAutoStart(); } catch (e) { console.warn('[qs] 自启控件绑定失败', e); }
+    refreshAutoStartState(false);
     syncSaveErrorBanner();
     /* v2.23.88：每张卡片一颗「恢复本节默认」。boot 已经跑在 DOM 解析完之后，
      * 直接装；再补一拍 setTimeout，防止个别构建里表格还没量完就被跳过。

@@ -123,6 +123,10 @@ pub(crate) fn config_view_of(cfg: &config::Config) -> Value {
         "gridClick": cfg.grid_click,
         "gridAllowAdd": cfg.grid_allow_add,
         "autoStart": cfg.auto_start,
+        /* v2.23.117：开机自启的**真实状态**（注册表指向谁 / 有没有计划任务 /
+         * 有没有在任务管理器里被禁用）。只读缓存，不现查 —— 配置广播是热路径，
+         * 不能每次广播都去跑一遍 `schtasks`。现查走命令 `autostart_state`。 */
+        "autoStartState": crate::autostart::ui_state(),
         /* v2.23.24：发**真实生效**的提权状态，别再让开关骗人。
      * 便携测试版恒定 false（它不主动提权），用户明确拨过的按标记文件走。 */
     "autoElevate": crate::read_local_elevate_pref().unwrap_or(!crate::QS_LITE_PORTABLE && cfg.auto_elevate),

@@ -58,8 +58,30 @@ Windows 10 / 11 桌面应用，**原生宿主（wry + 系统 WebView2）**，无
 
 ### 数据放在哪
 
-便携式：配置、图标、日志都在 exe 同级的 `Quick Achieve data\` 里，备份在 `Quick Achieve back\`。
-把整个文件夹拷到另一台机器就能接着用（**备份密码另见下**）。
+**默认（单 EXE 模式）**：exe 旁边只有一个 exe。配置、图标、日志都在
+`%APPDATA%\QuickAchieve\`，备份在它下面的 `back\`；**界面缓存放在 `%TEMP%`，退出即删**。
+
+**想要绿色便携**：在 exe 旁边放一个空文件 `portable.flag`，数据就回到 exe 同级的
+`Quick Achieve data\` / `Quick Achieve back\`，整个文件夹拷到另一台机器就能接着用
+（**备份密码另见下**）。
+
+从旧版本升级时，exe 旁边原有的 `Quick Achieve data\` 会在第一次启动时**自动迁移**到
+`%APPDATA%\QuickAchieve\`（先复制、逐项校验通过后才删旧目录），旧的
+`QuickAchieve.exe.WebView2` 缓存也会一并清理。
+
+### 开机自启是怎么做的
+
+「设置 → 通用 → 开机自动启动」打开后：
+
+- 同时开着「默认以管理员身份运行」时，注册的是**计划任务**（登录时以最高权限运行，
+  任务名 `QuickAchieve`，可在「任务计划程序」里看到）—— 这样开机**不会弹 UAC**；
+- 不需要提权时，写的是 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 下的
+  `QuickAchieve` 项（不需要管理员权限，最轻）；
+- 两条路都**写完立刻读回校验**；每次启动还会自检并自动修复（启动项被清理软件删掉、
+  exe 换了位置、被任务管理器禁用，都会在下次启动时修回来）；
+- 开关下面那行显示的就是**真实状态**：显示「⚠ 没生效」时点「立即修复」；
+  若提示被系统禁用，点「在系统设置里查看」去 Windows 的启动页打开它。
+- 「一键诊断」里也会列出注册表值原文、计划任务、是否被禁用 —— 排查时不用再开注册表编辑器。
 
 ---
 
@@ -101,7 +123,7 @@ Windows 10 / 11 桌面应用，**原生宿主（wry + 系统 WebView2）**，无
 ## 从 1.x 升级
 
 - **配置与备份格式完全兼容**：1.5.x 的 `config.json`、`.QuickAchieve` 备份可直接被当前版本读取与恢复。
-- 数据目录位置不变（仍是 exe 同级的 `Quick Achieve data`），所以覆盖 exe 即可，不需要迁移。
+- 数据目录会自动迁移到 `%APPDATA%\QuickAchieve\`（exe 旁边不再生成文件夹），覆盖 exe 即可，设置原样保留。
 - **自定义图标会自动继承**：新版首次启动会从旧安装读取你的图标覆盖表。
 - 本版把默认 OCR 引擎改为**本地引擎**（在线引擎按量计费，避免误耗额度）；需要在线识别可在设置里自行切换。
 
@@ -112,10 +134,15 @@ Windows 10 / 11 桌面应用，**原生宿主（wry + 系统 WebView2）**，无
 本仓库就是**原生宿主本体**（`wry` + `tao`，取代 Tauri 运行时）加前端资源；Release 里的发布产物就由它构建。
 
 ```powershell
-cargo test             # 单元测试
+cargo test             # 单元测试（默认串行，见下）
 cargo clippy           # 静态检查
 cargo build --release  # 产物：target\release\QuickAchieve.exe
 ```
+
+> **测试默认串行跑**：`.cargo/config.toml` 里固定了 `RUST_TEST_THREADS = "1"`。
+> 这批测试动的是剪贴板（全机器单例）和 `QS_DATA_DIR` / `APPDATA` 这类进程级
+> 环境变量，并行跑会偶发 `STATUS_HEAP_CORRUPTION`（测试进程直接崩，不是断言红）。
+> CI 里同样带 `--test-threads=1`，本地与 CI 行为一致。
 
 发布配置见 `Cargo.toml` 的 `[profile.release]`：`opt-level` + `lto="fat"` +
 `codegen-units=1` + `strip=true`。
@@ -142,6 +169,7 @@ src/              Rust 源码
   main.rs           主程序：窗口 / 命令 / 横条布局 / 识图 / OCR 调度
   config.rs         配置结构与持久化（原子写 + 备份 + 加密）
   win.rs            Win32 封装：窗口、UIA、键盘钩子、截图
+  autostart.rs      开机自启（注册表启动项 / 计划任务 / 校验 / 自修复）
   ocr.rs / ocr_engines.rs        OCR 与引擎注册表
   trans.rs / trans_engines.rs    翻译与引擎注册表
   imgsearch.rs      识图引擎注册表

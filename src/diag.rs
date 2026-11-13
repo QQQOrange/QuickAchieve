@@ -43,6 +43,39 @@ pub(crate) fn text() -> String {    let cfg = cfg_snapshot();
             None => "未表态（按构建默认）".to_string(),
         },
     );
+    /* v2.23.117：开机自启的真实落地状态。
+     *
+     * 「开了自启却没启动」是最常被问的一类问题，而以前诊断里**一个字都没有**：
+     * 只能靠用户自己开注册表编辑器看 `HKCU\...\Run`。这里把三件事一次列清：
+     * 配置里想不想开、实际有没有生效（走的是 Run 项还是计划任务）、
+     * 以及注册表里那个值长什么样（指向别处时一眼就能看出来）。 */
+    {
+        let want = cfg.auto_start;
+        let st = crate::autostart::status();
+        push(
+            &mut s,
+            "开机自启",
+            &format!(
+                "配置 {} / 实际 {}（{}）",
+                if want { "开" } else { "关" },
+                if st.active { "生效" } else { "未生效" },
+                st.summary()
+            ),
+        );
+        push(
+            &mut s,
+            "启动项注册表值",
+            st.run_value.as_deref().unwrap_or("（不存在）"),
+        );
+        if st.run_disabled {
+            push(&mut s, "启动项被系统禁用", "是（任务管理器 → 启动）");
+        }
+        push(
+            &mut s,
+            "自启计划任务",
+            if st.task_exists { "存在" } else { "不存在" },
+        );
+    }
 
     let dir = config::data_dir();
     push(&mut s, "数据目录", &dir.display().to_string());
@@ -69,6 +102,12 @@ pub(crate) fn text() -> String {    let cfg = cfg_snapshot();
         .map(|rd| {
             rd.filter_map(|e| e.ok())
                 .filter(|e| e.path().is_file())
+                .filter(|e| {
+                    e.file_name()
+                        .to_str()
+                        .map(config::is_backup_name)
+                        .unwrap_or(false)
+                })
                 .count()
         })
         .unwrap_or(0);

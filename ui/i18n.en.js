@@ -146,6 +146,11 @@ window.QS_I18N.add({
     "切换后立刻生效，并写进本机配置（下次启动仍是这个语言）· 简体中文为默认": "Applies immediately and is saved to this machine (still in effect next launch) · Simplified Chinese is the default",
     "开机自动启动": "Start with Windows",
     "登录 Windows 后自动在后台待命": "Wait in the background right after you sign in",
+    /* v2.23.117：开关下面那一行的「立即修复 / 在系统设置里查看」。
+       动态拼出来的状态句（"已生效：计划任务…"）在 settings.js 里直接出英文，
+       不经字典 —— 它们是运行时拼的，进字典一定会漏。 */
+    "立即修复": "Repair now",
+    "在系统设置里查看": "Open Windows startup settings",
     "默认以管理员身份运行": "Always run as administrator",
     "只有管理员进程才能把 Ctrl+C 送进同样是管理员的软件（任务管理器、部分编辑器）。改完下次启动生效": "Only an elevated process can send Ctrl+C into apps that also run elevated (Task Manager, some editors). Takes effect on the next launch.",
     "启动密码": "Startup password",

@@ -22,8 +22,8 @@ on-screen OCR, translation, screenshot image search, favorites, and encrypted ba
 3. **No window appears on first run.** Look at the notification area at the bottom-right of the
    taskbar (it may be collapsed behind the `^` button).
 
-> The app is portable: configuration, icons, and logs are created in `Quick Achieve data\` next
-> to the executable.
+> **Default (single-EXE mode)**: configuration, icons, logs and the WebView2 cache live in `%APPDATA%\QuickAchieve\`, with backups in its `back\` subfolder — only the executable sits in its own folder.
+> Want it portable? Drop an empty file named `portable.flag` next to the executable and the data moves back to `Quick Achieve data\` / `Quick Achieve back\` beside it.
 
 ---
 
@@ -379,8 +379,7 @@ Two behaviors worth knowing:
 
 - **Your icons survive upgrades.** When you update, previously customized icons are carried over
   automatically; nothing needs to be redone.
-- Drop an image named **exactly like the engine** (e.g. `百度.png`) into
-  `Quick Achieve data\icons\` and that engine will use it — no per-engine setup needed.
+- Drop an image named **exactly like the engine** (e.g. `百度.png`) into the data folder's `icons\` (default `%APPDATA%\QuickAchieve\icons\`; portable mode: `Quick Achieve data\icons\`) and that engine will use it — no per-engine setup needed.
 
 ---
 
@@ -388,9 +387,7 @@ Two behaviors worth knowing:
 
 ### Local backups
 
-**Settings → ☁️ Backup** → create a backup. Files land in `Quick Achieve back\` next to the
-executable, named like `config(2026-10-30 18-11-57).QuickAchieve`. Scheduled auto-backup is also
-supported.
+**Settings → ☁️ Backup** → create a backup. Files land in the backup folder (default `%APPDATA%\QuickAchieve\back\`; portable mode: `Quick Achieve back\` next to the executable), named like `config(2026-10-30 18-11-57).QuickAchieve`. Scheduled auto-backup is also supported.
 
 ### Backup password (important)
 
@@ -415,14 +412,21 @@ not decrypt elsewhere.
 
 ## 11. Data folders
 
+Default (single-EXE mode — only the executable is in its folder):
+
 | Path | Contents |
 |---|---|
-| `<exe folder>\Quick Achieve data\config.json` | Configuration (encrypted) |
-| `<exe folder>\Quick Achieve data\icons\` | Your custom icons |
-| `<exe folder>\Quick Achieve data\log.txt` | Runtime log (for troubleshooting) |
-| `<exe folder>\Quick Achieve back\` | Backup files |
+| `%APPDATA%\QuickAchieve\config.json` | Configuration (encrypted) |
+| `%APPDATA%\QuickAchieve\icons\` | Your custom icons |
+| `%APPDATA%\QuickAchieve\log.txt` | Runtime log (for troubleshooting) |
+| `%TEMP%\QuickAchieve-WebView2-<pid>\` | WebView2 (UI engine) temporary cache — **deleted on exit** (keep it with `QS_WEBVIEW_CACHE=persist`) |
+| `%APPDATA%\QuickAchieve\back\` | Backup files |
 
-The whole folder can be copied elsewhere. **Deleting the data folder is equivalent to a factory reset.**
+In portable mode (an empty `portable.flag` next to the executable) the data lives in `Quick Achieve data\` and backups in `Quick Achieve back\` beside it, so the whole folder can be copied elsewhere.
+
+Upgrading from an older version: an existing `Quick Achieve data\` next to the executable is migrated to `%APPDATA%\QuickAchieve` on first launch (copy, verify, then remove the old folder).
+
+**Deleting the data folder is equivalent to a factory reset.**
 
 ---
 
@@ -438,25 +442,20 @@ Click `^` on the taskbar to expand hidden icons, or set the icon to "always show
 settings.
 
 **Icons don't show, or a letter appears instead.**
-That image could not be read. Check that the file exists in `Quick Achieve data\icons\`; for custom
-icons, use "Restore default" in Settings and pick the image again.
+That image could not be read. Check that the file exists in the data folder's `icons\`; for custom icons, use "Restore default" in Settings and pick the image again.
 
 **OCR says the quota is used up.**
 If you have used an online engine, its free quota may be exhausted. Switch to the local engine —
 it keeps working with no network and no quota.
 
 **Are my settings kept after upgrading?**
-Yes. The config format and folder location are unchanged; replacing the executable is enough, and
-custom icons are carried over automatically.
+Yes. On first launch the data folder is migrated to `%APPDATA%\QuickAchieve\` automatically; settings, icons and backups are preserved. Replacing the executable is enough.
 
 **How do I uninstall completely?**
-Exit the app → delete the exe plus the `Quick Achieve data` and `Quick Achieve back` folders → if
-needed, remove the startup entry (Task Manager → Startup → Quick Achieve, or the "start with
-Windows" switch in Settings).
+Exit the app → delete the exe and the data folder `%APPDATA%\QuickAchieve` (in portable mode: the `Quick Achieve data` / `Quick Achieve back` folders) → if needed, remove the startup entry (Task Manager → Startup → Quick Achieve, or the "start with Windows" switch in Settings).
 
 ---
 
 ## 13. Feedback
 
-When reporting a problem, please include the last part of `Quick Achieve data\log.txt` and the steps
-to reproduce it.
+When reporting a problem, please include the last part of `log.txt` in the data folder (default `%APPDATA%\QuickAchieve\log.txt`) and the steps to reproduce it.

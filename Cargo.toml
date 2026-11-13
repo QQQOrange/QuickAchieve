@@ -3,7 +3,7 @@ members = ["qa-macros"]
 
 [package]
 name = "quick-achieve"
-version = "2.23.116"
+version = "2.23.121"
 edition = "2021"
 description = "Quick Achieve 原生宿主（wry + tao 取代 Tauri 运行时）"
 
@@ -60,6 +60,10 @@ features = [
     "Win32_System_Registry",
     "Win32_System_ProcessStatus",
     "Win32_System_Com",
+    # v2.23.117：日志时间戳要本地时间（GetLocalTime）。
+    # 以前日志打的是 `{:?}` 的 SystemTime（`intervals: 134390073465027177`），
+    # 用户发一份日志过来，第一件事得先换算时间戳 —— 排查时纯浪费时间。
+    "Win32_System_SystemInformation",
     "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Security_Cryptography",

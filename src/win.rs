@@ -33,8 +33,8 @@ use windows::Win32::System::ProcessStatus::{
     GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
 };
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_SET_VALUE, KEY_WOW64_64KEY,
+    RegCloseKey, RegCreateKeyW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_SET_VALUE, KEY_WOW64_64KEY,
     REG_SZ,
 };
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
@@ -205,12 +205,34 @@ fn log_on() -> bool {
     })
 }
 
+/// 现在时刻，形如 `2026-11-13 10:04:36.123`（**本地时间**）。
+///
+/// # 为什么不再用 `{:?}` 打 SystemTime（v2.23.117）
+///
+/// 旧日志每一行长这样：
+/// ```text
+/// [SystemTime { intervals: 134390073465027177 }] === start, args=[...] ===
+/// ```
+/// 排查"开机自启到底有没有跑"这类问题时，第一件事是把这一串 intervals 换算成
+/// 人能读的时间（还是 UTC 的 1601 起点）—— 纯浪费，而且容易算错。
+///
+/// 用 `GetLocalTime` 而不是自己从 UNIX 秒算：时区、夏令时都交给系统，
+/// 也省得为一行日志引日期库。
+pub fn now_stamp() -> String {
+    use windows::Win32::System::SystemInformation::GetLocalTime;
+    let t = unsafe { GetLocalTime() };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03}",
+        t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds
+    )
+}
+
 pub fn log(msg: &str) {
     if !log_on() {
         return;
     }
     let Some(tx) = log_writer() else { return };
-    let line = format!("[{:?}] {}", std::time::SystemTime::now(), msg);
+    let line = format!("[{}] {}", now_stamp(), msg);
     // try_send：队列满就丢 —— 日志永远是"有就行"，绝不能反过来把业务线程堵住
     // （堵住的后果可能是钩子超时被系统卸载，那才是真正的事故）。
     let _ = tx.try_send(line);
@@ -240,7 +262,7 @@ pub fn trace(msg: &str) {
         return;
     }
     let Some(tx) = log_writer() else { return };
-    let line = format!("[{:?}] [trace] {}", std::time::SystemTime::now(), msg);
+    let line = format!("[{}] [trace] {}", now_stamp(), msg);
     let _ = tx.try_send(line);
 }
 
@@ -257,7 +279,7 @@ pub fn log_sync(msg: &str) {
     }
     use std::io::Write;
     let p = crate::config::data_dir().join("log.txt");
-    let line = format!("[{:?}] {}", std::time::SystemTime::now(), msg);
+    let line = format!("[{}] {}", now_stamp(), msg);
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
         let _ = writeln!(f, "{}", line);
         let _ = f.flush();
@@ -577,6 +599,15 @@ pub fn is_admin() -> bool {
     unsafe { IsUserAnAdmin().as_bool() }
 }
 
+/// 这一次是不是「开机自启」拉起来的（v2.23.117）。
+///
+/// 以前用环境变量 `QS_BOOT` 传这个事实，但 `main` 里在它之前已经起过
+/// 一条前台采样线程了 —— `std::env::set_var` 与并发 `env::var` 是一对
+/// 真实的数据竞争（Windows 上会改写进程环境块）。用原子量就没这回事：
+/// 读写都是无锁的，跨线程也安全。
+pub static BOOT_START: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// 用 "runas" 动作重新拉起自己（会弹 UAC）。成功返回 true。
 pub fn relaunch_as_admin() -> bool {
     let exe = match std::env::current_exe() {
@@ -593,8 +624,14 @@ pub fn relaunch_as_admin() -> bool {
      * 结果：双击图标，什么都没发生 —— 用户只会以为程序坏了。
      *
      * `ShellExecuteW` 只传得了**命令行**、传不了环境变量，所以这里用参数把
-     * "交班"意图带过去（main 里再翻译成 QS_TAKEOVER=1，让它等父进程让出互斥体）。 */
-    let wparams = wide("--takeover");
+     * "交班"意图带过去（main 里再翻译成 QS_TAKEOVER=1，让它等父进程让出互斥体）。
+     *
+     * v2.23.117：开机自启拉起的实例还要把 `--autostart` 一起带过去 ——
+     * 提权后的新进程是"真正干活的那一个"，它必须知道自己是开机启动的
+     * （日志 / 等 shell / 下次自检都要用）。 */
+    let boot = BOOT_START.load(std::sync::atomic::Ordering::SeqCst)
+        || std::env::var("QS_BOOT").map(|v| v == "1").unwrap_or(false);
+    let wparams = wide(if boot { "--takeover --autostart" } else { "--takeover" });
     unsafe {
         let r = ShellExecuteW(
             None,
@@ -3599,62 +3636,192 @@ pub fn apps_use_light_theme() -> Option<bool> {
 }
 
 /* ------------------------------------------------------------------ */
-/* 开机自启                                                            */
+/* 注册表小工具（开机自启 / 启动项状态）                                */
+/*                                                                     */
+/* 这一层只做"读写 HKCU 的一个值"，不含任何策略；策略在                */
+/* `crate::autostart`（Run 项 vs 计划任务、校验、自修复）。             */
 /* ------------------------------------------------------------------ */
 
-const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const RUN_VALUE: &str = "QuickAchieve";
-/// 更名前的自启项名（v2.15.0 之前叫 QuickSearch）。
-///
-/// 改名后 exe 文件名也变了，老自启项会指向一个**已经不存在的 exe** ——
-/// 开机时 Windows 找不到文件，用户只会看到"开机没启动"，
-/// 而且多一条永远删不掉的僵尸项。所以每次写/删自启时顺手把它清掉。
-const RUN_VALUE_LEGACY: &str = "QuickSearch";
+/// `HKCU\...\CurrentVersion\Run`：登录时由 Explorer 启动。
+pub const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+/// 任务管理器「启动」页的开关状态（12 字节二进制，第一个字节 3 = 被关掉）。
+pub const STARTUP_APPROVED_RUN: &str =
+    "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run";
 
-pub fn set_autostart(enable: bool) -> bool {
+/// 打开一个 HKCU 子键；不存在时按需要创建。
+fn hkcu_open(sub: &str, create: bool) -> Option<HKEY> {
+    let subw = wide(sub);
+    let mut hkey = HKEY::default();
     unsafe {
-        let sub = wide(RUN_KEY);
-        let mut hkey = HKEY::default();
         let rc = RegOpenKeyExW(
             HKEY_CURRENT_USER,
-            PCWSTR(sub.as_ptr()),
+            PCWSTR(subw.as_ptr()),
             None,
-            KEY_SET_VALUE,
+            KEY_QUERY_VALUE | KEY_SET_VALUE,
             &mut hkey,
         );
-        if rc.0 != 0 {
-            return false;
+        if rc.0 == 0 {
+            return Some(hkey);
         }
-        let name = wide(RUN_VALUE);
-        /* 更名前的僵尸项：不管这次是开还是关，都删一次（不存在也无所谓）。 */
-        let legacy = wide(RUN_VALUE_LEGACY);
-        let _ = RegDeleteValueW(hkey, PCWSTR(legacy.as_ptr()));
-        let ok = if enable {
-            let exe = match std::env::current_exe() {
-                Ok(p) => p,
-                Err(_) => {
-                    let _ = RegCloseKey(hkey);
-                    return false;
-                }
-            };
-            let cmd = wide(&format!("\"{}\"", exe.to_string_lossy()));
-            let bytes = std::slice::from_raw_parts(
-                cmd.as_ptr() as *const u8,
-                cmd.len() * std::mem::size_of::<u16>(),
-            );
-            RegSetValueExW(
-                hkey,
-                PCWSTR(name.as_ptr()),
-                None,
-                REG_SZ,
-                Some(bytes),
-            )
-            .0 == 0
+        if !create {
+            return None;
+        }
+        /* Run 键一般都在，但"优化/安全"类软件确实会把它删掉。删掉之后
+         * 旧代码直接 return false —— 设置页照常显示"开"，实际什么都没写。
+         * 这里补一条"没有就建"的路。 */
+        let rc = RegCreateKeyW(HKEY_CURRENT_USER, PCWSTR(subw.as_ptr()), &mut hkey);
+        if rc.0 == 0 {
+            Some(hkey)
         } else {
-            RegDeleteValueW(hkey, PCWSTR(name.as_ptr())).0 == 0
-        };
+            None
+        }
+    }
+}
+
+/// 读 HKCU 下的一个 REG_SZ（空串 / 读不到都算 `None`）。
+pub fn hkcu_get_sz(sub: &str, name: &str) -> Option<String> {
+    reg_read_sz(HKEY_CURRENT_USER, sub, name)
+}
+
+/// 读 HKCU 下的一个二进制值（启动项的启用/禁用状态用它）。
+pub fn hkcu_get_bytes(sub: &str, name: &str) -> Option<Vec<u8>> {
+    unsafe {
+        let subw = wide(sub);
+        let mut hkey = HKEY::default();
+        if RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subw.as_ptr()),
+            None,
+            KEY_QUERY_VALUE,
+            &mut hkey,
+        )
+        .0 != 0
+        {
+            return None;
+        }
+        let namew = wide(name);
+        let mut buf = [0u8; 64];
+        let mut size = buf.len() as u32;
+        let rc = RegQueryValueExW(
+            hkey,
+            PCWSTR(namew.as_ptr()),
+            None,
+            None,
+            Some(buf.as_mut_ptr()),
+            Some(&mut size),
+        );
         let _ = RegCloseKey(hkey);
-        ok
+        if rc.0 != 0 || size == 0 {
+            return None;
+        }
+        Some(buf[..(size as usize).min(buf.len())].to_vec())
+    }
+}
+
+/// 写 HKCU 下的一个 REG_SZ 值。**写完读回校验**，返回是否真的落地。
+///
+/// 为什么要读回：注册表写入会被组策略 / 安全软件拦（返回码却是成功），
+/// 也会被"同名值重定向"吃掉。旧实现只看 `RegSetValueExW` 的返回码，
+/// 于是"写失败"在界面上永远是"开"。
+pub fn hkcu_set_sz(sub: &str, name: &str, data: &str) -> bool {
+    let Some(hkey) = hkcu_open(sub, true) else {
+        return false;
+    };
+    let namew = wide(name);
+    let cmd = wide(data);
+    let bytes = unsafe {
+        std::slice::from_raw_parts(
+            cmd.as_ptr() as *const u8,
+            cmd.len() * std::mem::size_of::<u16>(),
+        )
+    };
+    let ok = unsafe { RegSetValueExW(hkey, PCWSTR(namew.as_ptr()), None, REG_SZ, Some(bytes)).0 == 0 };
+    let _ = unsafe { RegCloseKey(hkey) };
+    if !ok {
+        return false;
+    }
+    hkcu_get_sz(sub, name)
+        .map(|back| back.trim_end_matches('\0') == data.trim_end_matches('\0'))
+        .unwrap_or(false)
+}
+
+/// 删 HKCU 下的一个值。**不存在也算成功**（调用方只关心"最后它没了"）。
+pub fn hkcu_delete_value(sub: &str, name: &str) -> bool {
+    let Some(hkey) = hkcu_open(sub, false) else {
+        return true; // 键都没有，那当然没有这个值
+    };
+    let namew = wide(name);
+    let rc = unsafe { RegDeleteValueW(hkey, PCWSTR(namew.as_ptr())) };
+    let _ = unsafe { RegCloseKey(hkey) };
+    // 2 = ERROR_FILE_NOT_FOUND（值本来就不在）
+    rc.0 == 0 || rc.0 == 2
+}
+
+/// 这个启动项是不是在任务管理器里被用户关掉了。
+///
+/// `StartupApproved\Run` 的值是 12 字节：首字节 02/01 = 启用，03 = 停用。
+pub fn startup_approved_disabled(name: &str) -> bool {
+    match hkcu_get_bytes(STARTUP_APPROVED_RUN, name) {
+        Some(b) => b.first().map(|x| *x == 3 || *x == 0x0b || *x == 0x0d).unwrap_or(false),
+        None => false,
+    }
+}
+
+/// 把一个启动项在任务管理器里的"停用"状态清掉（回到默认的启用）。
+pub fn startup_approved_reset(name: &str) -> bool {
+    hkcu_delete_value(STARTUP_APPROVED_RUN, name)
+}
+
+/// 静默跑一个命令（不弹控制台窗口），返回（是否成功, 合并后的输出）。
+///
+/// 用于 `schtasks`：计划任务是"无需 UAC 的提权自启"唯一干净的路子，
+/// 但 windows-rs 的 COM 接口写起来一大坨，命令行版在这里足够稳。
+pub fn run_hidden(exe: &str, args: &[&str]) -> Option<(bool, String)> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new(exe)
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if text.is_empty() {
+        text = err;
+    }
+    Some((out.status.success(), text))
+}
+
+/// 系统的 shell（explorer）准备好没有。
+///
+/// 开机自启时我们可能比 shell 更早起来：那一刻 `Shell_TrayWnd` 还没建，
+/// 托盘图标会挂在一个不存在的通知区上，用户看不到图标（= "没自启"）。
+pub fn shell_ready() -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetShellWindow;
+    unsafe { !GetShellWindow().0.is_null() }
+}
+
+/// 等另一个进程退出（最多 `ms` 毫秒）。进程已经不在 → 立刻返回 true。
+///
+/// 用途（v2.23.119）：退出时派出去的那个"清理 WebView2 临时缓存"的小助手，
+/// 必须等主进程真的退出（WebView2 的 `msedgewebview2.exe` 子进程也退干净）
+/// 才能删掉缓存目录 —— 早一秒都会撞上"文件被占用"。
+///
+/// 拿不到句柄（进程已经没了 / 权限不够）一律当成"已退出"：删不掉也只是留个
+/// 临时目录，下次启动还会再清一遍，不值得为它卡住。
+pub fn wait_process_exit(pid: u32, ms: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+    use windows::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE};
+    if pid == 0 {
+        return true;
+    }
+    unsafe {
+        let Ok(h) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) else {
+            return true;
+        };
+        let r = WaitForSingleObject(h, ms);
+        let _ = CloseHandle(h);
+        r == WAIT_OBJECT_0
     }
 }
 

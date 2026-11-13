@@ -195,13 +195,17 @@ function killInstance() { for (const c of children) { try { c.kill(); } catch (e
 const logSince = (off) => { try { return fs.readFileSync(LOG).slice(off).toString('utf8'); } catch (e) { return ''; } };
 const logSize = () => { try { return fs.statSync(LOG).size; } catch (e) { return 0; } };
 
-/** 日志行里的时间戳（`intervals` 是 100ns 计数）。只取到毫秒，避开双精度精度损失。 */
+/** 日志行里的时间戳，统一成毫秒。
+ *
+ *  v2.23.117 起新日志是本地时间（`[2026-11-13 10:04:36.123]`），旧格式
+ *  （`intervals`，100ns 计数）继续认 —— 两个分支都只用于做差。 */
 function ticksOf(s, re) {
     for (const line of s.split(/\r?\n/)) {
-        if (re.test(line)) {
-            const m = line.match(/intervals: (\d+)/);
-            if (m) return Number(m[1].slice(0, -4));
-        }
+        if (!re.test(line)) continue;
+        const old = line.match(/intervals: (\d+)/);
+        if (old) return Number(old[1].slice(0, -4));
+        const now = line.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\]/);
+        if (now) return Date.parse(now[1].replace(' ', 'T'));
     }
     return null;
 }

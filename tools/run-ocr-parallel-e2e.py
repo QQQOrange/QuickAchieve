@@ -28,6 +28,7 @@
     ocr-parallel.trace.txt        交互过程（node 写的）
     cdp-*.txt                     CDP 读到的页面状态
 """
+import datetime
 import io
 import json
 import os
@@ -345,9 +346,20 @@ def rx(pat):
 
 
 def ts_of(log, pat):
-    """取日志里第一条匹配 `pat` 的行的 SystemTime（100ns 计数）。找不到返回 None。"""
+    """取日志里第一条匹配 `pat` 的行的 SystemTime（100ns 计数）。找不到返回 None。
+
+    v2.23.117 起日志时间戳是可读的本地时间（`[2026-11-13 10:04:36.123]`），
+    这里把它换算回同样的 100ns 计数 —— 调用方只做差，量纲一致就行。
+    """
     m = re.search(r'\[SystemTime \{ intervals: (\d+) \}\] [^\n]*' + pat, log)
-    return int(m.group(1)) if m else None
+    if m:
+        return int(m.group(1))
+    m = re.search(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\] [^\n]*' + pat,
+                  log, re.M)
+    if m:
+        dt = datetime.datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S.%f')
+        return int((dt - datetime.datetime(1601, 1, 1)).total_seconds() * 10_000_000)
+    return None
 
 
 def last_par_count(log, pat):

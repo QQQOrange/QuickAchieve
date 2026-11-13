@@ -23,6 +23,12 @@ mod backupdiff;
 mod cliphist;
 /* v2.23.43：本地答案（算式 / 单位 / 日期 / 颜色 / 编解码） */
 mod localanswer;
+/* v2.23.117：开机自启（Run 项 / 计划任务 / 校验 / 自修复）
+ *
+ * 从 win.rs 的 `set_autostart` 拆出来：那一段只负责"写一个注册表值"，
+ * 而真正的问题（写完有没有生效、提权怎么配合、任务管理器里被禁用了）
+ * 全在里面看不到。现在策略集中在 autostart.rs，win.rs 只留读写原语。 */
+mod autostart;
 
 /// 前端资源目录：exe 同级的 ui/，开发期回退到源码目录。
 /// 便携测试版的硬开关。
@@ -1583,7 +1589,8 @@ fn capture_selection(target_pid: u32, target_hwnd: Option<HWND>) -> Option<Strin
              *
              * 而这条通道实测也没换来什么：微信 4.x 收到它照样不复制
              * （`changed=false`），其它程序有 SendInput / WM_COPY 就够了。
-             * 现在有"复制失败改看屏幕"的本地识别兜底，丢它不影响取词。
+             * v2.23.121 起选区不再做屏幕识别，这条通道本就没有兜底作用，
+             * 丢掉它不影响取词。
              * 排障时可以用 QS_ALLOW_KEYMSG=1 临时打开。 */
             let allowed = std::env::var("QS_ALLOW_KEYMSG")
                 .map(|v| v == "1")
@@ -3905,9 +3912,9 @@ fn __probe_post_copy() -> String {
 ///
 /// 存在的理由（2026-10-31 实测）：`spawn_bar_away_guard` 的判据是"指针离横条
 /// 多远"，用户划完词手一抬常常已经离得很远（日志里 `指针离横条 522px`）——
-/// 横条在补字的**几毫秒之后**就被收掉了，后面的本地识别分支拿到的第一句就是
+/// 横条在补字的**几毫秒之后**就被收掉了，后面的补字分支拿到的第一句就是
 /// `is_bar_shown() == false`，于是**一声不响地返回**。用户看到的就是
-/// "微信里划词没反应"，而日志里除了"改看屏幕"什么都没有。
+/// "微信里划词没反应"，而日志里除了"复制没拿到文字"什么都没有。
 /// 补字期间（最多两三秒）先别收条，做完再让它照常按距离收。
 static CAPTURE_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 /// 横条内容 / 布局发生过变化的代次。`bar-away` 用它重置"指针离开"计时：
@@ -3959,8 +3966,10 @@ fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
     /* 终端里 Ctrl+C 是 SIGINT，不是复制。先弹空条的路径完全绕过了
      * `confirm_selection_text` 的那道保护，这里必须再挡一次。 */
     if drag_in_console(drag) {
-        win::log("post-copy: 起点在终端里 —— 不发 Ctrl+C，改走本地识别");
-        post_ocr_fill(gen, fg_pid, drag);
+        /* v2.23.121：不再用 OCR 兜底（用户口径：「选择文字不能靠 OCR 兜底」）。
+         * 终端里 Ctrl+C 是中断信号，不能发；屏幕识别又已被要求去掉 ——
+         * 这一支只能放弃补字，横条保持空着。 */
+        win::log("post-copy: 起点在终端里 —— 不发 Ctrl+C，也不做屏幕识别；不补字");
         return;
     }
     /* 用户已经切走：不要拿新前台的选区冒充这一次划词的结果。 */
@@ -4006,157 +4015,21 @@ fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
             win::log(&format!("post-copy: 补字成功（{n} 字）"));
         }
         _ => {
-            /* v2.11.5：复制通道**全废**时改"看屏幕"。
-             *
-             * 微信 4.x（Qt）会直接忽略带 LLKHF_INJECTED 的 Ctrl+C —— 实测选区
-             * 在屏幕上蓝着、剪贴板一个字没变，三条复制通道（合成按键 / WM_COPY /
-             * 按键消息）全部拿不到。用户的口径是"选中文字就必须有横条、有字"，
-             * 所以退到最后一条路：把刚才划过的那块屏幕交给**本地 OCR**（不联网、
-             * 50~150ms），认出来再补进横条。
-             *
-             * 放在"横条已显示之后"做，所以弹条速度一点不受影响。 */
-            win::log("post-copy: 复制没拿到文字 —— 改看屏幕（本地识别补字）");
-            post_ocr_fill(gen, fg_pid, drag);
+            /* v2.23.121：复制 / UIA 都没拿到字 → **不再看屏幕**（用户口径：
+             * 「选择文字不能靠 OCR 兜底」）。屏幕上有字和"你选中了它"是两回事，
+             * OCR 既会误弹、又会把界面上的字当成选区内容。这里只明确告诉用户
+             * 这个程序不支持划词取词，横条保持空着。 */
+            win::log("post-copy: 复制没拿到文字 —— 不做屏幕识别（按用户要求），放弃补字");
+            hint_no_uia_once(fg_pid);
         }
     }
 }
 
-/// 复制通道全废时的兜底：**直接认刚才划过的那块屏幕**（本地 OCR，不联网）。
+/// 鼠标落点（以及它所在的顶层窗口）是不是控制台/终端。
 ///
-/// 只服务"复制不动"的客户端（微信 4.x 这类会忽略合成按键的 Qt 程序），
-/// 所以：
-///   · 只在 `post_copy` 失败**之后**调用，正常软件一次都不会走到；
-///   · 只认拖选的那块矩形，缩放后交给 Windows 本地 OCR，不发网络请求；
-///   · 横条此时已经显示，认出来用 `push_late_text` 补进去，弹条不受影响。
-fn post_ocr_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
-    /* v2.11.7：这里的每一条提前返回**都要留痕**。
-     * 上一版三个分支都是裸 `return`，于是"微信里横条没字"这件事在日志里
-     * 只留下一句"改看屏幕"，看不出到底卡在哪一步 —— 排查全靠猜。 */
-    if !is_bar_shown() {
-        win::log("post-ocr: 横条已经收起了 —— 不补字");
-        return;
-    }
-    if GEN.load(Ordering::SeqCst) != gen {
-        win::log("post-ocr: 横条已经换新的一条 —— 不补字");
-        return;
-    }
-    /* 用户可能已经点到别处去了 —— 那时认出来的字不是他要的，别硬塞。 */
-    let fg = win::window_pid(win::foreground_window());
-    let me = std::process::id();
-    if fg != 0 && fg != fg_pid && fg != me {
-        let same_app = match (win::process_exe(fg), win::process_exe(fg_pid)) {
-            (Some(a), Some(b)) => a.eq_ignore_ascii_case(&b),
-            _ => false,
-        };
-        if !same_app {
-            win::log("post-ocr: 前台已经换人 —— 不补字");
-            return;
-        }
-    }
-    /* 认字这件事连同"补内边距 / 保底尺寸 / 调试图"全在 `ocr_region_text` 里 ——
-     * 弹条前确认选区那条路用的是同一份实现，两边不会走样。 */
-    match ocr_region_text(drag) {
-        Some(text) => {
-            if !is_bar_shown() || GEN.load(Ordering::SeqCst) != gen {
-                win::log("post-ocr: 认出来了但横条已换新 —— 丢弃");
-                return;
-            }
-            let n = text.chars().count();
-            push_late_text(text, true);
-            win::log(&format!("post-ocr: 本地识别补字成功（{n} 字）"));
-        }
-        None => win::log("post-ocr: 屏幕上也没认到字（或截取失败）"),
-    }
-}
-
-/// 把"刚才划过的那块屏幕"交给 **Windows 本地 OCR**（不联网），返回认出来的文字。
-///
-/// 抽成独立函数的理由：有两条路要用它，而对"怎么补内边距、怎么保底尺寸、
-/// 怎么存调试图"的要求完全一致 —— 各抄一份迟早会走样。
-///   · `post_ocr_fill`：横条已经弹出来、复制通道拿不到字时补字；
-///   · `confirm_selection_text`：**弹条之前**确认"真的选中了东西"
-///     （微信 4.x 这类忽略合成按键的客户端，只有这条能给出证据）。
-fn ocr_region_text(drag: (i32, i32, i32, i32)) -> Option<String> {
-    let (x0, y0, x1, y1) = drag;
-    /* ⚠ v2.11.7：内边距给足。原来上下各 10px，横着拖出来的选区只有 20px 高，
-     *   而一行中文在这个 DPI 下就有 16~18px —— 上下几乎贴边，Windows 本地 OCR
-     *   对"切到字沿"的图非常敏感，实测直接返回"没有识别到文字"。
-     *   现在上下各 16px（≈ 一行字的完整高度，含上下留白），并保底 40px。 */
-    const PAD_X: i32 = 6;
-    const PAD_Y: i32 = 16;
-    let x = x0.min(x1) - PAD_X;
-    let mut y = y0.min(y1) - PAD_Y;
-    let mut w = (x1 - x0).abs() + PAD_X * 2;
-    let mut h = (y1 - y0).abs() + PAD_Y * 2;
-    if h < 40 {
-        let grow = 40 - h;
-        y -= grow / 2;
-        h = 40;
-    }
-    if w < 40 {
-        w = 40;
-    }
-    if w < 8 || h < 8 || w > 3000 || h > 2000 {
-        win::log(&format!("ocr-region: 选区尺寸 {w}x{h} 不适合识别 —— 跳过"));
-        return None;
-    }
-    let Some((cw, ch, pixels)) = win::grab_region(x, y, w, h) else {
-        win::log("ocr-region: 截取选区失败");
-        return None;
-    };
-    win::log(&format!("ocr-region: 截取 ({x},{y}) {w}x{h} → {cw}x{ch}"));
-    let Some(img) = image::RgbaImage::from_raw(cw, ch, pixels) else {
-        win::log("ocr-region: 像素数据异常");
-        return None;
-    };
-    let mut cur = std::io::Cursor::new(Vec::new());
-    if image::DynamicImage::ImageRgba8(img)
-        .write_to(&mut cur, image::ImageFormat::Png)
-        .is_err()
-    {
-        return None;
-    }
-    /* 排障用：`QS_OCR_DEBUG=1` 时把这一块存下来，能直接看出"到底截到了什么"。
-     * 开关也可以是数据目录里的 `ocr-debug.on` —— 提权启动（-Verb RunAs）时
-     * 环境变量不一定会继承下来，那个文件是给这种情况准备的后门。 */
-    if std::env::var("QS_OCR_DEBUG").map(|v| v == "1").unwrap_or(false)
-        || config::data_dir().join("ocr-debug.on").exists()
-    {
-        let p = config::data_dir().join("ocr-debug.png");
-        let _ = std::fs::write(&p, cur.get_ref());
-        win::log(&format!("ocr-region: 调试图已存 {}", p.display()));
-    }
-    match run_ocr(&cur.into_inner(), "windows") {
-        Ok((text, _raw, _label)) if !text.trim().is_empty() => Some(text),
-        Ok(_) => {
-            win::log("ocr-region: 屏幕上没认到字");
-            None
-        }
-        Err(e) => {
-            win::log(&format!("ocr-region: 本地识别失败：{e}"));
-            None
-        }
-    }
-}
-
-/// **弹条之前**确认「这次拖选是不是真的选中了东西」。
-///
-/// # 为什么需要它（v2.12.6，用户报"没选中任何文字也弹横条"）
-///
-/// 之前的行为是"拖选 + 没文字 → 照样弹空条，弹完再复制补字"。于是**任何一次
-/// 拖动**（拖滚动条、拖画布、拖图片、拖窗口里的空白）都会冒一条空横条。
-/// 用户的口径变了：**确实选中了文本才显示**。
-///
-/// "确实选中了"这件事只有两条证据来源：
-///   ① 复制通道 —— 模拟 Ctrl+C，剪贴板真的变了才说明有选区（**有就是有**，
-///      而且拿到的原文最精确）；剪贴板快照/还原逻辑复用现成的
-///      `capture_selection_fast`，用户原来的剪贴板内容不会被留下覆盖；
-///   ② 屏幕识别 —— 微信 4.x（Qt）这类会忽略合成按键的程序，复制永远拿不到，
-///      把划过的那块屏幕交给本地 OCR（约 100~200ms）。
-///
-/// ⚠ 这里**不走 `capture_selection` 的完整三级通道**（最坏 3.7s）：弹条前
-///   不能把用户晾在那里。快通道 700ms 拿不到就直接看屏幕 —— 而"看屏幕"
-///   正好就是微信这条路的唯一证据来源。
+/// 终端里 Ctrl+C 是 SIGINT 而不是复制：误发会把用户正在跑的编译/脚本打断。
+/// 这里同时查"鼠标底下"和"用户以为自己在操作"的窗口 —— 后者防的是
+/// 贴纸 / 悬浮球这类穿透浮层盖在终端上的情况。
 fn drag_in_console(drag: (i32, i32, i32, i32)) -> bool {
     let start = win::window_under_point(drag.0, drag.1);
     let app_win = win::window_under_point_app(drag.0, drag.1);
@@ -4165,42 +4038,19 @@ fn drag_in_console(drag: (i32, i32, i32, i32)) -> bool {
         .any(|h| is_console_window(*h))
 }
 
+/// **弹条之前**确认「这次拖选是不是真的选中了文字」。
+///
+/// 只认两条**有选区**的证据：复制通道（快通道，700ms）与 UIA。
+/// v2.23.121 起不再用屏幕 OCR 兜底（用户口径：「选择文字不能靠 OCR 兜底」）：
+/// 屏幕上有字 ≠ 用户选中了它 —— 拖滚动条 / 拖画布 / 拖空白时 OCR 会误认，
+/// 也会把界面上的固定文字当成选区内容。拿不到就认定该程序不支持划词取词，
+/// 提示一次、不弹条。
+///
+/// 终端里连 Ctrl+C 都不发（会打断正在跑的命令），直接按"取不到"处理。
 fn confirm_selection_text(target_pid: u32, drag: (i32, i32, i32, i32)) -> Option<String> {
-    /* ⚠ v2.23.8：**屏幕识别不再算"选中了文字"的证据**（当「没取到文字就不弹」开着时）。
-     *
-     * 用户报的是"没选中文字也会弹出横条"。查下来这条兜底就是主因：
-     * 复制 / UIA 都没拿到文字时，这里改成"看看屏幕上有没有字"—— 可屏幕上有字
-     * 跟"你选中了它"完全是两件事：拖一下滚动条、拖一下窗口、拖一下画布，
-     * 只要落点附近有文字，OCR 就会认出来，于是**每一次拖动都可能冒出一条横条**。
-     *
-     * 现在的口径：
-     *   · 开关开着（默认）→ 只认**复制 / UIA** 这种"真的有选区"的证据；
-     *     拿不到就当作没选中，不弹；
-     *   · 开关关掉 → 老行为（自绘界面 / 游戏的用户需要它：那些地方复制不通，
-     *     只能靠看屏幕确认）。
-     *
-     * 换句话说：宁可漏一次，也不要误弹一次。 */
-    let need_text = cfg_with(|c| c.bar_need_text);
-    /* ⚠ 终端里**不模拟 Ctrl+C**。
-     *
-     * 控制台类窗口里 Ctrl+C 不是"复制"而是**中断信号**：没有选区时按下它，
-     * 正在跑的命令（编译、脚本、服务器）会被直接打断。这条兜底以前就存在
-     * （`post_show_copy_fill` 对空文字的拖选一律复制），趁这次把口子堵上：
-     * 终端里改走"看屏幕"，一样能确认有没有选中文字，还不会误杀进程。 */
-    /* ⚠ v2.23.10：**浮层下面如果是终端，也绝不能发 Ctrl+C**。
-     *
-     * 判据以前只看"鼠标底下那个窗口"，可鼠标底下可能盖着一层穿透浮层
-     * （贴纸 / 悬浮球 / 屏幕增强工具），这时 `start` 是浮层、不是终端 ——
-     * 我们照样把 Ctrl+C 发出去，落到下面的终端里就是**中断信号**，
-     * 用户正在跑的编译 / 脚本当场被杀。
-     * 现在把"鼠标底下的窗口"和"用户以为自己在操作的那个窗口"都查一遍。 */
     if drag_in_console(drag) {
-        if need_text {
-            win::log("confirm: 起点在终端里，且「没取到文字就不弹」开着 —— 不模拟 Ctrl+C、也不看屏幕，不弹");
-            return None;
-        }
-        win::log("confirm: 起点在终端里 —— 不模拟 Ctrl+C（会打断正在跑的命令），直接看屏幕");
-        return ocr_region_text(drag).filter(|t| !t.trim().is_empty());
+        win::log("confirm: 起点在终端里 —— 不模拟 Ctrl+C（会打断正在跑的命令），也不做屏幕识别，不弹");
+        return None;
     }
     let target_hwnd = {
         let h = win::window_under_point_app(drag.0, drag.1);
@@ -4611,7 +4461,7 @@ fn start_capture(
             if text.trim().is_empty() && need_text {
                 /* v2.23.65：**双击 / 三击选词也算"选中"**（`dbl`）。 */
                 if early_gen.is_some() {
-                    win::log("start_capture: 空条已先弹出，继续后台补字（复制 / 本地识别）");
+                    win::log("start_capture: 空条已先弹出，继续后台补字（复制 / UIA）");
                 } else {
                     if !dragged && !dbl {
                         win::log(
@@ -4630,7 +4480,7 @@ fn start_capture(
                         }
                         None => {
                             win::log(
-                                "start_capture: 拖选但没有选区（复制与屏幕识别都没拿到字）—— 这次不弹",
+                                "start_capture: 拖选但没有选区（复制与 UIA 都没拿到字）—— 这次不弹",
                             );
                             return;
                         }
@@ -6342,6 +6192,39 @@ pub(crate) fn diagnostics_text() -> String {
     // v2.23.46：实体搬到 `src/diag.rs`（逻辑出模块、命令留薄壳）
     crate::diag::text()
 }
+
+/* ---------------- 开机自启（v2.23.117） ---------------- */
+
+/// 现查一次真实状态：注册表里是什么、指向谁、计划任务在不在、
+/// 有没有被任务管理器禁用。设置页打开 / 点「重新检查」时调。
+#[crate::t::command]
+fn autostart_state() -> Value {
+    let desired = cfg_with(|c| c.auto_start);
+    let mut st = crate::autostart::status();
+    st.desired = desired;
+    st.to_json()
+}
+
+/// 「立即修复」：按当前配置重写启动项（需要提权就用计划任务），
+/// 返回最终状态。写失败不会假装成功 —— 前端拿 `active/error` 显示原因。
+#[crate::t::command]
+fn autostart_repair() -> Value {
+    let desired = cfg_with(|c| c.auto_start);
+    let st = crate::autostart::apply(desired, autostart_wants_elevate());
+    broadcast();
+    st.to_json()
+}
+
+/// 打开 Windows 自己的「设置 → 应用 → 启动」页。
+///
+/// 万一用户在那里把本程序关掉了（写在 `StartupApproved\Run` 里），
+/// 我们只能检测出来并提示；真正把它拨回去还是得靠这个系统页面，
+/// 给个一步直达的入口比让用户自己翻设置强。
+#[crate::t::command]
+fn autostart_open_settings() {
+    let _ = win::shell_execute_raw("ms-settings:startupapps");
+}
+
 #[crate::t::command]
 fn get_config() -> Value {
     config_view()
@@ -6770,6 +6653,9 @@ fn quit_locked_app() {
 fn shutdown_common() {
     img_temp_cleanup();
     crate::trayhost::remove();
+    /* v2.23.119：临时 WebView2 缓存（默认在 %TEMP%）退出即清。
+     * 放在这里是因为**所有退出入口**都会走它（见上面注释）。 */
+    crate::config::cleanup_ephemeral_webview_on_exit();
 }
 
 /// 解锁之后才该发生的启动动作：亮出主界面 + 自动检查更新 + 启动时的云同步。
@@ -7525,7 +7411,7 @@ fn restore_from_text(text: &str) -> Result<String, String> {
          *   · 恢复 autoStart=true 的备份 → 显示"开"却不自启（要等下次手动
          *     启动、由启动补写那一步才生效）。
          * autoElevate 同理（启动时优先读 elevate.pref，配置里的值会被盖掉）。 */
-        win::set_autostart(cfg.auto_start);
+        crate::autostart::apply(cfg.auto_start, autostart_wants_elevate());
         write_local_elevate_pref(cfg.auto_elevate);
     }
     broadcast();
@@ -7863,6 +7749,10 @@ fn backup_once(cfg: &Config, timeout_secs: u64) -> Result<BackupOutcome, String>
             None
         }
     };
+    /* v2.23.121：本地只留最近 10 份（滚动 + 立即 + 快照合起来算）。
+     * WebDAV 每次同步都会在本地落一份 `config(时间戳)`，不裁的话目录会一直涨
+     * （用户机器上已经 203 份 / 63 MB）。 */
+    config::prune_backups(&dir, config::MAX_BACKUPS);
 
     // ② 再把**同一份字节**推上去（同名）
     webdav::upload_named(&o, &name, &payload)?;
@@ -7945,6 +7835,23 @@ pub(crate) fn read_local_elevate_pref() -> Option<bool> {
 pub(crate) fn write_local_elevate_pref(on: bool) {
     config::ensure_dirs();
     let _ = std::fs::write(local_elevate_pref_path(), if on { "1" } else { "0" });
+}
+
+/// 「开机自启要不要走提权那一条」—— 与启动时 `elevate_wanted` 同源。
+///
+/// 需要提权时用计划任务（登录即以管理员身份启动，不弹 UAC），不需要时用
+/// `HKCU\...\Run`。只有**当前进程真的是管理员**才建得起 HIGHEST 任务，
+/// 所以这里带上 `win::is_admin()`：普通权限实例只负责把 Run 项写对。
+pub(crate) fn autostart_wants_elevate() -> bool {
+    let want = read_local_elevate_pref().unwrap_or(!QS_LITE_PORTABLE && config::load().auto_elevate);
+    want && win::is_admin()
+}
+
+/// 同上，但用**调用方手里那份配置**（`apply_one_setting` 已经持着 cfg 锁，
+/// 这里再去 `config::load()` / `cfg_with()` 会二次加锁或白读一次磁盘）。
+pub(crate) fn autostart_wants_elevate_for(cfg: &config::Config) -> bool {
+    let want = read_local_elevate_pref().unwrap_or(!QS_LITE_PORTABLE && cfg.auto_elevate);
+    want && win::is_admin()
 }
 
 fn restore_local_only_settings(elevate: bool, autostart: bool) {
@@ -8970,6 +8877,9 @@ fn update_restart() {
                     /* 新进程已经拉起来了，再把旧托盘图标摘掉。放在 spawn 成功
                      * 之后：启动失败时用户还要继续用这一份，图标不能先没。 */
                     crate::trayhost::remove();
+                    /* v2.23.119：临时 WebView2 缓存退出即清（这条路径没走
+                     * `shutdown_common`，单独补一次）。 */
+                    crate::config::cleanup_ephemeral_webview_on_exit();
                     app().exit(0);
                 }
                 Err(e) => {
@@ -19779,6 +19689,37 @@ fn esc_probe_run() {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    /* v2.23.119：**临时 WebView2 缓存的清理助手**。
+     *
+     * 退出时主进程会以 `--clean-webview <目录> --parent-pid <pid>` 把自己再拉起来
+     * 一份，它只做一件事：等父进程（和它的 msedgewebview2 子进程）退干净 →
+     * 删掉那个临时目录 → 退出。
+     *
+     * 位置必须在这里：**早于单实例检查、早于日志/配置初始化** ——
+     *   · 单实例检查会让它撞上"已经有一个在跑"直接退出（那时缓存还没删）；
+     *   · 它不该碰配置、写日志、建任何窗口。 */
+    if let Some(i) = args.iter().position(|a| a == "--clean-webview") {
+        let dir = args.get(i + 1).cloned().unwrap_or_default();
+        let pid = args
+            .iter()
+            .position(|a| a == "--parent-pid")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(0);
+        if !dir.is_empty() {
+            if pid != 0 {
+                win::wait_process_exit(pid, 20_000);
+            }
+            let p = std::path::Path::new(&dir);
+            for _ in 0..10 {
+                if !p.exists() || std::fs::remove_dir_all(p).is_ok() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+        }
+        return;
+    }
     let flag = |name: &str| args.iter().any(|a| a == name);
     let env_on = |k: &str| std::env::var(k).map(|v| v == "1").unwrap_or(false);
 
@@ -19786,6 +19727,21 @@ fn main() {
     start_foreground_sampler();
 
     let no_elevate = flag("--no-elevate") || env_on("QS_NO_ELEVATE");
+    /* v2.23.117：「这一次是开机自启拉起来的」。
+     *
+     * 为什么要单独认这个标记：
+     *   ① 日志里能一眼分开"开机拉起"和"用户双击" —— 排查"自启没生效"时
+     *      这是第一个要看的事实（以前只能靠时间和猜测）；
+     *   ② 提权重启时 `ShellExecuteW` 不继承环境变量，得靠 `QS_BOOT` 让
+     *      `relaunch_as_admin` 把这个参数原样带过去；
+     *   ③ 开机那一刻 shell 往往还没就绪，托盘图标会挂到不存在的通知区 ——
+     *      认出来就先等一会儿（见单实例检查之后那段）。 */
+    let boot_start = flag(crate::autostart::BOOT_ARG) || env_on("QS_BOOT");
+    if boot_start {
+        /* 用原子量而不是 `set_var`：这个点之前已经起过前台采样线程了，
+         * 改环境块与别的线程读环境是一对真实的数据竞争（见 win::BOOT_START）。 */
+        win::BOOT_START.store(true, Ordering::SeqCst);
+    }
     /* v1.4.0：老用户的数据从 `%APPDATA%\QuickAchieve` 迁到 **exe 旁边的
      * `Quick Achieve data`**（备份进 `Quick Achieve back`）。
      *
@@ -20148,7 +20104,19 @@ fn main() {
         .map(|n| n.min(5000));
     // 这一行必须**同步**落盘：紧接着的单实例判定可能让进程在几百微秒内 exit，
     // 走异步队列的话它会直接丢（排查时表现为"日志里什么都没有"，很容易误判）。
-    win::log_sync(&format!("=== start, args={:?} ===", args));
+    win::log_sync(&format!(
+        "=== start, args={:?}, boot={} ===",
+        args,
+        if boot_start { "yes" } else { "no" }
+    ));
+    /* v2.23.118：数据目录解析期间攒下的说明（自动迁移 / 便携标记 / 目录不可写）。
+     *
+     * 那时**不能**直接写日志：`win::log` 的开关判定会回头调 `data_dir()`，
+     * 而 `data_dir()` 的 `OnceLock` 正在初始化 —— 同一线程二次进入就是死锁。
+     * 所以先攒着，等这里定下来再补写。 */
+    for note in config::take_data_dir_notes() {
+        win::log(&note);
+    }
 
     // 任何线程 panic 都记进日志，而不是让程序静默消失
     //
@@ -20222,6 +20190,23 @@ fn main() {
             );
         }
         std::process::exit(0);
+    }
+
+    /* v2.23.117：开机自启这条路上，先等 shell 就绪再继续。
+     *
+     * 用户报的现象是"开机自启没生效"，但其中一部分其实是**程序起来了、
+     * 托盘图标没挂上**：登录那一刻 Explorer 还没把 `Shell_TrayWnd` 建出来，
+     * 这时 `Shell_NotifyIcon` 会静默失败，图标进了虚空 —— 用户看到的
+     * 就是"没启动"。等最多 10 秒（正常机器 1~3 秒就好了），超时也继续
+     * 启动：宁可图标晚一点，也不能卡在一个永远起不来的程序上。 */
+    if boot_start {
+        let t0 = std::time::Instant::now();
+        let ok = win::wait_until(10_000, win::shell_ready);
+        win::log(&format!(
+            "boot: 等 shell {}（{} ms）",
+            if ok { "就绪" } else { "超时，仍然继续启动" },
+            t0.elapsed().as_millis()
+        ));
     }
 
     /* 3. WebView2 运行时检查（v1.5.15）。
@@ -20362,15 +20347,23 @@ fn main() {
         );
     }
     let cfg0 = cfg_snapshot();
-    /* ⚠ 便携副本 / 测试副本专用逃生口：**别把开机自启改指向"这一份"**。
+    /* v2.23.117：开机自启的**自修复**（每次启动都走一遍）。
      *
-     * 场景很具体：把 exe 复制到桌面或 U 盘试一下，配置是从正式版拷来的
-     * （`autoStart` 还是 true），一启动就会把 `HKCU\...\Run` 里的路径改成
-     * 这个副本 —— 正式版的开机自启就被悄悄顶掉了，用户下次开机看到的
-     * 是桌上那份测试版。带这个环境变量即可避免（测试副本的启动脚本里就有）。 */
-    if cfg0.auto_start && !env_on("QS_SKIP_AUTOSTART") && !QS_LITE_PORTABLE {
-        win::set_autostart(true);
-    }
+     * 旧版本这里写的是 `if cfg0.auto_start && !env_on("QS_SKIP_AUTOSTART") && !QS_LITE_PORTABLE`，
+     * 也就是说：本仓库这套构建（`QS_LITE_PORTABLE = true`）**从来不会补写启动项**。
+     * 设置页那个开关只在被点的那一下写一次注册表 —— 之后被"优化/安全"软件删掉、
+     * 被另一份副本顶掉、被任务管理器禁用，都再没有任何代码去修。用户看到的
+     * 就是"明明开着，重启却不启动"。
+     *
+     * 现在交给 `autostart::ensure`：
+     *   · 要开却没生效 / 指向别处 / 被禁用 / 该用计划任务却只有 Run 项 → 重写；
+     *   · 要关却还有残留（老版本写的、恢复旧备份写的）→ 清掉；
+     *   · 状态本来就对 → 只读一次，不写盘。
+     * 逃生口仍在：`QS_SKIP_AUTOSTART=1`（见 autostart.rs）。
+     *
+     * ⚠ 放在提权**之后**：只有管理员实例才建得起"登录时以最高权限运行"的
+     *   计划任务（见 autostart::apply 的说明）。 */
+    crate::autostart::ensure(cfg0.auto_start, elevate_wanted && win::is_admin());
     crate::t::Builder::default()
         .invoke_handler(crate::t::generate_handler![
             get_config,
@@ -20379,6 +20372,10 @@ fn main() {
             // v2.23.36：一键诊断（设置页「关于」里的「复制诊断信息」）
             diagnostics_text,
             copy_diagnostics,
+            // v2.23.117：开机自启 —— 现查状态 / 立即修复 / 打开系统启动项页
+            autostart_state,
+            autostart_repair,
+            autostart_open_settings,
             // v2.23.45：恢复前差异预览
             backup_diff,
             // v2.23.45：收藏夹一步收
@@ -20689,16 +20686,26 @@ fn main() {
              * ② 顺手打开设置窗口，让用户至少看到"它确实起来了"，也能当场配引擎。
              * 只做这一次（FIRST_RUN 用完即清），之后启动安静如常。 */
             if FIRST_RUN.swap(false, Ordering::SeqCst) {
-                win::log("first-run: 全新安装，弹引导 + 打开设置");
-                std::thread::spawn(move || {
-                    // 等一会儿：WebView2 环境初始化 + 托盘图标挂上都要时间
-                    std::thread::sleep(Duration::from_millis(1200));
-                    crate::trayhost::balloon(
-                        "Quick Achieve 已经在托盘里运行",
-                        "选中任意软件里的文字就会弹出横条；Ctrl+Alt+O 截图识别；右键托盘图标可以打开设置。",
-                    );
-                    open_settings(None, None);
-                });
+                /* v2.23.117：开机自启拉起的实例**不要**弹引导、也**不要**开设置窗。
+                 *
+                 * 那条路的用户场景是"刚登录 Windows、人可能还没坐到电脑前"：
+                 * 突然在屏幕中央弹出一个设置窗口，既吓人又打断开机。
+                 * 托盘气泡也留不下来（通知区可能还没建好）。这里只记日志，
+                 * 用户真正第一次双击打开时再引导。 */
+                if win::BOOT_START.load(Ordering::SeqCst) {
+                    win::log("first-run: 这次是开机自启拉起的，跳过引导与设置窗（等用户自己打开）");
+                } else {
+                    win::log("first-run: 全新安装，弹引导 + 打开设置");
+                    std::thread::spawn(move || {
+                        // 等一会儿：WebView2 环境初始化 + 托盘图标挂上都要时间
+                        std::thread::sleep(Duration::from_millis(1200));
+                        crate::trayhost::balloon(
+                            "Quick Achieve 已经在托盘里运行",
+                            "选中任意软件里的文字就会弹出横条；Ctrl+Alt+O 截图识别；右键托盘图标可以打开设置。",
+                        );
+                        open_settings(None, None);
+                    });
+                }
             }
             // 压测模式下不装钩子：那是要跑成百上千次 show/hide，
             // 钩子再来凑热闹会把结果搅乱。

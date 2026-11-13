@@ -335,9 +335,14 @@ for (let i = 1; i <= N; i++) {
         const dl = logSince();
         const capLines = dl.split('\n').filter(x => /capture:|start_capture|kbd:|clipguard|show_bar: "/.test(x))
             .map(x => {
+                /* v2.23.117：新日志时间戳是本地时间；旧格式继续认。 */
                 const m = x.match(/intervals: (\d+)/);
-                const ms = m ? Math.round(Number(m[1]) / 10000) - 11644473600000 : null;
-                return ms === null ? x.trim() : `t+${String(ms - tDrag).padStart(5)}ms  ` + x.replace(/^\[SystemTime \{ intervals: \d+ \}\]\s*/, '').trim();
+                const n = x.match(/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\]/);
+                const ms = m ? Math.round(Number(m[1]) / 10000) - 11644473600000
+                    : (n ? Date.parse(n[1].replace(' ', 'T')) : null);
+                const body = x.replace(/^\[SystemTime \{ intervals: \d+ \}\]\s*/, '')
+                    .replace(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\]\s*/, '');
+                return ms === null ? x.trim() : `t+${String(ms - tDrag).padStart(5)}ms  ` + body.trim();
             })
             .filter(Boolean);
         rec(`第${i}轮 activate=${okAct} dt=${dt}ms | 拖完即量 选区[${sNow.start},${sNow.end}] seq=${seqNow} | 事后 选区[${sAfter.start},${sAfter.end}] seq=${seqAfter}`);

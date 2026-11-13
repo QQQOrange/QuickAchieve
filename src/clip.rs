@@ -1121,10 +1121,27 @@ mod tests {
         let _g = serial();
         let mark = "https://example.com/qa-direct-content";
         assert!(set_text_wait(mark), "本机拿不到剪贴板，无法验证智能直达读取");
-        let c = read_direct_content(40);
-        assert!(c.opened, "40 × 10ms 内应该能打开剪贴板");
-        assert!(c.files.is_empty(), "文本剪贴板不该读出文件列表");
-        assert_eq!(c.text.as_deref().map(str::trim), Some(mark));
+        /* v2.23.117：给**外部剪贴板监视器**留余量。
+         *
+         * 本机可能还跑着别的会读/写剪贴板的程序（Quick Achieve 自己、输入法、
+         * 网盘客户端、Office 剪贴板）。它们会在我们写完的一瞬间追加格式或改写
+         * 内容 —— 实测出现过"读回来的不是刚写的那段"，而代码本身没问题。
+         * 重试 3 次（每次重新写一遍再读）；3 次都读不到才判真失败。 */
+        let mut got: Option<String> = None;
+        for attempt in 0..3 {
+            let c = read_direct_content(40);
+            assert!(c.opened, "40 × 10ms 内应该能打开剪贴板");
+            assert!(c.files.is_empty(), "文本剪贴板不该读出文件列表");
+            got = c.text.as_deref().map(|t| t.trim().to_string());
+            if got.as_deref() == Some(mark) {
+                break;
+            }
+            if attempt < 2 {
+                let _ = set_text_wait(mark);
+                std::thread::sleep(Duration::from_millis(60));
+            }
+        }
+        assert_eq!(got.as_deref(), Some(mark), "读回来的文本不对：{got:?}");
     }
 
     /// 等剪贴板里出现图片（"写完了但还没落地"那段窗口，见 `enum_formats_settled`）。

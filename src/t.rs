@@ -1116,7 +1116,22 @@ impl WebviewWindowBuilder {
         let window = wb.build(target).map_err(Error::from)?;
 
         let init = BRIDGE_JS.replace("__QS_LABEL__", &self.label);
-        let mut wvb = WebViewBuilder::new()
+        /* v2.23.118：**所有窗口共用一个自定义 WebView2 数据目录**。
+         *
+         * 以前不传 context，WebView2 就用默认位置 `<exe>.WebView2` —— exe 旁边
+         * 多一个几十 MB 的缓存文件夹。现在统一收进数据目录
+         * （默认 `%APPDATA%\QuickAchieve\WebView2`，便携模式则是
+         * `Quick Achieve data\WebView2`），见 `config::webview_data_dir`。
+         *
+         * 每个窗口 leak 一个 `WebContext`：`WebViewBuilder` 只在 `build()` 期间
+         * 借用它（`wry::WebView` 不带生命周期），leak 是为了满足 wry
+         * "别在 WebView 还活着时丢弃 context" 的提醒；一个 context 也就几十字节。
+         * 多个窗口指向同一个目录时，WebView2 会复用同一个 environment。 */
+        let ctx: &'static mut wry::WebContext =
+            Box::leak(Box::new(wry::WebContext::new(Some(
+                crate::config::webview_data_dir(),
+            ))));
+        let mut wvb = WebViewBuilder::new_with_web_context(ctx)
             .with_url(&self.url)
             .with_initialization_script(&init)
             .with_background_color({

@@ -306,7 +306,11 @@
 
         <div class="row">
 
-            <div class="rt"><b>开机自动启动</b><small>登录 Windows 后自动在后台待命</small></div>
+            <!-- v2.23.117：开关下面那一行不再是死文案，而是后端的**真实状态**：
+                 走的是注册表启动项还是计划任务、有没有被任务管理器禁用、写没写成功。
+                 以前只显示一句"登录 Windows 后自动在后台待命"，开关开着却
+                 不生效时用户完全看不出来。 -->
+            <div class="rt"><b>开机自动启动</b><small id="s-autoStartState">登录 Windows 后自动在后台待命</small><small id="s-autoStartTools" hidden><button type="button" class="linkbtn" id="s-autoStartFix">立即修复</button> · <button type="button" class="linkbtn" id="s-autoStartOpen">在系统设置里查看</button></small></div>
 
             <label class="sw"><input type="checkbox" id="s-autoStart"><i></i></label>
 

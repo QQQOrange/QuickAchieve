@@ -68,9 +68,17 @@ No installer, no .NET, and no separate WebView2 install (Windows 10/11 usually i
 
 ### Where your data lives
 
-Portable by design: configuration, icons, and logs live in `Quick Achieve data\` next to the
-executable, and backups in `Quick Achieve back\`. Copy the whole folder to another machine and
-keep working (but see the backup password note below).
+**Default (single-EXE mode)**: only the executable sits in its folder. Configuration, icons and
+logs live in `%APPDATA%\QuickAchieve\`, with backups in its `back\` subfolder; the **WebView2
+cache lives in `%TEMP%` and is deleted on exit**.
+
+**Want it portable?** Drop an empty file named `portable.flag` next to the executable and the
+data moves back to `Quick Achieve data\` / `Quick Achieve back\` beside it — copy the whole
+folder to another machine and keep working (but see the backup password note below).
+
+Upgrading from an older version: an existing `Quick Achieve data\` next to the executable is
+**migrated automatically** on first launch (copy, verify every file, only then remove the old
+folder); the old `QuickAchieve.exe.WebView2` cache is cleaned up too.
 
 ---
 
@@ -114,8 +122,8 @@ keep working (but see the backup password note below).
 
 - **Configuration and backup formats are fully compatible**: 1.5.x `config.json` files and
   `.QuickAchieve` backups can be read and restored by 2.6.0 directly.
-- The data folder location is unchanged (still `Quick Achieve data` next to the executable), so
-  replacing the executable is all that is needed — no migration.
+- The data folder is migrated automatically to `%APPDATA%\QuickAchieve\` (nothing extra is
+  created next to the executable); replacing the executable is all that is needed.
 - **Custom icons carry over automatically**: on first launch the new version reads your icon
   overrides from the previous installation.
 - This release switches the default OCR engine to the **local** engine (online engines are
@@ -129,10 +137,16 @@ This repository holds the **frontend assets and the historical Tauri sources**; 
 release artifact is produced by the native-host version.
 
 ```powershell
-cargo test             # unit tests
+cargo test             # unit tests (serial by default — see below)
 cargo clippy           # lints
 cargo build --release  # output: target\release\QuickAchieve.exe
 ```
+
+> **Tests run serially by default**: `.cargo/config.toml` pins
+> `RUST_TEST_THREADS = "1"`. These tests touch the clipboard (a machine-wide
+> singleton) and process-wide environment variables (`QS_DATA_DIR`, `APPDATA`);
+> running them in parallel intermittently crashes the test process with
+> `STATUS_HEAP_CORRUPTION`. CI uses the same setting.
 
 Release profile is defined in `Cargo.toml`: `opt-level` + `lto="fat"` +
 `codegen-units=1` + `strip=true`.

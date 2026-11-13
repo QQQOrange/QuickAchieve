@@ -5,6 +5,248 @@
 
 ---
 
+## v2.23.121 — 2026-11-13
+
+> 按你的要求：备份只留最近 10 份、其余全删；选区取词不再用屏幕 OCR 兜底。
+
+### 变更：备份固定保留 10 份
+
+- `src/config.rs` 新增 `MAX_BACKUPS = 10` 与 `prune_backups(dir, keep)`，按文件名括号里的
+  时间戳倒序保留最新 10 份，其余删除；只处理 `config.auto(...)` / `config(...)` /
+  `config.before-*`，用户放进备份目录的其它文件不碰。
+- 去掉原来按“完整度”保护的轮转（每次保存要解密目录里每一份，目录涨到 203 份 / 63 MB）。
+- 排序键用 `backup_stamp_of(name)` 取括号内时间戳，避免 `config(...)` 与 `config.auto(...)`
+  前缀不同导致删错。
+- `save_to()` 与 `backup_once()` 落盘后都裁剪；删除无引用的 `backup_quality_cached`。
+- 诊断页「备份份数」只数备份族（含旧版 `config.broken/wiped` 存档），与「10 份」口径一致。
+- ⚠️ 升级后第一次保存 / WebDAV 同步会把现有 203 份裁到 10 份，不可恢复；要留的先拷走。
+
+### 变更：选区不再 OCR 兜底
+
+- 删除 `post_ocr_fill()` / `ocr_region_text()` 及全部调用点。
+- 终端起点：不发 Ctrl+C（SIGINT 会打断命令）、不截屏、不弹。
+- 复制 / UIA 失败：提示一次“该软件不支持划词取词”，不补字。
+- `bar_need_text` 只保留“空条是否延迟弹”的语义；显式 OCR 功能不受影响。
+
+### 验证
+
+- `cargo test` 492 passed / 2 ignored；clippy 干净（仅 vendored ureq 一条 warning）；release 构建成功。
+- 新增 `config::prune_tests::keeps_newest_ten_and_leaves_foreign_files_alone`。
+
+---
+
+## v2.23.120 — 2026-11-13
+
+> 功能核查时发现的自启状态误判：从相对路径启动（`cd /d D:\software\myself` 然后
+> `./QuickAchieve.exe`）时，设置页和诊断会把**已经生效**的自启报成"未生效"。
+
+### 修复：路径归一化折叠 `.` / `..`
+
+- 原因：`current_exe()` 在相对路径启动时会带回 `D:\software\myself\.\QuickAchieve.exe`，
+  而计划任务里存的是 `D:\software\myself\QuickAchieve.exe`；`normalize_path()` 只做了
+  斜杠/大小写归一，两个字符串不相等 → `task_points_here=false` → 状态误报。
+- `normalize_path()` 现在先 `std::fs::canonicalize`（折叠 `.` / `..`，顺带解析短名），
+  失败再退回原来的字符串归一。
+- `exe_path()` 写入注册表 / 计划任务前也走 `abs_path()` —— 否则会把 `".\QuickAchieve.exe" --autostart`
+  这种**相对命令**写进自启项，登录时工作目录不是 exe 目录，必然起不来。
+- 新增单测 `normalize_path_collapses_dot_components`（`sub\..\q.exe`、`sub\.\..\q.exe` 与干净路径判等）。
+
+### 验证
+
+- `cargo test` 491 passed / 2 ignored；`cargo clippy --all-targets -- -D warnings` 干净。
+- 真机：`cd /d/software/myself && ./QuickAchieve.exe --diag-probe` → 自启状态恢复为"已生效：计划任务"。
+
+---
+
+## v2.23.119 — 2026-11-13
+
+> 用户上一轮的要求是「我就是要一个文件，不想要单独搞一个文件夹」。v2.23.118 已经把
+> 持久数据收进 `%APPDATA%\QuickAchieve`，但里面还躺着 **75 MB 的 WebView2 缓存**。
+> 这一版把这块也搬走了：**缓存放 `%TEMP%`，退出即删**，持久数据只剩配置 / 图标 / 日志（几 MB）+ 备份目录（你自己的数据）。
+
+### 变更：WebView2 缓存放临时目录，退出即清
+
+- 默认：`%TEMP%\QuickAchieve-WebView2-<pid>\`，**退出时删掉**。
+  目录名带 PID —— 新实例永远不会撞上旧实例的缓存，退出清理助手可以放心删；
+  崩溃留下的残骸由**下次启动**统一清扫（`wv2: 清掉 N 个上次遗留的临时缓存目录`）。
+- 退出清理分两步：
+  1. 先直接删一次（大多数时候 WebView2 子进程已经退了）；
+  2. 删不掉就把自己再拉起来一份 `--clean-webview <目录> --parent-pid <pid>` ——
+     这个助手在**单实例检查之前**处理，只做一件事：等父进程（和
+     `msedgewebview2.exe` 子进程）退出 → 删目录 → 静默退出；不建窗口、不读配置、不写日志。
+- 想保留缓存（启动更快）：设环境变量 `QS_WEBVIEW_CACHE=persist`，就用
+  `<数据目录>\WebView2`；想放别处用 `QS_WEBVIEW_CACHE_DIR=<目录>`。
+- 之前在数据目录下的那份 `WebView2`（几十 MB）会在升级后第一次启动时自动删掉。
+
+### 代价（如实说明）
+
+- 每次启动缓存要重建，**第一个窗口慢 1~2 秒**；
+- `localStorage` 不保留 —— 只有设置页搜索框的「最近用过」列表用它，其它设置都在
+  `config.json` 里，不受影响；
+- 运行期间 `%TEMP%` 下会有一个临时目录（退出即删）。**"运行中一个目录都不写"在
+  WebView2 下做不到**，这是 Chromium 的机制，不是本程序的选择。
+
+### 验证
+
+真机（隔离实例）：
+```
+[15:00:00.051] === start, args=[…, --paused, --quit-probe], boot=no ===
+[15:00:00.178] wv2: 清掉 1 个上次遗留的临时缓存目录
+[15:00:02.051] quit-probe: 触发 quit_with_sync(0)
+→ 退出后 %TEMP% 下已无 QuickAchieve-WebView2-* 目录
+```
+`QS_WEBVIEW_CACHE=persist` 也测过：不建临时目录、改用数据目录下的 WebView2。
+
+---
+
+## v2.23.118 — 2026-11-13
+
+> 用户要求：「只想 QuickAchieve 只保留一个单 exe 文件，不会另外生成文件夹」。
+> 现在 **exe 旁边就只有一个 exe** —— 配置 / 图标 / 日志 / 备份 / WebView2 缓存
+> 全部收进 `%APPDATA%\QuickAchieve\`；想要绿色便携，放一个 `portable.flag` 就切回去。
+
+### 变更：默认单 EXE 模式（数据搬到 %APPDATA%）
+
+- **存储策略**（`config::data_dir` 重写）：
+  - 默认：`%APPDATA%\QuickAchieve\`（配置 / 图标 / 日志 / WebView2 缓存），
+    备份在其下的 `back\`；
+  - 便携：exe 旁边放一个空文件 `portable.flag` → 仍用 exe 同级的
+    `Quick Achieve data\` + `Quick Achieve back\`（拷走文件夹就能换机）；
+  - `QS_DATA_DIR` 显式指定 → 原样用它（测试 / 调试不变）。
+- **老用户自动迁移**：exe 旁边已有 `Quick Achieve data\config.json` 时，第一次
+  启动自动搬到 `%APPDATA%\QuickAchieve`。顺序是「先复制 → 逐项校验
+  （config 大小 / 图标逐文件大小 / 备份逐文件大小）→ 全过才删旧目录」；
+  任何一步不对就**继续用旧目录、数据一个字节都不动**，并在日志里说明原因。
+- **WebView2 缓存也搬进数据目录**：通过 `wry::WebContext` 指定用户数据目录
+  （`…\WebView2`），不再在 exe 旁边生成 `<exe>.WebView2`；旧的
+  `<exe>.WebView2` 以及升级留下的 `*.old-*.WebView2` 会在启动时自动清理。
+- **修掉一个潜在死锁**：老代码在"便携目录不可写"分支里直接 `win::log`，
+  而 `win::log` 的开关判定会回头调 `data_dir()` —— 同一个 `OnceLock` 二次进入
+  就是死锁。现在这类说明先攒进一个队列，启动日志落盘后再补写
+  （`config::take_data_dir_notes`）。
+- 备份目录跟着模式走：便携 → `Quick Achieve back`；单 EXE / 自定义 →
+  `<数据目录>\back`。配置里若还留着"便携时代的备份路径"，单 EXE 模式下会被
+  忽略，免得又把文件夹建回 exe 旁边。
+
+### 文档
+
+- README / README.en / HELP / HELP.en 的「数据放在哪」相关段落全部更新：
+  默认 `%APPDATA%`、`portable.flag` 怎么开便携、升级时自动迁移、
+  `WebView2` 缓存可以放心删（会自动重建）。
+- 新增 2 条单测：迁移成功（复制 + 校验 + 删旧）与迁移失败（校验不过时源数据保留）。
+
+**验证**：`cargo test`（490 通过 / 2 ignored）、`cargo clippy -D warnings`、
+`node tools/check-all.js` 全绿；真机隔离目录实测：跑完一遍后**根目录只剩
+`QuickAchieve.exe`**，`Quick Achieve data/back` 与 `<exe>.WebView2` 都被迁走/清掉，
+`%APPDATA%\QuickAchieve` 下配置、图标、203 个备份、WebView2 缓存齐全，应用正常启动。
+
+---
+
+## v2.23.117 — 2026-11-13
+
+> 用户报的核心问题：**设置里明明打开了「开机自动启动」，重启后却没有启动。**
+> 顺着这条线还查出三处「看起来正常、实际在空转」的地方，一起修了。
+
+### 修复：开机自启（整条链路重写）
+
+**根因有三个，任何一个都足以让它失效：**
+
+1. **启动自检被编译开关整段跳过**。旧代码在 `main` 里写的是
+   `if cfg0.auto_start && … && !QS_LITE_PORTABLE { set_autostart(true) }`，
+   而本仓库的构建正是 `QS_LITE_PORTABLE = true` —— 于是"注册表被优化软件删了 /
+   被另一份副本顶掉 / 被任务管理器禁用"这些状态**永远没有代码去修**；
+2. **写完不校验**。`RegSetValueExW` 返回成功就当真成功，组策略 / 安全软件 /
+   注册表重定向让写入落空时，设置页照旧显示"开"；
+3. **提权与 Run 项打架**。程序默认以管理员运行，而 `HKCU\...\Run` 只能拉起
+   普通权限实例，起来之后还要 `ShellExecuteW("runas")` 二次提权 —— 开机那一刻
+   这一跳可能被 UAC 拦住 / 被安全软件打断，表现就是"没自启"。
+
+**现在的做法**（新增 `src/autostart.rs`，策略集中、win.rs 只留读写原语）：
+
+- **两种落地方式，按要不要提权自动选**：
+  - 需要提权 → **计划任务**（`ONLOGON` + `HIGHEST`），登录即以管理员启动，
+    一次 UAC 都不弹；
+  - 不需要提权 → `HKCU\...\Run`（不需要管理员，最轻）。
+- 两条路都**写完立刻读回校验**（值真的写进去了、且指向**这一份** exe），
+  结果如实回给界面；
+- **每次启动自我修复一次**：要开却没生效 / 指向别处 / 被禁用 / 该用任务却只有
+  Run 项 / 该用 Run 项却留着任务 → 重写；要关却还有残留 → 清掉；
+  状态本来就对 → 只读一次，不写盘；
+- 识别「任务管理器 → 启动」里被关掉（`StartupApproved\Run` 首字节 3），
+  打开开关时顺手清掉那个停用标记；
+- **绝不误删另一份副本的启动项**：清理残留时只清"指向自己"或"指向一个已经不存在
+  的文件（僵尸项）"的项；带 `QS_INSTANCE_TAG` 的测试实例完全不碰别人的启动项。
+  （自测时真踩到过：一份临时实例用默认配置启动，把正式版的 Run 项当"残留"删了 ——
+  所以这条规则既写进代码，也写进了单测 `ensure_disable_keeps_another_copys_entry`。）
+- **界面不再骗人**：开关下面那行显示真实状态（`已生效：计划任务 / 注册表启动项`
+  或 `⚠ 没生效：原因`），并给「立即修复」和「在系统设置里查看」两个入口；
+- **「一键诊断」新增四项**：配置/实际状态、注册表值原文、是否被系统禁用、
+  计划任务在不在 —— 以后再遇到"没自启"，一份诊断就能定位；
+- 自启命令带 `--autostart`：日志里能分清"开机拉起"和"用户双击"；
+  提权重启时用原子量把这个事实带过去（不再改进程环境块）；
+- 开机拉起时**先等 shell 就绪**（最多 10 秒）：登录那一刻 Explorer 还没把
+  `Shell_TrayWnd` 建好，托盘图标会挂进虚空 —— 那也是"没启动"的一种。
+
+### 修复：备份轮转每次保存都重解密全部旧备份
+
+日志里能看到同一批 20 多份 `config.auto(...)` 被反反复复"已解开"：
+
+- 轮转要给每份旧备份算完整度（= 解密 + 解析），而"比本次更有价值的备份不删"
+  这条数据安全保护让份数长期高于上限，于是**每次保存**都要把整批重新解密；
+- 更糟的是旧策略只保护、不封顶：每保存一次 +1 份、受保护的一份都不删，
+  备份目录会**无限增长**（用户目录里已经攒了 20 多份两个月前的备份）。
+
+修复：
+
+- 完整度查询加**进程内缓存**（键 = 路径 + mtime + 大小 + 密码摘要），
+  同一份文件一次会话只解密一次；
+- 普通备份仍按 `MAX_ROLLING = 8` 轮转，受保护的另一本账，另有硬上限
+  `MAX_ROLLING_HARD = 40`：超过就按时间删最旧的（含受保护的）并写日志 ——
+  数据安全与"目录不会失控"两头都要。
+
+### 修复：设置页每改一项就请求一次 GitHub 额度
+
+`fillAbout()` 每次配置广播都会调 `refreshGithubRate()`，而配置广播很频繁
+（拖一下收藏面板尺寸就是一次）—— 结果每改一个设置就往 GitHub 打一个
+`/rate_limit`，日志里刷一串「update: 额度 …」，没网时还要等超时。
+
+- 额度查询加 60 秒节流；用户主动操作（保存/清空令牌、检查更新）走
+  `force = true` 立刻刷新；
+- 额度那一行的精度要求本来就是分钟级。
+
+### 改进：日志时间戳变成人话
+
+旧日志每行是 `[SystemTime { intervals: 134390073465027177 }]` —— 用户发一份
+日志过来，第一件事得先把这串 100ns 计数换算成时间（还是 1601 起点的 UTC）。
+现在直接写本地时间：
+
+```
+[2026-11-13 10:10:24.456] === start, args=[…], boot=yes ===
+```
+
+`tools/` 里几个解析日志的脚本（verify-delay / select-bar-probe / r77-img-speed /
+round33-diag / run-ocr-parallel-e2e）都已兼容新旧两种格式。
+
+### 修复：`cargo test` 并行跑会偶发整进程崩溃
+
+默认并行跑 485 条测试时，会随机得到 `STATUS_HEAP_CORRUPTION (0xC0000374)` ——
+不是断言红，是测试进程直接崩掉：
+
+- 根因：几类测试动的是**进程级共享资源** —— 剪贴板（全机器单例）、
+  以及用 `std::env::set_var("QS_DATA_DIR"/"APPDATA")` 重定向数据目录。
+  后者与别的线程里的 `env::var`（日志线程读数据目录就在读）是一对真实的
+  数据竞争；
+- 修复：`.cargo/config.toml` 加 `RUST_TEST_THREADS = "1"`，让本地的
+  `cargo test` 与 CI（本来就带 `--test-threads=1`）行为一致；
+- 顺手加固了"智能直达一次开门读全"那条测试：本机别的剪贴板监视器可能在我
+  们写完的一瞬间改写内容，现在重试 3 次再判失败。
+
+**验证**：`cargo test`（488 通过 / 2 ignored，14.8 秒）、`cargo clippy`、
+`node tools/check-all.js`（UI 887 / 页面 56 / 命令表 / 英文 / 设置项全绿）、
+真机隔离实例跑通 `--autostart` 启动路径（日志 `boot=yes`、等 shell、自检状态）。
+
+---
+
 ## v2.23.116 — 2026-11-11
 
 ### 修复：托盘打不开设置 + 磨砂滑块拖动不生效
