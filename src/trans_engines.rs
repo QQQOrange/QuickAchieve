@@ -324,10 +324,7 @@ pub fn looks_chat(id: &str) -> bool {
         }
     }
     // 智谱的视觉档是 glm-4v-*（数字 + v，没有分隔符可借），单独认一下
-    if s.contains("4v") {
-        return false;
-    }
-    true
+    !s.contains("4v")
 }
 
 /// 解析模型列表：OpenAI 标准是 `data[].id`，也认 `models[].id` 和裸数组。

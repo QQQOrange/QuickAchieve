@@ -120,10 +120,7 @@ pub(crate) fn creds_ready(cfg: &config::Config, id: &str) -> bool {
     if info.need_model && c.model_for(info).trim().is_empty() {
         return false;
     }
-    if info.need_base && c.base_for(info).trim().is_empty() {
-        return false;
-    }
-    true
+    !(info.need_base && c.base_for(info).trim().is_empty())
 }
 
 

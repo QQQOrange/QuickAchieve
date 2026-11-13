@@ -8569,10 +8569,7 @@ fn trans_creds_ready(cfg: &config::Config, id: &str) -> bool {
     if info.need_model && c.model_for(info).trim().is_empty() {
         return false;
     }
-    if info.need_base && c.base_for(info).trim().is_empty() {
-        return false;
-    }
-    true
+    !(info.need_base && c.base_for(info).trim().is_empty())
 }
 
 /// 引擎注册表（给设置页渲染：引擎列表 + 问号按钮 + 凭据表单 + 同时翻译名单）。
