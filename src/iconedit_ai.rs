@@ -39,9 +39,9 @@ use crate::matting::{self, Tri};
 ///
 /// 生产路径已经不走这里了（`iconedit::remove_background_ex` 必须先拿到尺寸来
 /// 对齐涂抹蒙版，所以它解码一次、再把解好的图交给 `try_ai_prepared`）。
-/// 这个入口留给单测和将来可能的外部调用，`#[allow(dead_code)]` 是因为
+/// 这个入口留给单测和将来可能的外部调用，`#[cfg_attr(not(test), allow(dead_code))]` 是因为
 /// 非测试构建里确实没有调用方。
-#[allow(dead_code)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn try_ai_with(
     bytes: &[u8],
     keep: Option<&[bool]>,

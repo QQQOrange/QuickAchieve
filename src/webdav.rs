@@ -638,7 +638,7 @@ pub fn list_newest_first(o: &Opts) -> Result<Vec<Backup>, String> {
 ///   `.../remote.php/dav/files/<用户>/` 就是整个网盘根），里面任何文档都可能
 ///   排在前面。启动同步那边已改成先按 `config::is_manual_backup` 过滤再取最新；
 ///   这里保留是因为它是个诚实的通用工具（单测也在用），别在外面直接拿去恢复。
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub fn latest(o: &Opts) -> Result<Option<Backup>, String> {
     Ok(list_newest_first(o)?.into_iter().next())
 }

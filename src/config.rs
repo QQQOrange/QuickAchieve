@@ -2740,18 +2740,18 @@ fn test_scratch_dir() -> PathBuf {
  * ══════════════════════════════════════════════════════════════════════ */
 
 /// 便携模式标记文件（放在 exe 旁边）。存在 = 数据跟 exe 走。
-#[allow(dead_code)] // 测试构建走不到生产分支
+#[cfg_attr(test, allow(dead_code))]
 pub const PORTABLE_FLAG: &str = "portable.flag";
 
 /// exe 旁边的便携标记路径。
-#[allow(dead_code)] // 测试构建走不到生产分支
+#[cfg_attr(test, allow(dead_code))]
 pub fn portable_flag_path() -> PathBuf {
     exe_dir().join(PORTABLE_FLAG)
 }
 
 /// 这次运行用的是哪种存储方式。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // 测试构建只会用到 Custom
+#[cfg_attr(test, allow(dead_code))]
 pub enum Storage {
     /// exe 旁边（`Quick Achieve data` + `Quick Achieve back`）。
     Portable,
@@ -2786,7 +2786,6 @@ pub fn take_data_dir_notes() -> Vec<String> {
 }
 
 /// 当前的存储方式。
-#[allow(dead_code)]
 pub fn storage_mode() -> Storage {
     #[cfg(test)]
     {
@@ -2808,7 +2807,7 @@ pub fn portable_mode() -> bool {
 }
 
 /// `%APPDATA%\QuickAchieve`（拿不到 APPDATA 时退回 exe 旁边，至少能跑）。
-#[allow(dead_code)] // 测试构建走不到生产分支
+#[cfg_attr(test, allow(dead_code))]
 fn appdata_data_dir() -> PathBuf {
     match std::env::var("APPDATA") {
         Ok(base) if !base.trim().is_empty() => PathBuf::from(base).join(APP_DIR),
@@ -5899,7 +5898,7 @@ mod tests {
     /// 锁的句柄当场被覆盖、**锁就释放了**，等于没加隔离，
     /// 而编译器一句警告都没有（`_` 前缀允许重定义）。
     /// 调 `set_setting` 的 main.rs 测试那边统一用 `_serial`，这里保持同一个名字。
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     const SERIAL_GUARD: () = ();
 
     /// 一个临时目录，测试结束自动删。

@@ -301,7 +301,7 @@ pub fn store_rect_only(x: i32, y: i32, w: i32, h: i32) {
 ///
 /// ⚠ 矩形来自 `LAST_RECT` 而不是暂存快照：快照会被 `take()` 取走，
 /// 拿它当依据会让实时模式在第一帧之后就永远拿到空快照（见 `LAST_RECT` 注释）。
-#[allow(dead_code)]  // 保留作 Snap 形态的入口：单测与探针用它，实时路径已改走 capture_encoded
+#[cfg_attr(not(test), allow(dead_code))]  // 保留作 Snap 形态的入口：单测与探针用它，实时路径已改走 capture_encoded
 pub fn recapture_last() -> Snap {
     let (x, y, w, h) = LAST_RECT.lock().map(|r| *r).unwrap_or((0, 0, 0, 0));
     if w <= 0 || h <= 0 {
@@ -557,7 +557,7 @@ mod tests {
     /// ⚠ r86 起实时路径改走 `capture_encoded()`（零拷贝），所以这里**两条路
     ///   都要验** —— 它们都靠 `LAST_RECT`，任何一条忘了记矩形，实时玻璃就会
     ///   在第一帧之后定格。`recapture_last()` 仍被保留：它是 `Snap` 形态的
-    ///   入口，探针 / 将来的调用方可能用得到（`#[allow(dead_code)]` 就是这个意思）。
+    ///   入口，探针 / 将来的调用方可能用得到（`#[cfg_attr(not(test), allow(dead_code))]` 就是这个意思）。
     #[test]
     fn recapture_last_survives_take() {
         let _guard = GLASS_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());

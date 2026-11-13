@@ -32,7 +32,7 @@ const TRAY_UID: u32 = 1;
 
 pub struct TrayDef {
     /// 给调用方按名字区分多个托盘图标（本文件内部不读，故 allow）
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub id: String,
     pub tip: String,
     /// (菜单 id, 文案, 是否勾选)。文案为 "-" 表示分隔线。
@@ -399,7 +399,6 @@ pub fn install(def: TrayDef, icon_png: &[u8], on_menu: MenuFn, on_event: EventFn
 /// 右下角小窗（见 `toast.rs` / `ui/toast.html`），因为系统气泡的时长和样式
 /// 都由 Windows 说了算，用户要求"内置提示 + 时长可配"。
 /// 保留这个函数是为了托盘菜单里的系统级提示还有路可走，别再往业务上用。
-#[allow(dead_code)]
 /// 退出前把通知区图标摘掉（`NIM_DELETE`）。
 ///
 /// 不摘的后果：进程没了、图标还挂在通知区，**要等鼠标划过才消失** ——

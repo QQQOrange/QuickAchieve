@@ -414,7 +414,7 @@ pub fn restore(s: &Snapshot) {
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub fn clear() {
     if !open_clipboard() {
         return;
@@ -507,9 +507,9 @@ static PRE_COPY: std::sync::Mutex<Option<(String, std::time::Instant)>> =
 /// （一张截图可能几十 MB）。单次 `OpenClipboard` 失败就放弃 —— 那说明别的程序
 /// 正握着剪贴板，此刻硬抢会把它的复制搞坏。读不到就什么都不记，
 /// 后面退回原来的 snapshot 行为（等于不还原），不会更糟。
-/// v2.23.59：**不再从钩子里调用**（那会在系统输入关键路径上开剪贴板，#[allow(dead_code)]
+/// v2.23.59：**不再从钩子里调用**（那会在系统输入关键路径上开剪贴板，
 /// 会把用户的 Ctrl+C 搞卡甚至复制不上）。留着是因为它本身是对的，只是没有调用方了。
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub fn capture_precopy() {
     // 2 秒内已经抓过就别重复：按住 Ctrl+C / 连按时会被叫很多次
     if let Ok(g) = PRE_COPY.lock() {
@@ -526,7 +526,7 @@ pub fn capture_precopy() {
 }
 
 /// 单次尝试读 CF_UNICODETEXT（不重试 —— 钩子线程里不能等）。
-#[allow(dead_code)] // 只被 capture_precopy 用；它停用后这里也就没人调了
+#[expect(dead_code)] // 只被 capture_precopy 用；它停用后这里也就没人调了
 fn read_text_quick() -> Option<String> {
     if unsafe { OpenClipboard(None) }.is_err() {
         return None;
