@@ -3,12 +3,17 @@
 //! 这里只放「弹条前确认选中了文字」和「弹条后补字」两段流程，
 //! 不涉及横条布局 / 引擎选择。函数签名与行为跟拆出前完全一致。
 
+use std::ffi::c_void;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
+
+use windows::Win32::Foundation::HWND;
 
 use crate::win;
 use crate::{
-    capture_selection, capture_selection_fast, foreground_still_target, hint_no_uia_once,
-    is_bar_shown, is_console_window, push_late_text, CaptureInFlight, GEN,
+    capture_selection, clip, clipboard_owned_by, foreground_still_target, is_bar_shown,
+    is_console_window, is_wechat_pid, lock_clip, push_late_text, same_app_pid,
+    CaptureInFlight, GEN, LAST_FOREIGN_FG,
 };
 
 pub(crate) fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32, i32)) {
@@ -88,6 +93,406 @@ pub(crate) fn post_show_copy_fill(gen: usize, fg_pid: u32, drag: (i32, i32, i32,
     }
 }
 
+/// 「精确复核」专用的轻量版模拟复制：**单轮、有预算**。
+///
+/// 只为一件事服务：划词落到 OCR 通道时，把认歪的那份文字换成**原文**
+/// （触发条件见 `exact_reread_why`）。
+///
+/// # 为什么没有直接复用 `capture_selection`
+///
+///   · 它最多跑 3 轮、每轮读窗口 1.5s / 0.8s / 0.8s（最坏 3.7s），而且全程
+///     握着 `CLIP_LOCK` —— 复核是**后台补丁**，卡这么久会把用户下一次
+///     Ctrl+C 的「迟到补」一起堵在锁外面；
+///   · 它没有"预算"这个概念，而这里必须在 `budget_ms` 内收工。
+///
+/// # 剪贴板纪律（和 `capture_selection` 逐条对齐）
+///
+///   · 先快照再复制，**读不到也要还原**（用户明确要求「选中不是复制」）；
+///   · 还原前用 `note_our_write()` 把基准挪到"我们自己写完那一刻"，
+///     否则 `restore_if_unchanged` 会把我们自己的写入误判成"第三方改过"，
+///     永远跳过还原 —— 选区就永久留在剪贴板里；
+///   · 这一轮**根本没写成功**（序号没动）就整段跳过还原：剪贴板一动没动，
+///     去还原反而可能把别人刚写进去的东西抹掉。
+/// 「这个窗口最近对合成 Ctrl+C 没反应」——短时备忘，避免对同一目标反复空等。
+///
+/// # 为什么要它（实测）
+///
+/// 用户日志里 `capture(exact): 700ms 内没读到新内容（目标 pid=… 写没写=false）`
+/// 是**成对**出现的：同一次取词会复核两遍，两遍都注定失败，白等 1.4 秒。
+/// 一个程序不会在 100ms 内从"不响应合成按键"变成"响应"，所以记住它、
+/// 5 秒内直接跳过。
+static EXACT_DEAF: std::sync::OnceLock<std::sync::Mutex<Vec<(u32, std::time::Instant)>>> =
+    std::sync::OnceLock::new();
+
+fn exact_recently_deaf(pid: u32) -> bool {
+    let m = EXACT_DEAF.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    let Ok(g) = m.lock() else { return false };
+    g.iter()
+        .any(|(p, at)| *p == pid && at.elapsed() < Duration::from_secs(5))
+}
+
+fn exact_mark_deaf(pid: u32) {
+    let m = EXACT_DEAF.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut g) = m.lock() {
+        g.retain(|(p, at)| *p != pid && at.elapsed() < Duration::from_secs(5));
+        g.push((pid, std::time::Instant::now()));
+    }
+}
+
+fn exact_clear_deaf(pid: u32) {
+    let m = EXACT_DEAF.get_or_init(|| std::sync::Mutex::new(Vec::new()));
+    if let Ok(mut g) = m.lock() {
+        g.retain(|(p, _)| *p != pid);
+    }
+}
+/// 「这个窗口读不到选区」——每个进程只提示一次（本次运行内）。
+///
+/// # 为什么要提示
+///
+/// 微信 4.x（Qt）、部分 WPF 程序**没有 UIA 文本模式**，而它们又会忽略我们
+/// 模拟的 Ctrl+C。用户在那种窗口里划词的结果是：**什么都不发生**——
+/// 按用户 2026-10-30 的口径（常规划词不调 OCR，因为慢且不稳），这是
+/// 设计内的取舍。
+///
+/// v2.23.64 起**只记日志、不弹任何提示**（用户口径：「提示好烦人」）。
+fn hint_no_uia_once(pid: u32) {
+    /* v2.23.64：**只写日志，不弹任何提示**（用户口径：「提示好烦人」）。
+     *
+     * 这里以前会发一条小提示条 + 一次托盘气泡，告诉用户"这个软件不支持
+     * 划词弹条"。听上去有用，实际是噪音：微信里每划一次词就说明一遍，
+     * 用户只想安静地用。
+     *
+     * 现在把结论留在 log.txt 里就够了 —— 真要排查的时候翻日志能看到
+     * "这个 pid/exe 读不到选区"，不需要打扰正在用电脑的人。
+     * 函数名保留（调用点不用改），语义变成"记一笔"。 */
+    if pid == 0 {
+        return;
+    }
+    let exe = win::process_exe(pid).unwrap_or_default();
+    win::log(&format!(
+        "hint: pid={pid} exe={exe} 读不到选区 —— 该软件不支持划词取词（静默，不提示）"
+    ));
+}
+pub(crate) fn capture_selection_fast(
+    target_pid: u32,
+    budget_ms: u64,
+    target_hwnd: Option<HWND>,
+) -> Option<String> {
+    /* ⚠ 先确认「前台还是它」再塞 Ctrl+C。
+     *
+     * 这条复核是在横条**已经弹出来之后**跑的（迟到几十~几百毫秒）。这段时间里
+     * 用户完全可能已经点到别的软件里去了 —— 那时我们再把 Ctrl+C 发出去，就会
+     * 把**另一个程序的选区**复制回来，然后当成这次划词的文字补进横条：用户点
+     * 引擎就会去搜一段他根本没选的文字，比"认错字"更难理解。
+     *
+     * 允许"前台是我们自己"（横条 / 面板抢到焦点时属正常），只挡第三方。 */
+    if target_pid != 0 {
+        let fg = win::window_pid(win::foreground_window());
+        let me = std::process::id();
+        /* v2.11.4：**同一个程序的另一个进程也算"还是它"**。
+         *
+         * 微信 4.x（Qt，多进程）和 Chromium 系都是「主进程 + 一堆渲染/助手进程」：
+         * 鼠标底下的那个窗口属于渲染进程，占着前台的却是主进程 —— pid 天然对不上。
+         * 老判据只认 `fg == target_pid`，于是**每一次**补字都走进
+         * 「前台已经换人」直接放弃，横条永远是空的（用户看到的就是
+         * "在微信里选中文字不弹条"，虽然条其实弹了、只是没字）。
+         *
+         * 换成按**可执行文件**比对：同一个 exe = 同一个软件，把选区复制回来
+         * 正是用户刚才那一下的意图；跨软件仍然照旧拦住。 */
+        let same_app = same_app_pid(fg, target_pid);
+        if fg != target_pid && fg != me && !same_app {
+            /* v2.23.10：把两边的 exe 也写进日志。
+             * 光看 pid 分不清"真的是两个软件"还是"同一个软件的不同进程"
+             * （浏览器就是主进程 + 一堆渲染进程）—— 上一次排查就是卡在这。 */
+            win::log(&format!(
+                "capture(exact): 前台已经换人（pid {fg}={:?}，目标 {target_pid}={:?}）—— 不发 Ctrl+C，放弃这次复核",
+                win::process_exe(fg),
+                win::process_exe(target_pid)
+            ));
+            return None;
+        }
+    }
+    /* 用户可能还没松开鼠标：`WM_LBUTTONUP` 已经在钩子里了，但目标程序
+     * 处理"选区落定"还要一点时间。以前这里只睡 20ms，浏览器 / Electron
+     * 经常还没来得及把选区提交，合成的 Ctrl+C 就发出去了 —— 日志里
+     * `写没写=false` 大多是这个时序。等物理左键抬起后再给 70ms 稳定期。
+     * 这一步放在锁剪贴板**之前**：等待期间不要占着全局剪贴板锁。 */
+    let release_deadline = std::time::Instant::now() + Duration::from_millis(350);
+    while win::left_down() && std::time::Instant::now() < release_deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    std::thread::sleep(Duration::from_millis(70));
+    /* v2.23.81：同上 —— 用户按着 Ctrl/Alt/Win 时把这次复核让给他，
+     * 绝不和用户自己的 Ctrl+C 抢时序。 */
+    if win::ctrl_down() || win::alt_down() || win::win_down() {
+        win::log("capture(exact): 用户还按着 Ctrl/Alt/Win —— 不模拟复制");
+        return None;
+    }
+    let _clip = lock_clip();
+    /* ⚠ 快照拿不到就**绝不能发 Ctrl+C**（2026-10-30 用户明确要求：
+     *   "复制操作之后不能影响原来的剪贴板"）。
+     *
+     * 快照失败 = 剪贴板被别的程序占着（`OpenClipboard` 300ms 内都没抢到）。
+     * 这时候如果照旧复制，用户原来的内容就**没有备份可还原**，直接被这次选区覆盖 ——
+     * 那正是"复制完原来的内容没了"。宁可这次取不到字（横条保持空的），
+     * 也不能动用户的剪贴板。 */
+    let Some(snap) = clip::snapshot() else {
+        win::log("capture(exact): 剪贴板快照失败（被占用）—— 不发 Ctrl+C，保持用户剪贴板原样");
+        return None;
+    };
+    let before = clip::seq();
+    /* v2.23.32：用户按着修饰键时**不发**（见 `win::modifiers_down`）——
+     * 宁可这一轮复核拿不到字，也不能把他的 Ctrl 松开、把复制搅坏。 */
+    /* v2.23.73：**横条自己抢了前台时，先把焦点还给目标窗口再发 Ctrl+C**。
+     *
+     * 实测日志（Edge / 抖音网页）：`start_capture: 没拿到文字，仍然弹条（兜底）`
+     * 先把横条显示出来，紧接着 `capture(exact)` 发 Ctrl+C —— 但那时前台已经是我们
+     * 自己的横条窗口，按键全打在自己身上，剪贴板当然"写没写=false"，于是一整类
+     * 浏览器 / 应用都表现成"划词不弹条"。
+     * 有精确的目标 hwnd（拖选起点）就用它；没有才退回 `LAST_FOREIGN_FG`。 */
+    let fg_now = win::foreground_window();
+    if win::window_pid(fg_now) == std::process::id() {
+        let exact = target_hwnd
+            .map(win::root_window)
+            .filter(|h| !h.0.is_null());
+        let last = LAST_FOREIGN_FG.load(Ordering::Relaxed);
+        let restore = exact.or({
+            if last != 0 {
+                Some(HWND(last as *mut c_void))
+            } else {
+                None
+            }
+        });
+        if let Some(h) = restore {
+            win::force_foreground(h);
+            std::thread::sleep(Duration::from_millis(50));
+            let now = win::window_pid(win::foreground_window());
+            win::log(&format!(
+                "capture(exact): 前台是我们自己 —— 已把焦点还给目标窗口再复制（pid={now}）"
+            ));
+        }
+    }
+    /* 等待/还焦点期间用户可能又切走了；发送前最后确认一次。 */
+    let fg_final = win::foreground_window();
+    if win::window_pid(fg_final) == std::process::id() {
+        win::log("capture(exact): 还焦点失败，前台仍是本程序 —— 不发 Ctrl+C");
+        return None;
+    }
+    if !foreground_still_target(target_pid) {
+        win::log(&format!(
+            "capture(exact): 发送前前台已换人（目标 pid={target_pid}）—— 放弃"
+        ));
+        return None;
+    }
+    if is_console_window(fg_final) || is_console_window(win::root_window(fg_final)) {
+        win::log("capture(exact): 前台是终端 —— 绝不发 Ctrl+C");
+        return None;
+    }
+    if win::send_ctrl_c() {
+        // 正常通道
+    } else {
+        /* 用户正按着 Ctrl/Shift（扩选、Ctrl 触发模式很常见）。不能等死：
+         * 先用不依赖键盘状态的 WM_COPY 试一次；循环里 600ms 时还会再试
+         * 一次 Ctrl+C —— 那时用户多半已经松手了。 */
+        win::log("capture(exact): 用户正按着修饰键 —— 先改发 WM_COPY，并继续等松手");
+        let _ = win::post_copy_to_focus();
+    }
+    /* v2.23.39：这个窗口 5 秒内刚证明过"对合成 Ctrl+C 没反应"就直接认输，
+     * 不再陪着空等一整轮（实测同一目标会被复核两遍）。 */
+    /* v2.23.61：**微信不吃"刚证明不响应"这套缓存**。它的失败多半是那一轮
+     * 时序问题（窗口没抢到前台 / 菜单遮挡），不是真的不支持复制；直接跳过
+     * 会让用户"第一次失败之后再也试不出来"。 */
+    let wechat = is_wechat_pid(target_pid);
+    if !wechat && exact_recently_deaf(target_pid) {
+        win::log(&format!(
+            "capture(exact): 目标 pid={target_pid} 刚证明不响应合成复制，跳过这一轮（不再空等）"
+        ));
+        clip::restore_if_still_holds(&snap, None);
+        return None;
+    }
+    /* 微信给更长的窗口：它要先做一次内部复制（Qt 事件循环 + MMUI 排版），
+     * 700ms 实测不够；1.5 秒能覆盖绝大多数情况，用户也不会觉得慢。 */
+    let budget_ms = if wechat { budget_ms.max(1500) } else { budget_ms };
+    let t0 = std::time::Instant::now();
+    /* v2.23.74：Ctrl+C 没反应就补一次 Ctrl+Insert（见 win::send_ctrl_insert）。
+     * 实测 Edge 某些页面（抖音网页评论区）对注入的 Ctrl+C 不写剪贴板，
+     * 但对 Ctrl+Insert 有反应。两者语义一样，都只是"复制选中内容"。 */
+    let mut tried_insert = false;
+    let mut resent_ctrlc = false;
+    let mut got: Option<String> = None;
+    let mut left_target = false;
+    while t0.elapsed() < Duration::from_millis(budget_ms) {
+        /* v2.23.39：**用户已经切到别的窗口了就别再等**。
+         *
+         * 实测（用户日志）：这条复核经常"等满 700ms 然后失败"——
+         * 因为它对着一份**早就不会再响应合成 Ctrl+C** 的程序傻等
+         * （日志里 `写没写=false` 成对出现，每对 1.4 秒）。
+         * 而窗口已经换了人，这次复核拿到的也只会是别人的剪贴板。
+         * 提前收手还有一个好处：`CLIP_LOCK` 少被占 700ms，
+         * 用户自己按 Ctrl+C 时不会撞上我们。 */
+        let fg_pid = win::window_pid(win::foreground_window());
+        if fg_pid != target_pid
+            && fg_pid != std::process::id()
+            && !same_app_pid(fg_pid, target_pid)
+        {
+            left_target = true;
+            break;
+        }
+        if clip::seq() != before {
+            if let Some(t) = clip::read_text_any() {
+                let t = t.trim().to_string();
+                // 「和复制前不一样」才是硬证据（见 capture_selection 同一段注释）
+                /* 同上：内容与复制前相同也可能是"重新选中了同一段"。
+                 * 只要求非空 + 剪贴板归属可信；序号已经在上面确认变过。 */
+                if !t.is_empty()
+                    && t.chars().count() <= 20000
+                    && clipboard_owned_by(target_pid)
+                {
+                    got = Some(t);
+                    break;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(25));
+            /* 300ms 还没动静 → 换 Ctrl+Insert；600ms 还没动静 → 再补一次 Ctrl+C */
+            let spent = t0.elapsed().as_millis();
+            if !tried_insert && got.is_none() && clip::seq() == before && spent >= 300 {
+                tried_insert = true;
+                /* 横条 / 面板可能刚把前台抢走。降级通道发送前再把目标窗口
+                 * 顶回前台一次 —— 否则 Ctrl+Insert 和 WM_COPY 都打在我们自己
+                 * 身上，日志只会留下"两个通道都没写"。 */
+                if win::window_pid(win::foreground_window()) == std::process::id() {
+                    if let Some(h) = target_hwnd.map(win::root_window) {
+                        win::force_foreground(h);
+                        std::thread::sleep(Duration::from_millis(40));
+                    }
+                }
+                win::log("capture(exact): Ctrl+C 没写剪贴板 —— 改发 Ctrl+Insert + WM_COPY 再试");
+                /* WM_COPY 走窗口消息，不依赖输入队列，能绕过一部分
+                 * 对合成按键的过滤（Chromium / Qt 都值得试一次）。 */
+                let _ = win::post_copy_to_focus();
+                let _ = win::send_ctrl_insert();
+            } else if !resent_ctrlc && got.is_none() && clip::seq() == before && spent >= 600 {
+                resent_ctrlc = true;
+                win::log("capture(exact): Ctrl+Insert 也没写 —— 再补一次 Ctrl+C");
+                let _ = win::send_ctrl_c();
+            }
+    }
+    let wrote = clip::seq() != before;
+    /* 记一笔：没写进剪贴板 = 这个窗口不响应合成复制，5 秒内别再来一次 */
+    if !wrote && got.is_none() {
+        exact_mark_deaf(target_pid);
+    } else if wrote {
+        exact_clear_deaf(target_pid);
+    }
+    if wrote {
+        /* v2.23.31：**同样不能只信序号**（和 capture_selection 一个道理）。
+         * 用户在这一小段时间里自己 Ctrl+C 的话，序号同样会变，而"变"既可能
+         * 是我们那次合成复制、也可能是他这次手动复制 —— 用内容判断才安全：
+         * 剪贴板里还是我们取到的那段文字才还原，否则说明他复制了新东西。
+         *
+         * v2.23.61（用户口径）：**微信延迟到横条收起时再还** ——
+         * 「选择文本就是复制，横条消失后恢复剪贴板」。这段时间里剪贴板就是
+         * 那段选中文字，用户随时可以 Ctrl+V；其他程序仍然立刻还原。 */
+        if wechat && got.is_some() {
+            clip::defer_restore(snap, got.clone());
+            win::log("capture(exact): 微信 —— 剪贴板先留着选中文字，横条收起时再还原");
+        } else {
+            clip::restore_if_still_holds(&snap, got.as_deref());
+        }
+    }
+    if got.is_none() {
+        win::log(&format!(
+            "capture(exact): {} 内没读到新内容（目标 pid={target_pid} 写没写={wrote}）{}",
+            if left_target {
+                format!("提前收手（已用了 {}ms）", t0.elapsed().as_millis())
+            } else {
+                format!("{budget_ms}ms")
+            },
+            if left_target { "，前台已经换了窗口" } else { "" }
+        ));
+    }
+    got
+}
+
+/// 划词取词（**全程不碰剪贴板**）：标准编辑控件 / UIA 直读选区。
+///
+/// 用户的口径说得很明确：**「选中文字就弹条，不是选中就复制」**。
+/// 老实现是靠「模拟一次 Ctrl+C + 立刻还原剪贴板」把文字拿到手的 —— 剪贴板终究被
+/// 动过（还原失败、或者被别的程序占着还原不了时，用户就能看到选区留在剪贴板里），
+/// 而且遇到会过滤合成按键的程序（微信）直接哑火。
+///
+/// 现在两条通道都不碰剪贴板：
+///   ① 标准编辑控件（EDIT / RichEdit）：直接读控件自己的选区；
+///   ② `UIA`：用系统无障碍接口直接问程序"你选了什么" —— 取到的是**精确原文**。
+///
+/// 两条都读不到就放弃（v2.23.121 起不再用屏幕 OCR 兜底：屏幕上有字
+/// 不等于用户选中了它）。
+///
+/// 返回 `(文字, 通道名)`，通道名进日志，方便一眼看出这次走的是哪条通道。
+pub(crate) fn capture_without_clipboard(drag: (i32, i32, i32, i32)) -> Option<(String, &'static str)> {
+    let pt_end = windows::Win32::Foundation::POINT { x: drag.2, y: drag.3 };
+    let pt_start = windows::Win32::Foundation::POINT { x: drag.0, y: drag.1 };
+    /* ⓿ 选区落地稳定期：快速划选（dt<30ms）时 mouseup 刚到目标窗口的消息
+     *    队列，此时查 EM_GETSEL 读到的是**旧选区**（快速划选取词实测 A1/A2
+     *    因此读到旧选区、把「QuickAchieve」认成「search」丢了开头）。
+     *    与 Ctrl+C 链同口径（见 main.rs:1223 的稳定期常量），60ms 对弹条
+     *    总耗时（几百毫秒）无感。 */
+    std::thread::sleep(Duration::from_millis(60));
+    /* ① 标准编辑控件（EDIT / RichEdit）：直接读控件自己的选区，**精确**且不碰剪贴板。
+     *    记事本、各种输入框走这条 —— 它们**没有 UIA 文本模式**，UIA 问不到。 */
+    if let Some(t) = win::edit_selection_text_at(pt_end) {
+        if t.chars().count() <= 20000 {
+            return Some((t, "编辑控件"));
+        }
+    }
+    /* ② UIA 直读选区。**浏览器整体跳过**（r34 实证：Chromium 系 UIA 内容树
+     *    无法唤醒，见 win::uia_foreground_is_browser 的长注释）—— 不跳的话
+     *    每次划词要白等两次 UIA 查询（合计最多 5s），横条弹出直接被拖垮。 */
+    if win::uia_foreground_is_browser() {
+        win::log("capture: 前台是浏览器（UIA 内容树无法唤醒）—— 跳过 UIA，按取不到处理");
+    } else {
+        /* 选区的提交有时比 mouseup 晚一拍（浏览器要把"选区变了"从渲染进程同步回来），
+         *    立刻问会问到一个空选区。重试两次、间隔 120ms，够它落地了。
+         *
+         *    ⚠ 但**超时不算"晚一拍"**：超时说明对方的 UIA 压根不应答，再等一次只是
+         *    又白花 0.5~2.2s（实测），用户看到的是"选完字要等四五秒才出条"。
+         *    所以超时直接跳出重试、马上放弃，不再白等。 */
+        for attempt in 0..2 {
+            if attempt > 0 {
+                std::thread::sleep(Duration::from_millis(120));
+            }
+            match win::uia_selection_text(pt_end, pt_start) {
+                win::UiaTry::Text(t) => {
+                    if t.chars().count() <= 20000 {
+                        return Some((t, "UIA"));
+                    }
+                }
+                win::UiaTry::TimedOut => {
+                    win::log("capture: UIA 查询超时（对方 UIA 不应答）—— 不重试，按取不到处理");
+                    break;
+                }
+                win::UiaTry::Retryable => {}
+            }
+        }
+    }
+    /* ⚠ 常规划词**不调用 OCR**（2026-10-30 与 v2.23.121 用户口径）。
+     *
+     * 旧链路是：UIA 读不到选区 → 截屏 OCR 兜底。它有两个害处：
+     *   ① **慢**：一次兜底可能把取词卡住十几秒，期间后续划选全被 BUSY 丢弃，
+     *      用户看到的就是「划了不弹」（实测日志连着三条
+     *      `上一次取词超过 4.5s 仍未结束，本次放弃`）；
+     *   ② **不稳**：浏览器里屏幕认字对中英混排小字本就不可靠，认不出等于
+     *      没取到文字，再叠加「没取到文字就不弹」，横条干脆不出现。
+     *
+     * 现在 OCR 只在用户**主动**点 OCR 按钮 / 识图按钮时才执行（走
+     * open_ocr_window 那条独立链路：region.html → ocr.rs），常规流程完全绕过。
+     * 取舍写在明处：浏览器这类 UIA 读不到选区的程序，划词将拿不到文字。 */
+    win::log("capture: UIA 读不到选区（该程序没有 UIA 文本模式）—— 常规流程不走 OCR 兜底");
+    None
+}
+
+/* ================================================================== */
 /// 鼠标落点（以及它所在的顶层窗口）是不是控制台/终端。
 ///
 /// 终端里 Ctrl+C 是 SIGINT 而不是复制：误发会把用户正在跑的编译/脚本打断。
