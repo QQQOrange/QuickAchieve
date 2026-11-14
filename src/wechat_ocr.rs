@@ -268,8 +268,17 @@ pub fn detect() -> Result<Install, String> {
             return Ok(Install { exe, lib_dir: lib });
         }
     }
+    /* 2) 软件自带的兼容引擎（可选）：微信 4.1 起把 OCR 做成了
+     *    `WeChatOcr.bin` 插件，不再释放 `WeChatOCR.exe`；3.9 的独立
+     *    引擎仍然能用。放在数据目录下时优先于「找不到」错误。 */
+    let bundled = crate::config::data_dir().join("wechat-ocr");
+    let bundled_exe = bundled.join("WeChatOCR.exe");
+    let bundled_lib = bundled.join("mmmojo_64.dll");
+    if bundled_exe.is_file() && bundled_lib.is_file() {
+        return Ok(Install { exe: bundled_exe, lib_dir: bundled });
+    }
     let exe = find_ocr_exe().ok_or_else(|| {
-        "没找到微信 OCR：需要安装微信 PC 版（3.9 或 4.x），并至少启动过一次微信".to_string()
+        "没找到微信 OCR：微信 4.1+ 不再释放 WeChatOCR.exe；可把 3.9 的 WeChatOCR.exe 放到数据目录的 wechat-ocr 下".to_string()
     })?;
     let lib = find_mmmojo(&exe).ok_or_else(|| {
         format!(
