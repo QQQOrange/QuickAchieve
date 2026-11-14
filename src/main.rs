@@ -3319,6 +3319,59 @@ fn trigger_target_window() -> Option<HWND> {
 /// 本次横条是不是「只有识别图片文字」的那种形态
 static OCR_ONLY: AtomicBool = AtomicBool::new(false);
 
+/// 识别结果窗（我们自己的 WebView）里用户刚选中的文字。
+///
+/// 为什么单独记：结果窗里选中文字时，焦点在我们自己进程里，
+/// 合成 Ctrl+C 的取词通道会被“前台是自己”这道保护拦下 —— 永远拿不到字。
+/// 结果窗的 JS 会在 select/selectionchange 时把选区写到这里，
+/// `start_capture` 发现目标就是自己时直接取用，不再走剪贴板。
+static OCR_PAGE_SEL: std::sync::Mutex<Option<(String, std::time::Instant)>> =
+    std::sync::Mutex::new(None);
+
+pub(crate) fn set_ocr_page_selection(text: String) {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return;
+    }
+    if let Ok(mut g) = OCR_PAGE_SEL.lock() {
+        let changed = g.as_ref().map(|(t, _)| t != &text).unwrap_or(true);
+        *g = Some((text.clone(), std::time::Instant::now()));
+        drop(g);
+        if changed {
+            win::log(&format!(
+                "ocr-page: 识别结果窗选区 {} 字",
+                text.chars().count()
+            ));
+        }
+    }
+}
+
+pub(crate) fn ocr_page_selection() -> Option<String> {
+    let g = OCR_PAGE_SEL.lock().ok()?;
+    let (t, at) = g.as_ref()?;
+    if at.elapsed() > std::time::Duration::from_secs(6) {
+        return None;
+    }
+    let t = t.trim();
+    (!t.is_empty()).then(|| t.to_string())
+}
+
+#[crate::t::command]
+fn ocr_page_selection_set(text: String) {
+    set_ocr_page_selection(text);
+}
+
+/// 测试用：模拟“在识别结果窗里选中文字”触发的起点。
+#[crate::t::command]
+fn __probe_ocr_self_capture() {
+    crate::capture_flow::start_capture(
+        std::process::id(),
+        (100, 100, 400, 100),
+        false,
+        true,
+    );
+}
+
 /// 弹一条只带「识别图片文字」按钮的横条。
 /// Ctrl+C 复制到的是图片时走这条路 —— 图片上的文字选不中，
 /// 但用户按 Ctrl+C 的意图很明确，给他一个入口比什么都不做强。
@@ -18966,6 +19019,8 @@ fn main() {
             ocr_env_check,
             wechat_ocr_probe,
             wechat_ocr_file,
+            ocr_page_selection_set,
+            __probe_ocr_self_capture,
             ocr_open_language_settings,
             ocr_open_lang_help,
             ocr_diagnose,

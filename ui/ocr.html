@@ -2388,5 +2388,37 @@ requestAnimationFrame(() => requestAnimationFrame(() => {
     invoke('log_msg', { msg: '[ocr] boot failed: ' + msg }).catch(() => {});
 });
 </script>
+
+<script>
+/* v2.23.127：把识别结果窗里的选区同步给后端。
+ *
+ * 结果窗是我们自己的 WebView，选中文字后焦点仍在本进程；取词线程走
+ * “合成 Ctrl+C”时会被“前台是自己”的保护拦下，永远拿不到字，于是横条是空的，
+ * 点淘宝只会打开首页。这里在 select / mouseup 时把 textarea 的选区直接交给
+ * Rust，start_capture 看到 target 是自己时就用这份文字弹条。
+ */
+(function () {
+  function pushSelection() {
+    var el = document.activeElement;
+    var t = '';
+    if (el && el.tagName === 'TEXTAREA') {
+      t = el.value.slice(el.selectionStart, el.selectionEnd);
+    } else {
+      var s = window.getSelection ? window.getSelection() : null;
+      t = s ? s.toString() : '';
+    }
+    t = (t || '').trim();
+    if (!t) return;
+    try {
+      invoke('ocr_page_selection_set', { text: t }).catch(function () {});
+    } catch (_) { /* 旧页面没有 invoke 时静默 */ }
+  }
+  document.addEventListener('select', pushSelection, true);
+  document.addEventListener('mouseup', function () { setTimeout(pushSelection, 0); }, true);
+  document.addEventListener('keyup', function (e) {
+    if (e.key === 'Shift' || e.shiftKey) pushSelection();
+  }, true);
+})();
+</script>
 </body>
 </html>

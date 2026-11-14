@@ -38,6 +38,29 @@ pub(crate) fn start_capture(
      * `syncLinkBtn` 的 `ocrOnly` 条件藏掉）。 */
     OCR_ONLY.store(false, Ordering::SeqCst);
 
+    /* 识别结果窗也是我们自己的 WebView：用户在里面选中文字时，焦点在我们
+     * 进程内，合成 Ctrl+C 会被"前台是自己"的保护拦下，剪贴板通道永远拿不到。
+     * 结果窗的 JS 已经把选区写好（`ocr_page_selection_set`），这里直接用，
+     * 不再起取词线程、也不再弹空条 —— 点了淘宝就能马上搜。 */
+    if target_pid == std::process::id() {
+        /* 钩子比页面 select 事件早到几毫秒是常态：最多等 60ms，等不到再退回
+         * 原来的空条 + 复制通道，至少不会把「已经选中的字」丢掉。 */
+        let mut sel = crate::ocr_page_selection();
+        for _ in 0..3 {
+            if sel.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            sel = crate::ocr_page_selection();
+        }
+        if let Some(t) = sel {
+            if show_bar_at(t, false, false, Some(drag)) != 0 {
+                win::log("start_capture: 识别结果窗内选区 —— 直接用页面选区文字弹条");
+            }
+            return;
+        }
+    }
+
     /* 从"先弹空条"到"补字结束"整段都算取词在途：`bar-away` 看到计数 > 0
      * 就不会把正在补字的横条收走。这个守卫会跟着取词线程一起活到线程结束，
      * 任何提前 return 都由 RAII 递减。 */
