@@ -116,6 +116,20 @@ pub static ENGINES: &[EngineInfo] = &[
         note: "离线、免费、最快，不联网也不上传截图；需要系统装了对应语言的 OCR 语言包",
     },
     EngineInfo {
+        id: "wechat",
+        name: "微信 OCR（本地）",
+        kind: Kind::Local,
+        signup: "https://weixin.qq.com/",
+        docs: "https://weixin.qq.com/",
+        need_key: false,
+        need_secret: false,
+        need_model: false,
+        need_base: false,
+        base: "",
+        model: "",
+        note: "直接调用本机微信自带的离线识别模型，不联网、不用 Key；需要装微信 PC 版并至少启动过一次",
+    },
+    EngineInfo {
         id: "baidu",
         name: "百度云",
         kind: Kind::Baidu,
@@ -397,6 +411,13 @@ pub fn recognize(
     urls: &OcrUrls,
 ) -> Result<crate::ocr::Outcome, String> {
     let info = find(id).ok_or_else(|| format!("不认识的识别引擎：{id}"))?;
+    // 微信 OCR 也注册成 Kind::Local（不显示 Key/模型表单），但走自己的 FFI。
+    if id == "wechat" {
+        return crate::wechat_ocr::recognize(png).map(|text| crate::ocr::Outcome {
+            text,
+            engine: info.name,
+        });
+    }
     match info.kind {
         Kind::Local => crate::ocr::recognize_local(png).map(|text| crate::ocr::Outcome {
             text,

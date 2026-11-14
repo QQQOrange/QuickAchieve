@@ -117,6 +117,7 @@ mod imgsearch;
 // r54 需求 3：明文配置的按项导出 / 导入（与「备份」那条加密路是两回事）
 mod export;
 mod ocr;
+mod wechat_ocr;
 mod ocr_engines;
 mod ocr_plan;
 // v1.5.16：翻译（硅基流动 / OpenAI 兼容接口）。纯函数部分可单独单测。
@@ -12385,6 +12386,17 @@ fn clip_read_text() -> String {
 fn ocr_env_check() -> serde_json::Value {
     ocr::ocr_dep_check()
 }
+#[crate::t::command]
+fn wechat_ocr_probe() -> serde_json::Value {
+    crate::wechat_ocr::probe()
+}
+#[crate::t::command]
+fn wechat_ocr_file(path: String) -> Result<String, String> {
+    let b = std::fs::read(&path).map_err(|e| format!("读不了 {path}: {e}"))?;
+    crate::wechat_ocr::recognize(&b)
+}
+
+
 
 /// 「一键安装」按钮：不限次数地打开 Windows「语言和区域」设置页。
 ///
@@ -18952,6 +18964,8 @@ fn main() {
             import_cancel,
             ocr_test,
             ocr_env_check,
+            wechat_ocr_probe,
+            wechat_ocr_file,
             ocr_open_language_settings,
             ocr_open_lang_help,
             ocr_diagnose,

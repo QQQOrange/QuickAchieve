@@ -5,6 +5,41 @@
 
 ---
 
+## v2.23.125 — 2026-11-14
+
+> 新增「微信 OCR（本地）」：直接借用微信 PC 端自带的离线识别模型，
+> 不填 Key、不联网、不上传图片。
+
+### 新增：微信 OCR（本地）
+
+- 工程参考公开的 `wechat_ocr` 封装，把微信 `WeChatOCR.exe` + `mmmojo_64.dll`
+  的调用翻译成 Rust（`src/wechat_ocr.rs`）：初始化 mmmojo 环境、启动子进程、
+  通过 protobuf 发送图片路径、在 `kMMReadPush` 回调里收识别结果。
+- 自动定位微信：注册表 `Tencent\WeChat` / `Tencent\Weixin` 的
+  `InstallPath`，以及 `%APPDATA%\Tencent\WeChat|Weixin\XPlugin\Plugins\WeChatOCR`
+  下版本号最大的 `WeChatOCR.exe`；`mmmojo_64.dll` 在 exe 祖先目录或微信
+  安装目录里找。
+- 设置 → 文字识别 的引擎列表新增「微信 OCR（本地）」，不需要 Key/模型；
+  行上带「检测」按钮，直接显示本机能不能用、路径在哪里。
+- 识别结果与其它引擎一样进入结果窗；并行识别、结果页切换引擎都照旧。
+
+### 说明
+
+- 需要装微信 PC 版（3.9 / 4.x），并至少启动过一次微信；模型随微信安装，
+  不随软件打包。
+- 微信 OCR 走的是本地子进程，失败会返回中文原因（没找到、dll 缺失、
+  子进程 12 秒没连上等），不会静默。
+
+### 验证
+
+- `cargo test` 498 passed / 2 ignored；clippy `-D warnings` 干净。
+- `tools/check-all.js`：UI 887/887、页面 56/56、命令表一致、设置项 0 问题。
+- 新增 protobuf 编解码单测 3 条（请求字段、响应文本、未知字段）。
+- 用参考项目自带的 `WeChatOCR.exe` + `test_img/1.png` 实测，识别结果与图内文字一致。
+
+
+---
+
 ## v2.23.124 — 2026-11-14
 
 > 修「网格页点 OCR 没反应」：WebView2 并发建窗时内层窗口会把外层环境

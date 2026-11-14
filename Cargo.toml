@@ -3,7 +3,7 @@ members = ["qa-macros"]
 
 [package]
 name = "quick-achieve"
-version = "2.23.124"
+version = "2.23.125"
 edition = "2021"
 description = "Quick Achieve 原生宿主（wry + tao 取代 Tauri 运行时）"
 
@@ -42,6 +42,7 @@ sha2 = "0.10"
 hmac = "0.12"
 windows-core = "0.62"
 md5 = "0.8"
+libloading = "0.8"
 
 [dependencies.windows]
 version = "0.62"

@@ -2263,7 +2263,7 @@ dependencies = [
 
 [[package]]
 name = "quick-achieve"
-version = "2.23.124"
+version = "2.23.125"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2272,6 +2272,7 @@ dependencies = [
  "hmac",
  "image",
  "indexmap 1.9.3",
+ "libloading",
  "md5",
  "ndarray",
  "open",

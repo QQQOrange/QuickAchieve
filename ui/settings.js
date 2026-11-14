@@ -7484,6 +7484,26 @@ function renderOcrEngines() {
             row.appendChild(doc);
         }
 
+        /* v2.23.125：微信 OCR 是「借微信的本地模型」，装没装、路径对不对
+         * 只有真去探一次才知道。给一颗「检测」按钮，别让用户点一次识别才发现。 */
+        if (e.id === 'wechat') {
+            const test = document.createElement('button');
+            test.type = 'button';
+            test.className = 'eng-help';
+            test.textContent = '检测';
+            test.title = '检查本机微信 OCR 是否可用（不会上传图片）';
+            test.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                invoke('wechat_ocr_probe')
+                    .then((r) => {
+                        if (r && r.ok) toast('微信 OCR 可用：' + r.exe);
+                        else toast('微信 OCR 不可用：' + ((r && r.error) || '未知原因'));
+                    })
+                    .catch((err) => toast('检测失败：' + err));
+            });
+            row.appendChild(test);
+        }
+
         // 折叠箭头：只表示"这一行现在展开着"（展开与否由"是不是默认引擎"决定）
         const chev = document.createElement('span');
         chev.className = 'eng-chev';
