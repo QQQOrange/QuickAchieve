@@ -7677,6 +7677,28 @@ fn ocr_tell(msg: impl Into<String>, important: bool) {
 /// 窗口期（两次 build 会让 `WINS.insert` 静默销毁前一个原生窗口）。
 static OPENING_REGION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// 框选窗口连续建失败的次数（v2.23.124）。
+///
+/// WebView2 在长时间运行 / 系统省电挂起之后，偶尔会让新窗口的
+/// `CreateCoreWebView2EnvironmentWithOptions` 返回 `RPC_E_DISCONNECTED`
+/// （0x80010108）。这不是配置或权限问题，重试一次通常就能重新拉起
+/// 浏览器进程；连续失败才提示用户重启。
+static REGION_BUILD_TRIES: std::sync::atomic::AtomicU8 =
+    std::sync::atomic::AtomicU8::new(0);
+
+/// `OPENING_REGION` 的 RAII 复位器。
+///
+/// 放在模块级而不是闭包里：`window_building_must_be_off_command_stack`
+/// 会从每个 `.build()` 往上找最近的 `fn `；闭包里写一个 `fn drop` 会让它
+/// 把建窗点误判成 `drop`，从而漏掉/误报调用方检查。
+struct RegionBuildGate;
+
+impl Drop for RegionBuildGate {
+    fn drop(&mut self) {
+        OPENING_REGION.store(false, Ordering::SeqCst);
+    }
+}
+
 /// 打开框选遮罩。`mode` = `"ocr"`（默认，框完送进文字识别）或 `"img"`
 /// （框完送进识图搜索）—— 同一个遮罩窗口复用两套用途，靠 URL 参数区分。
 ///
@@ -7717,6 +7739,7 @@ fn open_region_window_mode(mode: &str) {
     // ⚠ mode 必须**先**变成 owned 再进闭包：`run_on_main_thread` 要求 'static，
     //    而形参 mode: &str 的生命周期只到本函数返回。
     let mode_owned: String = mode.to_string();
+    let mode_retry = mode_owned.clone();
     let url_path: std::path::PathBuf = format!("region.html?mode={mode_owned}").into();
     let _ = a.run_on_main_thread(move || {
         /* ⚠ v2.23.11：**闸门要在真正 build 的那一刻再抢一次**。
@@ -7733,13 +7756,7 @@ fn open_region_window_mode(mode: &str) {
             win::log("region: 已有一次 build 在跑，忽略这次重复触发");
             return;
         }
-        struct BuildGate;
-        impl Drop for BuildGate {
-            fn drop(&mut self) {
-                OPENING_REGION.store(false, Ordering::SeqCst);
-            }
-        }
-        let _gate = BuildGate;
+        let _gate = RegionBuildGate;
         win::log("region: 主线程闭包开始装配 builder");
         // App() 要的是 URL 路径（PathBuf）
         let mut b = WebviewWindowBuilder::new(&a2, "region", WebviewUrl::App(url_path))
@@ -7763,6 +7780,7 @@ fn open_region_window_mode(mode: &str) {
         match b.build() {
             Ok(w) => {
                 let _ = w.set_focus();
+                REGION_BUILD_TRIES.store(0, Ordering::SeqCst);
                 win::log("region: built");
                 // 记下句柄，供紧急强杀兜底用（见 REGION_HWND 的注释）
                 if let Ok(h) = w.hwnd() {
@@ -7804,7 +7822,29 @@ fn open_region_window_mode(mode: &str) {
                     win::log("region: 抢焦点收尾（Esc 有兜底，不影响）");
                 });
             }
-            Err(e) => win::log(&format!("region: build failed: {e}")),
+            Err(e) => {
+                let n = REGION_BUILD_TRIES.fetch_add(1, Ordering::SeqCst) + 1;
+                win::log(&format!("region: build failed（第 {n} 次）: {e}"));
+                if n < 3 {
+                    /* WebView2 的环境/浏览器进程偶尔会被系统挂起后断开，
+                     * 新建窗口第一次必然 RPC_E_DISCONNECTED；隔一会儿重试
+                     * 会重新拉起浏览器进程。不在主线程 sleep —— 那会把
+                     * 消息泵堵住，反而让重试也起不来。 */
+                    let mode2 = mode_retry.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_millis(if n == 1 { 250 } else { 700 }));
+                        open_region_window_mode(&mode2);
+                    });
+                } else {
+                    win::log("region: 连续 3 次建不起来 —— 提示用户重启");
+                    std::thread::spawn(|| {
+                        win::message_box(
+                            "Quick Achieve",
+                            "框选窗口没建起来：WebView2 连接断开。\n\n请先重启 Quick Achieve，再试一次。",
+                        );
+                    });
+                }
+            }
         }
     });
 
@@ -9062,6 +9102,7 @@ fn ocr_start_flow(force_engine: Option<String>) {
         let secret = bkey.secret.clone();
         std::thread::spawn(move || ocr::warm_token(&key, &secret, 10));
     }
+    REGION_BUILD_TRIES.store(0, Ordering::SeqCst);
     open_region_window_mode("ocr");
 }
 
@@ -9089,6 +9130,7 @@ fn img_start_flow_inner() {
     }
     notify_feature("识图搜索");
     dismiss_bar();
+    REGION_BUILD_TRIES.store(0, Ordering::SeqCst);
     open_region_window_mode("img");
 }
 

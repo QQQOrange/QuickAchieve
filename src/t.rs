@@ -244,6 +244,18 @@ pub struct Inner {
 /// 主线程 id：判断某个调用要不要投递。
 pub static MAIN_TID: OnceLock<std::thread::ThreadId> = OnceLock::new();
 
+/// 是否正在 `WebviewWindowBuilder::build()` 里（v2.23.124）。
+///
+/// 只允许主线程一次建一个 WebView2：wry 的 `wait_with_pump` 会泵消息，
+/// 嵌套 build 会在同一 user-data-dir 上并发创建环境，实测报
+/// `RPC_E_DISCONNECTED (0x80010108)`，见 build() 开头的注释。
+static BUILDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 当前是否正在建窗（给需要“忙就稍后重试”的调用方用）。
+pub fn window_building() -> bool {
+    BUILDING.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 fn on_main() -> bool {
     MAIN_TID
         .get()
@@ -1085,6 +1097,25 @@ impl WebviewWindowBuilder {
     }
 
     pub fn build(self) -> Result<WebviewWindow> {
+        /* v2.23.124：**禁止嵌套建窗**。
+         *
+         * wry 建 WebView2 时会 `wait_with_pump` 泵消息；泵的过程中别的
+         * `run_on_main_thread` 闭包（例如 OCR 刚触发的 toast）可能在这里
+         * 重入 build → 同一 user-data-dir 上并发
+         * `CreateCoreWebView2EnvironmentWithOptions`，实测会返回
+         * `RPC_E_DISCONNECTED (0x80010108)`，把外层和内层一起弄死。
+         * 这里直接拒绝第二次，让调用方（框选窗口）隔一会儿重试；
+         * toast 这类可丢的窗口失败只记日志。 */
+        if BUILDING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return Err(Error("QS_WINDOW_BUILD_BUSY".into()));
+        }
+        struct BuildGuard;
+        impl Drop for BuildGuard {
+            fn drop(&mut self) {
+                BUILDING.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let _build_guard = BuildGuard;
         let target: &'static EventLoopWindowTarget<HostEvent> = global()
             .target
             .get()

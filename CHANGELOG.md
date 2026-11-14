@@ -5,6 +5,32 @@
 
 ---
 
+## v2.23.124 — 2026-11-14
+
+> 修「网格页点 OCR 没反应」：WebView2 并发建窗时内层窗口会把外层环境
+> 弄断（`RPC_E_DISCONNECTED 0x80010108`）。现在建窗串行化，框选窗口
+> 失败会自动重试；连续失败给出明确提示，不再静默收起网格。
+
+### 修复：网格页文字识别没反应
+
+- 根因：`wry` 建 WebView2 时会泵消息；OCR 触发的 toast 可能在这个窗口里
+  重入 `build()`，同一 user-data-dir 上并发创建环境，外层框选窗随之中断。
+- `t.rs` 增加进程级建窗互斥 `BUILDING`：嵌套的第二次 build 立即返回
+  `QS_WINDOW_BUILD_BUSY`，不再污染外层环境。
+- 框选窗收到失败后自动重试（250 ms / 700 ms 两轮）；成功则照常进入框选。
+- 连续 3 次失败时弹原生 MessageBox 说明「WebView2 连接断开，请重启」，
+  不再让网格等 2.6 秒后无声消失。
+- `RegionBuildGate` 移到模块级，避免源码契约测试把建窗点误判成 `drop`。
+
+### 验证
+
+- `cargo test` 495 passed / 2 ignored；clippy `-D warnings` 干净。
+- `tools/check-all.js`：UI 887/887、页面 56/56、命令表一致、设置项 0 问题。
+- E2E 4/4（away / frost / reset / search）。
+- 隔离实例「网格 → OCR」正常建出框选窗（`region: built`）。
+
+---
+
 ## v2.23.123 — 2026-11-13
 
 > 自动取色才做明暗判定；固定亮色 / 暗色 / 跟随系统直接跳过。判定从 5 帧改成
