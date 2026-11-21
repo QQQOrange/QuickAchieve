@@ -2551,6 +2551,32 @@ body.idx-on .to-top { bottom: 56px; }
     color: var(--fg-dim);
 }
 
+/* 外部软件：地址 + 选择程序同一行；参数与提权各占一行。 */
+.cform-path {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.cform-path .txt { flex: 1; min-width: 0; }
+.cform-path .btn { flex: none; }
+.cform-admin {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.cform-admin .ck-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--fg);
+}
+.cform-admin .ck-note {
+    flex: 1;
+    min-width: 200px;
+    font-size: 11.5px;
+    color: var(--fg-dim);
+}
+
 .cform-acts {
     display: flex;
     align-items: center;

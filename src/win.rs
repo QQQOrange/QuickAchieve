@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 // 注：windows-rs 的 implement 宏生成代码里用 `::windows_core::` 绝对路径，
 // 所以 windows-core 在 Cargo.toml 里提成了直接依赖（extern prelude 可解析）。
-use windows::core::PCWSTR;
+use windows::core::{Interface, PCWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, GetLastError, ERROR_ALREADY_EXISTS, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
 };
@@ -17,7 +17,8 @@ use windows::Win32::Graphics::Gdi::{
     SRCCOPY,
 };
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+    CoCreateInstance, CoInitializeEx, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+    STGM_READ,
 };
 use windows::Win32::System::DataExchange::GetClipboardOwner;
 use windows::Win32::UI::Accessibility::{
@@ -60,7 +61,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     // 把键盘焦点交还目标窗口（focus_for_copy）
     SetFocus,
 };
-use windows::Win32::UI::Shell::{IsUserAnAdmin, ShellExecuteW};
+use windows::Win32::UI::Shell::{IShellLinkW, IsUserAnAdmin, ShellLink, ShellExecuteW};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GA_PARENT, GA_ROOT, GetAncestor, GetClassNameW, GetClientRect, GetCursorInfo,
     GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindow, GetWindowLongPtrW,
@@ -760,6 +761,220 @@ pub fn protocol_registered(scheme: &str) -> bool {
     false
 }
 
+/// 从注册表 `App Paths` 里查某个 exe 的完整路径（v2.23.129）。
+///
+/// 安装器（Inno / NSIS / MSI 都有这一步）基本都会写一条：
+/// `HKCU|HKLM\Software\Microsoft\Windows\CurrentVersion\App Paths\<exe>`，
+/// **默认值**就是 exe 的完整路径。用它找「用户确实装了、但装在非默认目录」的
+/// 程序，比扫盘便宜得多（欧路词典内置引擎就靠它兜底找路径）。
+///
+/// 两个根 × 默认视图都查一遍：用户态安装写 HKCU，机器级安装写 HKLM。
+/// 读到的值还要再 `is_file` 验一次 —— 注册表里留着卸载残渣是常事。
+pub fn app_paths_exe(exe_name: &str) -> Option<String> {
+    let name = exe_name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let sub = format!("Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{name}");
+    let subw = wide(&sub);
+    for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        let mut hkey = HKEY::default();
+        let rc = unsafe {
+            RegOpenKeyExW(
+                root,
+                PCWSTR(subw.as_ptr()),
+                None,
+                KEY_QUERY_VALUE,
+                &mut hkey,
+            )
+        };
+        if rc.0 != 0 || hkey.is_invalid() {
+            continue;
+        }
+        // 默认值 = 名字传 null（不是空串：空串会被当成"名为空的值"，读不到）
+        let mut buf = [0u8; 2048];
+        let mut size = buf.len() as u32;
+        let rc = unsafe {
+            RegQueryValueExW(
+                hkey,
+                PCWSTR::null(),
+                None,
+                None,
+                Some(buf.as_mut_ptr()),
+                Some(&mut size),
+            )
+        };
+        let _ = unsafe { RegCloseKey(hkey) };
+        if rc.0 != 0 || size < 2 {
+            continue;
+        }
+        let units = (size as usize / 2).min(buf.len() / 2);
+        let mut v: Vec<u16> = (0..units)
+            .map(|i| u16::from_le_bytes([buf[i * 2], buf[i * 2 + 1]]))
+            .collect();
+        while v.last() == Some(&0) {
+            v.pop();
+        }
+        let s = String::from_utf16_lossy(&v);
+        let s = s.trim().trim_matches('"').trim();
+        if !s.is_empty() && std::path::Path::new(s).is_file() {
+            log(&format!("app_paths_exe: 注册表里找到 {name} -> {s}"));
+            return Some(s.to_string());
+        }
+    }
+    None
+}
+
+/// 从 .lnk 快捷方式里读出它指向的程序（v2.23.129）。
+///
+/// COM 两步：ShellLink 的 IPersistFile::Load 把快捷方式解开，
+/// IShellLinkW::GetPath 拿到目标路径。开始菜单、桌面上那些图标是
+/// 「用户其实装在哪」最省事的证据 —— 装的时候他双击过，它就在那儿。
+/// 返回前验一次 is_file：快捷方式指向的 exe 可能已经被删掉或搬走了。
+pub fn lnk_target(lnk: &str) -> Option<String> {
+    let l = lnk.to_string();
+    /* ⚠ COM 的公寓模式是**按线程**定的，而且一旦定了不能改。
+     *
+     * 这里如果在调用方线程上 `CoInitializeEx(MTA)`，而调用方又是主线程，
+     * 后面 tao 建窗口时那句 `OleInitialize` 就会直接失败：
+     *   `OleInitialize failed! RPC_E_CHANGED_MODE` → 进程 panic 在第一个 WebView2 窗口。
+     * 实测过：播种时在主线程解一次 .lnk，软件起来就崩（v2.23.129 首次部署）。
+     *
+     * 所以整个 COM 段落一律扔进临时线程：主线程的 STA 留给 tao，互不干扰。
+     * 代价是一次线程创建（约 0.1ms），而这些调用本来就只在启动后跑一次。 */
+    std::thread::spawn(move || {
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        lnk_target_com(&l)
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
+/// `lnk_target` 的 COM 本体：**必须**在已经初始化过 COM 的线程上调用。
+fn lnk_target_com(lnk: &str) -> Option<String> {
+    unsafe {
+        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+        let file: IPersistFile = link.cast().ok()?;
+        let w = wide(lnk);
+        file.Load(PCWSTR(w.as_ptr()), STGM_READ).ok()?;
+        let mut buf = [0u16; 1024];
+        link.GetPath(&mut buf, std::ptr::null_mut(), 0).ok()?;
+        let mut n = buf.len();
+        while n > 0 && buf[n - 1] == 0 {
+            n -= 1;
+        }
+        let s = String::from_utf16_lossy(&buf[..n]);
+        let s = s.trim().trim_matches('"').trim();
+        if s.is_empty() || !std::path::Path::new(s).is_file() {
+            return None;
+        }
+        Some(s.to_string())
+    }
+}
+
+/// 在开始菜单 + 桌面的快捷方式里找一个 exe 的真实路径（v2.23.129）。
+///
+/// hints 是快捷方式**名字**里可能带的片段（欧路词典的快捷方式叫
+/// 「欧路词典 eudic.lnk」，所以 eudic / 欧路 都要给）。第一轮只解开
+/// 名字命中的那些；没命中再来一轮全解（上限 200 个 —— 为了猜一个路径
+/// 去扫全盘不值当，快捷方式这一层已经覆盖了绝大多数安装器）。
+pub fn shortcut_exe_path(exe_name: &str, hints: &[&str]) -> Option<String> {
+    let exe = exe_name.to_string();
+    let hs: Vec<String> = hints.iter().map(|h| h.to_string()).collect();
+    // 同上：COM 只能在临时线程里起 MTA，主线程留给 tao 的 STA
+    std::thread::spawn(move || {
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        shortcut_exe_path_com(&exe, &hs)
+    })
+    .join()
+    .ok()
+    .flatten()
+}
+
+/// `shortcut_exe_path` 的本体：**必须**在已经初始化过 COM 的线程上调用。
+fn shortcut_exe_path_com(exe_name: &str, hints: &[String]) -> Option<String> {
+    let want = exe_name.trim().to_ascii_lowercase();
+    if want.is_empty() {
+        return None;
+    }
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(pd) = std::env::var("ProgramData") {
+        roots.push(std::path::Path::new(&pd).join("Microsoft\\Windows\\Start Menu\\Programs"));
+    }
+    if let Ok(ad) = std::env::var("APPDATA") {
+        roots.push(std::path::Path::new(&ad).join("Microsoft\\Windows\\Start Menu\\Programs"));
+    }
+    for env in ["PUBLIC", "USERPROFILE"] {
+        if let Ok(d) = std::env::var(env) {
+            roots.push(std::path::Path::new(&d).join("Desktop"));
+        }
+    }
+    let mut lnks: Vec<std::path::PathBuf> = Vec::new();
+    for root in roots {
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+            for e in rd.flatten() {
+                let Ok(ft) = e.file_type() else { continue };
+                if ft.is_dir() {
+                    if lnks.len() < 400 {
+                        stack.push(e.path());
+                    }
+                    continue;
+                }
+                let p = e.path();
+                let is_lnk = p
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .map(|x| x.eq_ignore_ascii_case("lnk"))
+                    .unwrap_or(false);
+                if is_lnk && lnks.len() < 400 {
+                    lnks.push(p);
+                }
+            }
+        }
+    }
+    let name_hit = |p: &std::path::Path| {
+        let stem = p
+            .file_stem()
+            .and_then(|x| x.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        hints
+            .iter()
+            .any(|h| !h.is_empty() && stem.contains(&h.to_ascii_lowercase()))
+    };
+    let want_file = |p: &str| {
+        std::path::Path::new(p)
+            .file_name()
+            .and_then(|x| x.to_str())
+            .map(|x| x.eq_ignore_ascii_case(&want))
+            .unwrap_or(false)
+    };
+    // 第一轮：快捷方式名字里带 hint 的（欧路词典 -> 欧路词典 eudic.lnk）
+    for p in lnks.iter().filter(|p| name_hit(p)) {
+        if let Some(t) = lnk_target_com(&p.to_string_lossy()) {
+            if want_file(&t) {
+                log(&format!("shortcut_exe_path: {:?} -> {t}", p));
+                return Some(t);
+            }
+        }
+    }
+    // 第二轮：名字看不出来的（比如快捷方式叫「词典」），限量全解
+    for p in lnks.iter().take(200) {
+        if name_hit(p) {
+            continue;
+        }
+        if let Some(t) = lnk_target_com(&p.to_string_lossy()) {
+            if want_file(&t) {
+                log(&format!("shortcut_exe_path: {:?} -> {t}", p));
+                return Some(t);
+            }
+        }
+    }
+    None
+}
 /// 在开始菜单里按**名字精确匹配**（大小写不敏感、不含扩展名）找 .lnk 并启动。
 ///
 /// 为什么是开始菜单：用户说"启动微信"指的就是开始菜单里那个叫"微信"的
@@ -1678,7 +1893,7 @@ pub fn uia_warm_up() {
         .spawn(|| {
             let t0 = Instant::now();
             unsafe {
-                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
                 if let Ok(auto) =
                     CoCreateInstance::<_, IUIAutomation>(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
                 {
@@ -2029,7 +2244,7 @@ fn uia_query_with_timeout(drag_end: POINT, drag_start: POINT) -> UiaOutcome {
 fn uia_selection_text_inner(pt_end: POINT, pt_start: POINT) -> UiaOutcome {
     unsafe {
         // 后台线程第一次用 COM，先把自己塞进多线程公寓
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         let auto: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
             Ok(a) => a,
             Err(_) => return UiaOutcome::Failed,
@@ -2240,7 +2455,7 @@ fn uia_probe_wake(auto: &IUIAutomation, fg: HWND, pt: Option<POINT>) {
 
 pub fn uia_probe(pt: Option<POINT>) {
     unsafe {
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         let auto: IUIAutomation = match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
         {
             Ok(a) => a,
@@ -4206,6 +4421,14 @@ fn window_size(h: HWND) -> (i32, i32) {
 ///
 /// 返回 Err 时带上人话，调用方会写进日志（用户看不到弹窗，但排查时能对上）。
 pub fn launch_app(path: &str, admin: bool) -> Result<(), String> {
+    launch_app_args(path, "", admin)
+}
+
+/// 带启动参数的版本（欧路词典这类命令行工具要用）。
+///
+/// `args` 原样作为 lpParameters 交给 ShellExecuteW —— 参数里含空格的值
+/// 由调用方负责加引号（main.rs 的 open_app 会把搜索词安全地包起来）。
+pub fn launch_app_args(path: &str, args: &str, admin: bool) -> Result<(), String> {
     let p = path.trim().trim_matches('"');
     if p.is_empty() {
         return Err("应用路径是空的".into());
@@ -4215,12 +4438,13 @@ pub fn launch_app(path: &str, admin: bool) -> Result<(), String> {
     }
     let verb: Vec<u16> = if admin { "runas\0".encode_utf16().collect() } else { Vec::new() };
     let file: Vec<u16> = p.encode_utf16().chain(std::iter::once(0)).collect();
+    let params: Vec<u16> = if args.trim().is_empty() { Vec::new() } else { wide(args) };
     let r = unsafe {
         ShellExecuteW(
             None,
             if admin { windows::core::PCWSTR(verb.as_ptr()) } else { windows::core::PCWSTR::null() },
             windows::core::PCWSTR(file.as_ptr()),
-            windows::core::PCWSTR::null(),
+            if params.is_empty() { windows::core::PCWSTR::null() } else { windows::core::PCWSTR(params.as_ptr()) },
             windows::core::PCWSTR::null(),
             SW_SHOWNORMAL,
         )
@@ -5115,5 +5339,52 @@ mod text_surface_tests {
         }
         assert!(!is_native_text_class("Button"));
         assert!(!is_native_text_class("Chrome_WidgetWin_1"));
+    }
+}
+
+#[cfg(test)]
+mod shortcut_probe_tests {
+    use super::{lnk_target, shortcut_exe_path};
+
+    /// 不是快捷方式的东西必须安静地返回 None：这个函数在启动路径上，
+    /// 不能因为某个 .lnk 坏掉就把整个播种流程带崩。
+    #[test]
+    fn lnk_target_rejects_non_link() {
+        assert!(lnk_target(r"C:\Windows\notepad.exe").is_none());
+        assert!(lnk_target("").is_none());
+    }
+
+    /// 回归：`lnk_target` **不许**动调用方线程的公寓模式。
+    ///
+    /// 这不是洁癖：主线程后面要交给 tao 做 `OleInitialize`（STA），
+    /// 一旦这里在调用方线程起过 MTA，建第一个 WebView2 窗口就 panic
+    /// （`OleInitialize failed! RPC_E_CHANGED_MODE`）。v2.23.129 首次部署就是这么炸的。
+    /// 所以 COM 全塞进临时线程 —— 这条测试盯的就是"有人把它挪回主线程"。
+    #[test]
+    fn lnk_target_keeps_caller_apartment() {
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        let ok = std::thread::spawn(|| {
+            let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+            assert!(hr.is_ok(), "STA 初始化失败：{hr:?}");
+            let _ = lnk_target(r"C:\Windows\notepad.exe");
+            // 还是 STA 的话，再要一次 STA 会成功（S_FALSE = 已经初始化过）
+            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok()
+        })
+        .join()
+        .expect("测试线程不该 panic");
+        assert!(ok, "lnk_target 改了调用方线程的公寓模式 —— 主线程建 WebView2 会 panic");
+    }
+    /// 本机装没装欧路词典都合法：装了就要拿到真实存在的 exe，
+    /// 没装就是 None（调用方会退到默认路径 + 点击时提示）。
+    #[test]
+    fn shortcut_exe_path_is_sane() {
+        if let Some(p) = shortcut_exe_path("eudic.exe", &["eudic", "欧路"]) {
+            assert!(std::path::Path::new(&p).is_file(), "{p}");
+            let name = std::path::Path::new(&p)
+                .file_name()
+                .and_then(|x| x.to_str())
+                .unwrap_or("");
+            assert!(name.eq_ignore_ascii_case("eudic.exe"), "{p}");
+        }
     }
 }

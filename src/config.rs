@@ -402,8 +402,9 @@ pub const DEFAULT_CUSTOM_CATEGORY: &str = "自定义";
 ///
 /// 和 [`CustomEngine`]（搜索引擎）是两回事，别混：
 ///   · CustomEngine 的 url 带 `%s`，点它 = 拿当前选中的词去搜；
-///   · ExternalApp 的 url 是**终点**，点它 = 原样打开（网页 / 软件自己的协议链接 /
-///     本地程序路径），跟当前选中什么文字毫无关系。
+///   · ExternalApp 是**终点**（网页 / 软件协议 / 本机程序路径）；#135 起分
+///     搜索 / 打开两类：搜索类的 %s 可以写在 url（网页）或 args（本机程序）里，
+///     打开类不取选中文字，点一下原样打开。
 ///
 /// 用 `id` 而不是 `name` 做键：名字用户随时能改，而改名不该让横条上那一格
 /// 凭空消失（自定义引擎用 name 做键，改名就得迁移一串引用，很痛）。
@@ -418,10 +419,18 @@ pub struct ExternalApp {
     pub name: String,
     /// 目标地址：网页 / 软件自己的协议链接（weixin:// 之类）/ 本地程序路径
     pub url: String,
-    /// 用途分类（#135）：`"search"` = 搜索类（url 必须带 `%s`，拿选中文字去搜）、
-    /// `"open"` = 打开类（url 禁带 `%s`，原样打开）。空串 = 老数据没存过，
-    /// 由 [`app_kind`] 按 url 里有没有 `%s` 现推，读出来永远非空。
+    /// 用途分类（#135）：`"search"` = 搜索类（拿选中文字去搜；网页 url 必须带
+    /// `%s`，本机程序则要求 args 带占位符）、`"open"` = 打开类（禁占位符，
+    /// 原样打开）。空串 = 老数据没存过，由 [`app_kind_full`] 按 url / args
+    /// 里有没有占位符现推，读出来永远非空。
     pub kind: String,
+    /// 启动参数（v2.23.128）：只对本机程序有效，例如欧路词典的 `-w {query}`。
+    /// 搜索类用 `%s` 或 `{query}` 标出选中文字的位置；打开类可以写固定参数，
+    /// 但不许带占位符。网页 / 协议链接必须留空（它们没有命令行）。
+    pub args: String,
+    /// 以管理员身份启动本机程序（`runas`，会弹 UAC）。网页 / 协议链接无效。
+    /// 欧路词典这类要往其它进程窗口里送词的工具通常需要它。
+    pub admin: bool,
 }
 
 
@@ -466,17 +475,106 @@ pub const SHORTCUT_PREFIX: &str = "@go:";
 /// kind 为空（老配置、没存过这个字段）时按 url 里有没有 `%s` 现推 ——
 /// 和 shared.js 的 `qsEngineKind` 对网页引擎的推断同一个口径。
 pub fn app_kind(url: &str, kind: &str) -> &'static str {
+    app_kind_full(url, kind, "")
+}
+
+/// 同 [app_kind]，但把**启动参数**也算进推断：本机程序的搜索词占位符
+/// 写在 args 里（-w {query}），只看 url 会把它误判成打开类。
+pub fn app_kind_full(url: &str, kind: &str, args: &str) -> &'static str {
     match kind {
         "search" => "search",
         "open" => "open",
         _ => {
-            if url.contains("%s") {
+            if url.contains("%s") || has_query_slot(args) {
                 "search"
             } else {
                 "open"
             }
         }
     }
+}
+
+/// 查询占位符。%s 是网页引擎的老口径；本机程序参数额外认 {query}
+/// （欧路词典的命令行就是 -w {query}，写起来比 %s 直观）。
+pub fn has_query_slot(s: &str) -> bool {
+    s.contains("%s") || s.contains("{query}")
+}
+
+/// 把一个 file:// 地址还原本地路径（%20 → 空格）。只处理 %XX，其余原样。
+fn app_percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            let hex = |c: u8| -> Option<u8> {
+                match c {
+                    b'0'..=b'9' => Some(c - b'0'),
+                    b'a'..=b'f' => Some(c - b'a' + 10),
+                    b'A'..=b'F' => Some(c - b'A' + 10),
+                    _ => None,
+                }
+            };
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push(h * 16 + l);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+/// 目标是本机程序时返回它的本地路径；网页 / 协议链接返回 None。
+///
+/// 认这三种写法：
+///   · C:\Program Files\eudic\eudic.exe（含空格也行）
+///   · \\server\share\app.exe（UNC）
+///   · file:///C:/Program%20Files/eudic/eudic.exe
+pub fn app_local_path(url: &str) -> Option<String> {
+    let raw = url.trim().trim_matches('"').trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if let Some(rest) = raw.strip_prefix("file://") {
+        let local = if rest.starts_with("//") {
+            // file:////server/share → \\server\share
+            format!("\\\\{}", rest.trim_start_matches('/').replace('/', "\\"))
+        } else if rest.starts_with('/') {
+            // file:///C:/x → C:\x
+            rest.trim_start_matches('/').replace('/', "\\")
+        } else if rest.as_bytes().get(1) == Some(&b':') {
+            // file://C:/x（少见但合法）
+            rest.replace('/', "\\")
+        } else {
+            // file://server/share → \\server\share
+            format!("\\\\{}", rest.replace('/', "\\"))
+        };
+        let decoded = app_percent_decode(&local);
+        return if decoded.trim().is_empty() { None } else { Some(decoded) };
+    }
+    let b = raw.as_bytes();
+    let drive = b.len() >= 2 && b[1] == b':' && b[0].is_ascii_alphabetic();
+    if drive || raw.starts_with("\\\\") {
+        Some(raw.to_string())
+    } else {
+        None
+    }
+}
+
+/// 校验目标：本机程序查文件存在，网页 / 协议链接走 [validate_app_url]。
+/// 返回本机路径（网页返回 None），供调用方决定用哪条启动链。
+pub fn validate_app_target(url: &str) -> Result<Option<String>, String> {
+    if let Some(p) = app_local_path(url) {
+        if !std::path::Path::new(&p).exists() {
+            return Err(format!("找不到这个程序：{p}"));
+        }
+        return Ok(Some(p));
+    }
+    validate_app_url(url)?;
+    Ok(None)
 }
 
 /// 横条列表里代表「外部软件」的哨兵前缀：`@app:<id>`。
@@ -1320,6 +1418,9 @@ const APP_URL_BLOCKED_SCHEMES: &[&str] = &[
 /// 地址长度上限。再长的地址不可能是人手填的，只可能是误粘贴。
 pub const APP_URL_MAX: usize = 2048;
 
+/// 启动参数长度上限。正常命令行远到不了；拦住误粘贴的整段文本。
+pub const APP_ARGS_MAX: usize = 1024;
+
 /// 只校验**地址**本身（打开前也要走一遍，见 main.rs 的 open_app）。
 /// 错误信息都是直接给用户看的中文。
 pub fn validate_app_url(url: &str) -> Result<(), String> {
@@ -1378,14 +1479,42 @@ pub fn clean_app(
     kind: &str,
     skip_id: Option<&str>,
 ) -> Result<ExternalApp, String> {
+    clean_app_full(cfg, name, url, kind, "", false, skip_id)
+}
+
+/// 完整版：额外接受**启动参数**与**管理员身份**（仅本机程序可用）。
+///
+/// 本机程序的判定见 [app_local_path]：只要目标是本机 exe / lnk，就允许
+/// 带空格的原生路径，并且 args 里可以用 %s / {query} 标出搜索词位置。
+/// 网页与协议链接保持老契约：args 必须空、admin 必须 false。
+///
+/// 类型与目标的契约：
+///   · 本机 + 搜索：args 必须带 %s 或 {query}（搜索词会替换进去）
+///   · 本机 + 打开：args 原样传，禁带占位符
+///   · 网页 + 搜索：url 必须带 %s（老口径不变）
+///   · 网页 + 打开：url 禁带 %s
+pub fn clean_app_full(
+    cfg: &Config,
+    name: &str,
+    url: &str,
+    kind: &str,
+    args: &str,
+    admin: bool,
+    skip_id: Option<&str>,
+) -> Result<ExternalApp, String> {
     let name = name.trim();
     let url = url.trim();
+    let args = args.trim();
+
+    if args.chars().count() > APP_ARGS_MAX {
+        return Err("启动参数太长了，检查一下是不是贴错了".into());
+    }
 
     let kind = match kind {
         "search" => "search",
         "open" => "open",
         "" => {
-            if url.contains("%s") {
+            if url.contains("%s") || has_query_slot(args) {
                 "search"
             } else {
                 "open"
@@ -1418,24 +1547,163 @@ pub fn clean_app(
         }
     }
 
-    validate_app_url(url)?;
+    // 参数 / 管理员只对本机程序有意义。先判本机，能给出比地址校验更
+    // 贴题的报错（网页地址 + 参数是最常见的误填）。
+    let is_local = app_local_path(url).is_some();
+    if !is_local && (!args.is_empty() || admin) {
+        return Err("启动参数 / 管理员身份只能配本机程序（地址填 C:/… 或 file:///C:/…）".into());
+    }
 
-    // 类型与地址自洽（和 engines.json 的 kind 不变量同一条契约）：
-    // 搜索类必须带 %s，打开类禁带 —— 带着 %s 点打开类，字面量 "%s" 会被
-    // 当成地址的一部分，必然打不开。
-    if kind == "search" && !url.contains("%s") {
-        return Err("搜索类地址里必须带 %s（它代表选中的文字）".into());
+    let local_path = validate_app_target(url)?;
+
+    if local_path.is_some() {
+        if kind == "search" && !has_query_slot(args) {
+            return Err("本机程序搜索类要在启动参数里用 %s 或 {query} 标出搜索词的位置，例如：-w {query}".into());
+        }
+        if kind == "open" && has_query_slot(args) {
+            return Err("打开类的启动参数里不能有 %s / {query} —— 它是原样启动的".into());
+        }
+    } else {
+        // 网页契约不变：搜索类必须带 %s，打开类禁带。
+        if kind == "search" && !url.contains("%s") {
+            return Err("搜索类地址里必须带 %s（它代表选中的文字）".into());
+        }
+        if kind == "open" && url.contains("%s") {
+            return Err("打开类地址里不能有 %s —— 它是原样打开的，带了会打不开".into());
+        }
     }
-    if kind == "open" && url.contains("%s") {
-        return Err("打开类地址里不能有 %s —— 它是原样打开的，带了会打不开".into());
-    }
+
+    // 本机路径原样存（保留用户填的写法），启动时再由 app_local_path 还原。
+    let stored_url = if local_path.is_some() {
+        url.trim_matches('"').trim().to_string()
+    } else {
+        url.to_string()
+    };
 
     Ok(ExternalApp {
         id: String::new(),
         name: name.to_string(),
-        url: url.to_string(),
+        url: stored_url,
         kind: kind.to_string(),
+        args: args.to_string(),
+        admin,
     })
+}
+
+/* ================================================================== */
+/* 内置软件引擎（v2.23.129）                                          */
+/* ================================================================== */
+
+/// 内置「欧路词典」软件引擎的固定 id —— 横条哨兵就是 @app:eudic。
+///
+/// 固定 id 是刻意的：图标覆盖存在 overrides["@app:eudic"] 里，
+/// 用户改路径、重选 exe 之后，那颗图标仍然挂得住。
+pub const EUDIC_APP_ID: &str = "eudic";
+/// 欧路词典默认安装位置（绝大多数机器就是这里）。
+pub const EUDIC_EXE_DEFAULT: &str = r"C:\Program Files\eudic\eudic.exe";
+/// 内置欧路词典的启动参数：-w <词> 是它的命令行查词开关。
+pub const EUDIC_ARGS: &str = "-w {query}";
+
+/// 欧路词典装在哪：先看几个常规目录，再问注册表 App Paths。
+///
+/// 真实场景就是「装在 D 盘 / 便携版」—— 光凭默认路径猜不到，所以有第二层兜底。
+/// 都找不到返回 None：配置里仍然写默认路径（用户一眼看懂该填什么），
+/// 点的时候会被告知"找不到，请选一下"。
+pub fn find_eudic_exe() -> Option<String> {
+    let mut cands: Vec<String> = Vec::new();
+    for env in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA", "APPDATA"] {
+        if let Ok(base) = std::env::var(env) {
+            if !base.trim().is_empty() {
+                cands.push(format!("{}\\eudic\\eudic.exe", base));
+            }
+        }
+    }
+    cands.push(EUDIC_EXE_DEFAULT.to_string());
+    cands.push(r"C:\Program Files (x86)\eudic\eudic.exe".to_string());
+    for c in &cands {
+        if std::path::Path::new(c).is_file() {
+            crate::win::log(&format!("eudic: 常规目录里找到了 {c}"));
+            return Some(c.clone());
+        }
+    }
+    // 装在自定义目录的：安装器一般会在 App Paths 里留一条默认值。
+    for name in ["eudic.exe", "Eudic.exe"] {
+        if let Some(p) = crate::win::app_paths_exe(name) {
+            return Some(p);
+        }
+    }
+    // 最后一层：开始菜单 / 桌面上的快捷方式（绿色安装版常常什么都没有，
+    // 只留一个「欧路词典 eudic.lnk」—— 解开它就知道装在哪了）。
+    if let Some(p) = crate::win::shortcut_exe_path("eudic.exe", &["eudic", "欧路"]) {
+        return Some(p);
+    }
+    None
+}
+
+/// 内置软件引擎清单（目前只有欧路词典）。
+///
+/// kind=search：选中的词交给 -w 参数查词；admin=false 是刻意的 ——
+/// 查词是高频动作，勾了每次点都要弹 UAC。需要时在设置里可自己勾上。
+pub fn builtin_apps() -> Vec<ExternalApp> {
+    vec![ExternalApp {
+        id: EUDIC_APP_ID.to_string(),
+        name: "欧路词典".to_string(),
+        url: find_eudic_exe().unwrap_or_else(|| EUDIC_EXE_DEFAULT.to_string()),
+        kind: "search".to_string(),
+        args: EUDIC_ARGS.to_string(),
+        admin: false,
+    }]
+}
+
+/// 第一次跑到这个版本时，把内置软件引擎写进配置。
+///
+/// 返回 true = 配置被改过，**调用方负责 save**（这里不落盘，方便单测）。
+/// 只做一次：用户把「欧路词典」删掉是他的决定，下次启动不能偷偷补回来。
+pub fn seed_builtin_apps(cfg: &mut Config) -> bool {
+    if cfg.apps_builtin_seeded {
+        return false;
+    }
+    cfg.apps_builtin_seeded = true;
+    for app in builtin_apps() {
+        // 判重三条：同一个 id、同一个名字、或者**指向同一个 exe**。
+        // 第三条是给"用户在我内置之前就自己加过欧路词典"的情况留的 ——
+        // 名字他可能写成「欧路」「词典」，但 exe 骗不了人：再加一条就是
+        // 横条上并排两个一样的格子。
+        let same_exe = |a: &ExternalApp| {
+            match (app_local_path(&a.url), app_local_path(&app.url)) {
+                (Some(x), Some(y)) => x.eq_ignore_ascii_case(&y),
+                _ => false,
+            }
+        };
+        if cfg
+            .apps
+            .iter()
+            .any(|a| a.id == app.id || a.name == app.name || same_exe(a))
+        {
+            crate::win::log(&format!(
+                "config: 已经有指向同一个程序的软件引擎，不再重复写「{}」",
+                app.name
+            ));
+            continue;
+        }
+        crate::win::log(&format!(
+            "config: 内置软件引擎「{}」-> {} {}",
+            app.name, app.url, app.args
+        ));
+        // 哨兵一起进横条：第一次装完就能直接看到「欧路词典」那一格，
+        // 之后可以像别的引擎一样拖位置、换图标、移出去。
+        let key = app_icon_key(&app.id);
+        cfg.apps.push(app);
+        if !cfg.bar_list.iter().any(|k| k == &key) {
+            cfg.bar_list.push(key);
+        }
+    }
+    true
+}
+
+/// 软件引擎的图标键（@app:<id>）—— 换图标、从程序取图标都用它。
+pub fn app_icon_key(id: &str) -> String {
+    format!("{}{}", APP_PREFIX, id)
 }
 
 /// 生成一个不会撞的 app id。
@@ -2097,6 +2365,13 @@ pub ocr_accurate: bool,
     /// 用户自己加的外部软件（点横条上那一格直接唤起）
     #[serde(default)]
     pub apps: Vec<ExternalApp>,
+    /// 内置软件引擎（欧路词典）是否已经写过一次（v2.23.129）。
+    ///
+    /// 只在「第一次跑到带内置引擎的版本」时为 false —— 写完就置 true。
+    /// 用户把那条删掉是他的决定，之后启动不再偷偷补回来。
+    /// serde(default)：老配置读进来是 false，正好触发一次内建。
+    #[serde(default)]
+    pub apps_builtin_seeded: bool,
     /// 「智能直达」入口：软件 / 网址 / 文件，一条输入自动归类。
     ///
     /// `#[serde(default)]` 保证**老配置读进来是空列表**，不会因为缺字段整份配置
@@ -2512,6 +2787,7 @@ impl Default for Config {
             sep_style: "line".to_string(),
             custom_engines: Vec::new(),
             apps: Vec::new(),
+        apps_builtin_seeded: false,
             shortcuts: Vec::new(),
             overrides: HashMap::new(),
             url_overrides: HashMap::new(),
@@ -5846,6 +6122,102 @@ pub fn test_lock() -> std::sync::MutexGuard<'static, ()> {
 mod tests {
     use super::*;
 
+    /* ── v2.23.129：内置软件引擎（欧路词典） ───────────────────────── */
+
+    #[test]
+    fn builtin_apps_has_eudic_with_query_slot() {
+        let apps = builtin_apps();
+        let eudic = apps
+            .iter()
+            .find(|a| a.id == EUDIC_APP_ID)
+            .expect("内置清单里应该有欧路词典");
+        assert_eq!(eudic.name, "欧路词典");
+        assert_eq!(eudic.kind, "search");
+        // 搜索类必须能塞进搜索词，否则点一下只会打开软件、不查词
+        assert!(has_query_slot(&eudic.args), "内置参数里必须带搜索词占位符");
+        assert!(!eudic.url.trim().is_empty(), "内置路径不能是空串");
+        assert!(!eudic.admin, "查词是高频动作，默认不提权");
+    }
+
+    #[test]
+    fn seed_builtin_apps_only_once() {
+        let mut cfg = Config::default();
+        cfg.apps.clear();
+        cfg.bar_list.clear();
+        assert!(seed_builtin_apps(&mut cfg), "第一次应该写进配置");
+        assert_eq!(cfg.apps.len(), 1);
+        let key = app_icon_key(EUDIC_APP_ID);
+        assert_eq!(key, "@app:eudic", "哨兵必须是 @app:<id> 这一套");
+        assert!(
+            cfg.bar_list.iter().any(|k| k == &key),
+            "第一次写进来时哨兵要一起进横条"
+        );
+        // 第二次不许再动：用户把它删掉是他的决定
+        assert!(!seed_builtin_apps(&mut cfg));
+        assert_eq!(cfg.apps.len(), 1);
+
+        // 换个新配置也还是只有一条（不会因为"标记位"被重置而重复堆）
+        cfg.apps_builtin_seeded = false;
+        assert!(seed_builtin_apps(&mut cfg));
+        assert_eq!(cfg.apps.len(), 1, "同名的不许重复加");
+    }
+
+    #[test]
+    fn seed_builtin_apps_keeps_user_row() {
+        let mut cfg = Config::default();
+        cfg.apps.clear();
+        cfg.bar_list.clear();
+        // 保存时会校验路径真的在盘上 —— 拿测试二进制自己当那个 exe
+        let me = std::env::current_exe()
+            .expect("拿不到测试自己的路径")
+            .display()
+            .to_string();
+        let mut mine = clean_app_full(
+            &cfg,
+            "欧路词典",
+            &me,
+            "search",
+            "-w {query}",
+            false,
+            None,
+        )
+        .expect("手工加一个同名软件本身是合法的");
+        mine.id = "mine".into();
+        cfg.apps.push(mine);
+        assert!(seed_builtin_apps(&mut cfg));
+        assert_eq!(cfg.apps.len(), 1, "用户自己加过同名的，就不再塞内置那条");
+    }
+
+    #[test]
+    fn seed_builtin_apps_dedupes_by_same_exe() {
+        // 用户在我内置之前就自己加过欧路词典（名字可能写的是「欧路」）——
+        // 名字对不上时靠 exe 路径判重，不能给他并排两条一样的格子。
+        let Some(exe) = find_eudic_exe() else {
+            return; // 这台机器没装：后面的分支没法构造，直接跳过
+        };
+        let mut cfg = Config::default();
+        cfg.apps.clear();
+        cfg.bar_list.clear();
+        let mut mine = clean_app_full(&cfg, "欧路", &exe, "search", "-w {query}", false, None)
+            .expect("手工加一个不同名、同 exe 的软件是合法的");
+        mine.id = "mine".into();
+        cfg.apps.push(mine);
+        assert!(seed_builtin_apps(&mut cfg));
+        assert_eq!(cfg.apps.len(), 1, "指向同一个 exe 的不许重复加");
+        assert!(cfg.apps_builtin_seeded, "标记位还是要立起来");
+    }
+    #[test]
+    fn find_eudic_exe_result_is_real_file() {
+        // 这台机器装没装不一定 —— 只在"探到了"的时候校验：绝不能返回一个不存在的路径
+        if let Some(p) = find_eudic_exe() {
+            assert!(
+                std::path::Path::new(&p).is_file(),
+                "探测到的路径必须真的存在：{p}"
+            );
+            assert!(p.to_lowercase().ends_with("eudic.exe"));
+        }
+    }
+
     /* ══════════════════════════════════════════════════════════════════
      * r96：**所有**碰 config 文件的测试共用一把进程级互斥锁
      *
@@ -7442,6 +7814,8 @@ mod sanitize_tests {
             name: "微信".into(),
             url: "weixin://".into(),
             kind: "open".into(),
+            args: String::new(),
+            admin: false,
         }];
 
         // 名字的各种死法
@@ -7487,6 +7861,77 @@ mod sanitize_tests {
         assert!(clean_app(&cfg, "网易云", "weixin://", "其他", None).is_err());
     }
 
+    /// v2.23.128：本机程序路径的识别口径 —— 裸路径（含空格）、UNC、file:// + %20。
+    #[test]
+    fn app_local_path_recognizes_native_targets() {
+        assert_eq!(
+            app_local_path(r"C:\Program Files\eudic\eudic.exe").as_deref(),
+            Some(r"C:\Program Files\eudic\eudic.exe")
+        );
+        assert_eq!(
+            app_local_path(r#""C:\Program Files\eudic\eudic.exe""#).as_deref(),
+            Some(r"C:\Program Files\eudic\eudic.exe"),
+            "设置页允许把路径连引号一起粘进来"
+        );
+        assert_eq!(
+            app_local_path("file:///C:/Program%20Files/eudic/eudic.exe").as_deref(),
+            Some(r"C:\Program Files\eudic\eudic.exe")
+        );
+        assert_eq!(
+            app_local_path("file://C:/App/app.exe").as_deref(),
+            Some(r"C:\App\app.exe")
+        );
+        assert_eq!(
+            app_local_path(r"\\server\share\app.exe").as_deref(),
+            Some(r"\\server\share\app.exe")
+        );
+        assert_eq!(app_local_path("C:/App/app.exe").as_deref(), Some("C:/App/app.exe"));
+        assert_eq!(app_local_path("https://example.com"), None);
+        assert_eq!(app_local_path("weixin://"), None);
+    }
+
+    /// kind 为空的老数据：本机程序的搜索词在 args 里，不能只看 url。
+    #[test]
+    fn app_kind_full_counts_args_placeholder() {
+        assert_eq!(app_kind_full("C:/eudic.exe", "", "-w {query}"), "search");
+        assert_eq!(app_kind_full("C:/eudic.exe", "", "-w %s"), "search");
+        assert_eq!(app_kind_full("C:/eudic.exe", "", "--new-window"), "open");
+        assert_eq!(app_kind_full("https://x/?q=%s", "", ""), "search");
+        assert_eq!(app_kind_full("C:/eudic.exe", "open", "-w {query}"), "open");
+        assert_eq!(app_kind("C:/eudic.exe", ""), "open");
+    }
+
+    /// v2.23.128：本机程序带启动参数 / 管理员；网页仍守旧契约。
+    #[test]
+    fn clean_app_full_accepts_local_program_args_and_admin() {
+        let cfg = Config::default();
+        let dir = std::env::temp_dir();
+        let exe = dir.join(format!("qa app {} .exe", std::process::id()));
+        std::fs::write(&exe, b"stub").unwrap();
+        let path = exe.to_string_lossy().to_string();
+
+        let app = clean_app_full(&cfg, "欧路词典", &path, "search", "-w {query}", true, None)
+            .expect("本机程序搜索类被误拦");
+        assert_eq!(app.url, path.trim_matches('"').trim());
+        assert_eq!(app.args, "-w {query}");
+        assert!(app.admin);
+
+        // 本机搜索：args 没占位符 → 拦
+        assert!(clean_app_full(&cfg, "欧路词典", &path, "search", "", false, None).is_err());
+        // 本机打开：args 带占位符 → 拦
+        assert!(clean_app_full(&cfg, "欧路词典", &path, "open", "-w {query}", false, None).is_err());
+        // 网页带参数 / 管理员 → 拦
+        assert!(clean_app_full(&cfg, "网页", "https://example.com", "open", "--flag", false, None).is_err());
+        assert!(clean_app_full(&cfg, "网页", "https://example.com", "open", "", true, None).is_err());
+        // 不存在的程序 → 拦，且提示带上路径
+        let missing = dir.join("qa-definitely-missing-xyz.exe");
+        let e = clean_app_full(&cfg, "没有", &missing.to_string_lossy(), "open", "", false, None)
+            .unwrap_err();
+        assert!(e.contains("找不到这个程序"), "报错要给人话：{e}");
+
+        let _ = std::fs::remove_file(&exe);
+    }
+
     /// id 必须不撞：横条哨兵按 id 钉，撞了就是两个格子抢同一个软件。
     #[test]
     fn new_app_ids_do_not_collide() {
@@ -7516,12 +7961,16 @@ mod sanitize_tests {
                 name: "微信".into(),
                 url: "weixin://".into(),
                 kind: "open".into(),
+                args: String::new(),
+                admin: false,
             },
             ExternalApp {
                 id: "a2".into(),
                 name: "网易云".into(),
                 url: "https://music.163.com".into(),
                 kind: "open".into(),
+                args: String::new(),
+                admin: false,
             },
         ];
         c.bar_list = vec![
@@ -7807,6 +8256,8 @@ mod sanitize_tests {
             name: "小软件".into(),
             url: "https://example.com/?q=%s".into(),
             kind: "search".into(),
+            args: String::new(),
+            admin: false,
         }];
         cfg.recent_engines = vec!["我的小站".into(), "小软件".into(), "不明物体".into()];
         let n = normalize_recent(&mut cfg);

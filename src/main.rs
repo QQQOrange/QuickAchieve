@@ -13473,46 +13473,184 @@ fn stash_picked_icon(engine: &str, path: &std::path::Path) {
 #[crate::t::command]
 fn app_icon_from_exe(engine: String, exe: String) {
     win::log(&format!("app_icon_from_exe: engine={engine} exe={exe}"));
-    std::thread::spawn(move || {
-        /* ⚠ 用户选的可能是个 `.lnk` 快捷方式（开始菜单里基本都是），
-         * 也可能直接是 exe。
-         *
-         * 我一开始以为要"先把 .lnk 解析成目标 exe、再去抠图标"，还打算自己
-         * 实现 COM 的 IShellLink。**实测发现不用**：`SHGetFileInfoW` 走的是
-         * shell 的图标解析，shell 自己会读快捷方式的目标 —— 对 `.lnk`
-         * 直接有效（而 `PrivateExtractIconsW` 对 `.lnk` 返回 0，它只认
-         * 带图标资源的文件）。
-         *
-         * 所以 `extract_app_icon` 内部已经是"先试直读（大图）、失败退 shell"，
-         * 两条路都在 `win.rs` 里，这里原样把路径传进去就行。 */
-        let Some((w, h, rgba)) = win::extract_app_icon(&exe, 256) else {
-            win::log(&format!("app_icon_from_exe: {exe} 里没取到图标，保持原样"));
-            return;
-        };
-        let Some(png) = encode_rgba_png(w, h, &rgba) else {
-            win::log("app_icon_from_exe: PNG 编码失败");
-            return;
-        };
+    std::thread::spawn(move || app_icon_from_exe_worker(&engine, &exe));
+}
 
-        // 落盘：直接写进 icons 目录（文件名按引擎名规整，和 stash_icon 同一口径）
-        let Some(file) = write_engine_icon_png(&engine, &png) else {
-            win::log("app_icon_from_exe: 写图标文件失败");
+/// app_icon_from_exe 的主体。
+///
+/// v2.23.129 从命令里抽出来：**内置软件引擎启动时也要干同一件事**
+/// （见 spawn_builtin_icon_pull），两边必须是同一份逻辑，否则
+/// 「用户手动取一次图标」和「启动自动取」会长得不一样。
+fn app_icon_from_exe_worker(engine: &str, exe: &str) {
+    /* ⚠ 用户选的可能是个 .lnk 快捷方式（开始菜单里基本都是），也可能直接是 exe。
+     *
+     * 一开始以为要"先把 .lnk 解析成目标 exe、再去抠图标"，还打算自己实现
+     * COM 的 IShellLink。**实测发现不用**：SHGetFileInfoW 走的是 shell 的
+     * 图标解析，shell 自己会读快捷方式的目标 —— 对 .lnk 直接有效
+     * （而 PrivateExtractIconsW 对 .lnk 返回 0，它只认带图标资源的文件）。
+     *
+     * 所以 extract_app_icon 内部已经是"先试直读（大图）、失败退 shell"，
+     * 两条路都在 win.rs 里，这里原样把路径传进去就行。 */
+    let Some((w, h, rgba)) = win::extract_app_icon(exe, 256) else {
+        win::log(&format!("app_icon_from_exe: {exe} 里没取到图标，保持原样"));
+        return;
+    };
+    let Some(png) = encode_rgba_png(w, h, &rgba) else {
+        win::log("app_icon_from_exe: PNG 编码失败");
+        return;
+    };
+
+    // 落盘：直接写进 icons 目录（文件名按引擎名规整，和 stash_icon 同一口径）
+    let Some(file) = write_engine_icon_png(engine, &png) else {
+        win::log("app_icon_from_exe: 写图标文件失败");
+        return;
+    };
+    let mut cfg = match st().cfg.lock() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    if let Some(old) = cfg.overrides.insert(engine.to_string(), file) {
+        if old != cfg.overrides[engine] {
+            config::drop_icon(&old);
+        }
+    }
+    config::save(&cfg);
+    drop(cfg);
+    broadcast();
+    win::log(&format!("app_icon_from_exe: 已把 {engine} 的图标换成程序图标"));
+}
+
+/// 内置软件引擎的图标键 -> 现成的 exe 路径（拿不到就没有）。
+///
+/// 三个条件缺一不可：路径真的在盘上、overrides 里没有这个键、
+/// icons 目录里也还没有同名 PNG。后者意味着「以前抠过了」——
+/// 用户之后手动换过图也不会被覆盖（那时 overrides 里已经有键了）。
+fn builtin_icon_target(key: &str, url: &str, taken: &std::collections::HashMap<String, String>) -> Option<String> {
+    if taken.contains_key(key) {
+        return None;
+    }
+    let exe = config::app_local_path(url)?;
+    if !std::path::Path::new(&exe).is_file() {
+        return None;
+    }
+    let safe: String = key
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    if config::icons_dir().join(format!("{safe}.png")).exists() {
+        return None;
+    }
+    Some(exe)
+}
+
+/// 启动后给「内置软件引擎」自动拉一次图标（v2.23.129）。
+///
+/// 用户要求：「同时拉取欧路词典的图标」。放在启动后而不是首次启动时，
+/// 是因为他要**先把 exe 装上、或者先指明路径** —— 装好之后重启一次就能拿到，
+/// 不装也完全不影响软件本身（没图标的格子显示首字徽标）。
+///
+/// 延迟 1.2 秒再动手：启动瞬间在抢 CPU（建窗、装钩子），
+/// 抠图标要读 exe 资源、耗几十毫秒，不该挤在这时候。
+fn spawn_builtin_icon_pull() {
+    let jobs: Vec<(String, String)> = {
+        let cfg = cfg_snapshot();
+        cfg.apps
+            .iter()
+            .filter_map(|a| {
+                let key = config::app_icon_key(&a.id);
+                builtin_icon_target(&key, &a.url, &cfg.overrides).map(|exe| (key, exe))
+            })
+            .collect()
+    };
+    if jobs.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1200));
+        for (key, exe) in jobs {
+            win::log(&format!("内置软件图标: 从 {exe} 抠图标 -> {key}"));
+            app_icon_from_exe_worker(&key, &exe);
+        }
+    });
+}
+
+/// 本机程序不在盘上时的补救流程（v2.23.129）。
+///
+/// 内置欧路词典的路径是按"常规目录 + 注册表"猜出来的，装在 D 盘 / 删了重装的
+/// 机器上就是空的。这时**不直接报错**（用户根本不知道设置页在哪），而是：
+///   ① 问一句「找不到 xx 的程序，要现在指定吗」；
+///   ② 要在主线程弹文件框（rfd 那套坑见 pick_app 的注释）；
+///   ③ 选到的路径写回**同一个 id** —— 横条格子、图标键都不动；
+///   ④ 然后照常启动，用户感觉只是"多点了一下"。
+///
+/// 整段跑在新线程里：open_app 是同步命令、跑在主线程，在这里等文件对话框
+/// 会把整个软件冻住（和建窗死锁同一类问题）。
+fn fix_missing_app_exe(id: String, text: Option<String>) -> Result<(), String> {
+    let cfg = cfg_snapshot();
+    let Some(app) = cfg.apps.iter().find(|a| a.id == id).cloned() else {
+        return Err("这个软件已经不在了".into());
+    };
+    std::thread::spawn(move || {
+        win::log(&format!(
+            "open_app: {} 的路径不在盘上（{}），问用户要不要指定",
+            app.name, app.url
+        ));
+        let ask = format!(
+            "找不到「{}」的程序：\r\n{}\r\n\r\n要现在指定它的位置吗？\r\n选一次就记住，以后不用再选（也可以在「设置 → 软件」里改）。",
+            app.name, app.url
+        );
+        if !win::message_box_yes_no("Quick Achieve", &ask) {
+            win::log("open_app: 用户没指定位置，这次算了");
+            return;
+        }
+        let Some(handle) = APP.get().cloned() else {
             return;
         };
-        let mut cfg = match st().cfg.lock() {
-            Ok(c) => c,
-            Err(_) => return,
+        let Some(picked) = pick_app(handle) else {
+            win::log("open_app: 用户在文件框里点了取消");
+            return;
         };
-        if let Some(old) = cfg.overrides.insert(engine.clone(), file) {
-            if old != cfg.overrides[&engine] {
-                config::drop_icon(&old);
+        let item = {
+            let cfg = cfg_snapshot();
+            match config::clean_app_full(
+                &cfg,
+                &app.name,
+                &picked,
+                &app.kind,
+                &app.args,
+                app.admin,
+                Some(&app.id),
+            ) {
+                Ok(mut it) => {
+                    it.id = app.id.clone();
+                    it
+                }
+                Err(e) => {
+                    win::message_box("Quick Achieve", &format!("这个位置不能用：{e}"));
+                    return;
+                }
             }
+        };
+        {
+            let mut cfg = match st().cfg.lock() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            match cfg.apps.iter_mut().find(|a| a.id == app.id) {
+                Some(slot) => *slot = item.clone(),
+                None => cfg.apps.push(item.clone()),
+            }
+            config::save(&cfg);
         }
-        config::save(&cfg);
-        drop(cfg);
         broadcast();
-        win::log("app_icon_from_exe: 已把这个应用的图标设为引擎图标");
+        win::log(&format!("open_app: {} 的路径已改成 {}", app.name, item.url));
+        // 路径有了，照常再走一遍（这次 is_file 通过，不会再进本函数）
+        if let Err(e) = open_app(app.id.clone(), text) {
+            win::log(&format!("open_app: 改完路径仍然打不开（{e}）"));
+            win::message_box("Quick Achieve", &e);
+        }
     });
+    Ok(())
 }
 
 /// 把引擎图标写成 PNG 文件，返回文件名（与 `config::stash_icon` 同口径：
@@ -16520,10 +16658,21 @@ fn shortcut_pick_icon(id: String, app: AppHandle) -> Result<String, String> {
 }
 
 fn add_app_impl(cfg: &mut Config, name: &str, url: &str, kind: &str) -> Result<String, String> {
+    add_app_impl_full(cfg, name, url, kind, "", false)
+}
+
+fn add_app_impl_full(
+    cfg: &mut Config,
+    name: &str,
+    url: &str,
+    kind: &str,
+    args: &str,
+    admin: bool,
+) -> Result<String, String> {
     if cfg.apps.len() >= 60 {
         return Err("外部软件最多 60 个".into());
     }
-    let mut e = config::clean_app(cfg, name, url, kind, None)?;
+    let mut e = config::clean_app_full(cfg, name, url, kind, args, admin, None)?;
     e.id = config::new_app_id();
     let id = e.id.clone();
     cfg.apps.push(e);
@@ -16532,13 +16681,26 @@ fn add_app_impl(cfg: &mut Config, name: &str, url: &str, kind: &str) -> Result<S
 }
 
 #[crate::t::command]
-fn add_app(name: String, url: String, kind: String) -> Result<String, String> {
+fn add_app(
+    name: String,
+    url: String,
+    kind: String,
+    args: Option<String>,
+    admin: Option<bool>,
+) -> Result<String, String> {
     let id = {
         let mut cfg = match st().cfg.lock() {
             Ok(c) => c,
             Err(_) => return Err("内部状态异常".into()),
         };
-        let id = add_app_impl(&mut cfg, &name, &url, &kind)?;
+        let id = add_app_impl_full(
+            &mut cfg,
+            &name,
+            &url,
+            &kind,
+            args.as_deref().unwrap_or(""),
+            admin.unwrap_or(false),
+        )?;
         config::save(&cfg);
         id
     };
@@ -16554,12 +16716,24 @@ fn update_app_impl(
     url: &str,
     kind: &str,
 ) -> Result<(), String> {
+    update_app_impl_full(cfg, id, name, url, kind, "", false)
+}
+
+fn update_app_impl_full(
+    cfg: &mut Config,
+    id: &str,
+    name: &str,
+    url: &str,
+    kind: &str,
+    args: &str,
+    admin: bool,
+) -> Result<(), String> {
     let Some(pos) = cfg.apps.iter().position(|a| a.id == id) else {
         return Err("这个软件已经不在了".into());
     };
     // 校验时把自己摘出来（重名检查跳过自己），但 apps 还是完整的 ——
-    // clean_app 只读 cfg.apps 做判重，不影响别的。
-    let mut e = config::clean_app(cfg, name, url, kind, Some(id))?;
+    // clean_app_full 只读 cfg.apps 做判重，不影响别的。
+    let mut e = config::clean_app_full(cfg, name, url, kind, args, admin, Some(id))?;
     // ⚠ clean_app 不管 id（新建时由调用方用 new_app_id 现生成）—— 编辑必须
     // 把原 id 还回去。直接整体覆盖会把 id 抹成空串，横条上那颗按 id 钉的
     // 格子当场变孤儿：点下去「这个软件已经不在了」，设置页里也再也删不掉它。
@@ -16569,13 +16743,28 @@ fn update_app_impl(
 }
 
 #[crate::t::command]
-fn update_app(id: String, name: String, url: String, kind: String) -> Result<(), String> {
+fn update_app(
+    id: String,
+    name: String,
+    url: String,
+    kind: String,
+    args: Option<String>,
+    admin: Option<bool>,
+) -> Result<(), String> {
     {
         let mut cfg = match st().cfg.lock() {
             Ok(c) => c,
             Err(_) => return Err("内部状态异常".into()),
         };
-        update_app_impl(&mut cfg, &id, &name, &url, &kind)?;
+        update_app_impl_full(
+            &mut cfg,
+            &id,
+            &name,
+            &url,
+            &kind,
+            args.as_deref().unwrap_or(""),
+            admin.unwrap_or(false),
+        )?;
         config::save(&cfg);
     }
     broadcast();
@@ -16709,27 +16898,115 @@ fn launch_app_chain(entry: &engines::EngineEntry) -> bool {
     false
 }
 
+/// 给 Windows 命令行里的一个值加引号。
+///
+/// 只在必要时包裹（空串 / 含空白 / 含双引号），内部的双引号按
+/// CommandLineToArgvW 的规则转义：n 个反斜杠 + 引号要写成 2n+1 个
+/// 反斜杠 + 引号；结尾的 n 个反斜杠要写成 2n 个再收引号。
+fn quote_app_arg(s: &str) -> String {
+    let need = s.is_empty() || s.chars().any(|c| c.is_whitespace() || c == '"');
+    if !need {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    let mut bs = 0usize;
+    for ch in s.chars() {
+        if ch == '\\' {
+            bs += 1;
+            continue;
+        }
+        if ch == '"' {
+            for _ in 0..(bs * 2 + 1) {
+                out.push('\\');
+            }
+            out.push('"');
+            bs = 0;
+        } else {
+            for _ in 0..bs {
+                out.push('\\');
+            }
+            out.push(ch);
+            bs = 0;
+        }
+    }
+    for _ in 0..(bs * 2) {
+        out.push('\\');
+    }
+    out.push('"');
+    out
+}
+
+/// 把搜索词填进本机程序的启动参数模板。%s 与 {query} 等价，
+/// 都替换成已加引号的一个参数（欧路词典：-w {query}）。
+///
+/// 用户可能自己给占位符加了引号（`-w "%s"`）—— 先认带引号的形式，
+/// 免得替换完变成 `-w ""hello world""`。单趟扫描：替换进去的查询词
+/// 里就算带着 %s / {query}，也不会被二次展开。
+fn fill_app_args(template: &str, query: &str) -> String {
+    let quoted = quote_app_arg(query);
+    let mut out = String::with_capacity(template.len() + quoted.len());
+    let mut rest = template;
+    while let Some(ch) = rest.chars().next() {
+        if let Some(r) = rest.strip_prefix("\"%s\"") {
+            out.push_str(&quoted);
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("\"{query}\"") {
+            out.push_str(&quoted);
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("%s") {
+            out.push_str(&quoted);
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix("{query}") {
+            out.push_str(&quoted);
+            rest = r;
+        } else {
+            out.push(ch);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+    out
+}
+
 /// 点横条上外部软件那一格。
 ///
 /// 打开类（#135 之前这就是全部行为）：原样打开地址（网页 / 协议链接 /
-/// 本地程序）—— 不取选区、不拼查询词、不碰剪贴板，就是一次纯粹的「打开」。
+/// 本机程序）—— 不取选区、不拼查询词、不碰剪贴板，就是一次纯粹的「打开」。
 ///
-/// 搜索类（#135 新增，url 带 `%s` 或 kind 显式为 search）：和 `open_search`
-/// 同一个口径 —— 拿选中文字替换 `%s`。`text` 是前端传来的当前选区，没传 /
-/// 空的用后端存的选区兜底（同款 fallback）；还是没有就报错，让前端提示
-/// 「先选中文字」。没选中文字时搜索类不该静默打开一个带空查询的页面。
+/// 搜索类（#135 新增，url 带 %s、args 带 %s 或 {query}，或 kind 显式为
+/// search）：和 open_search 同一个口径 —— 拿选中文字替换占位符。text 是
+/// 前端传来的当前选区，没传 / 空的用后端存的选区兜底（同款 fallback）；
+/// 还是没有就报错，让前端提示「先选中文字」。
+///
+/// 本机程序（C:/… 或 file:///…）走 ShellExecuteW + 启动参数，可带
+/// admin=true 提权；网页 / 协议链接仍走 shell_open，参数必须为空。
 #[crate::t::command]
 fn open_app(id: String, text: Option<String>) -> Result<(), String> {
-    let (url, kind) = {
+    let (url, kind, args, admin) = {
         let cfg = match st().cfg.lock() {
             Ok(c) => c.clone(),
             Err(_) => return Err("内部状态异常".into()),
         };
         match cfg.apps.iter().find(|a| a.id == id) {
-            Some(a) => (a.url.clone(), config::app_kind(&a.url, &a.kind)),
+            Some(a) => (
+                a.url.clone(),
+                config::app_kind_full(&a.url, &a.kind, &a.args),
+                a.args.clone(),
+                a.admin,
+            ),
             None => return Err("这个软件已经不在了".into()),
         }
     };
+    let local = config::app_local_path(&url);
+
+    /* v2.23.129：路径不在盘上 —— 内置引擎（以及用户改过路径的软件）最常见的情况。
+     * 交给 fix_missing_app_exe 问一句再让他选，别丢一个 "找不到这个程序" 了事。 */
+    if let Some(path) = local.as_deref() {
+        if !std::path::Path::new(path).is_file() {
+            return fix_missing_app_exe(id, text);
+        }
+    }
+
     if kind == "search" {
         let query = match text.filter(|t| !t.trim().is_empty()) {
             Some(t) => t,
@@ -16737,6 +17014,16 @@ fn open_app(id: String, text: Option<String>) -> Result<(), String> {
         };
         if query.trim().is_empty() {
             return Err("先选中文字，再点这个搜索".into());
+        }
+        if let Some(path) = local.as_deref() {
+            if !config::has_query_slot(&args) {
+                return Err("这个软件的启动参数里没有 %s / {query}，去设置里补上".into());
+            }
+            let filled = fill_app_args(&args, &query);
+            win::log(&format!("open_app: {id} 本机搜索 -> {path}"));
+            win::launch_app_args(path, &filled, admin)?;
+            dismiss_bar();
+            return Ok(());
         }
         let url = url.replace("%s", &engines::encode_query(&query));
         win::log(&format!(
@@ -16752,6 +17039,14 @@ fn open_app(id: String, text: Option<String>) -> Result<(), String> {
         dismiss_bar();
         return Ok(());
     }
+
+    if let Some(path) = local.as_deref() {
+        win::log(&format!("open_app: {id} 本机打开 -> {path}"));
+        win::launch_app_args(path, &args, admin)?;
+        dismiss_bar();
+        return Ok(());
+    }
+
     win::log(&format!("open_app: {id} -> {}", redact_url(&url)));
     // 打开前再校验一次：配置可能是旧版本留下来的、或用户手改过 config.json
     if let Err(e) = config::validate_app_url(&url) {
@@ -18043,6 +18338,16 @@ fn init_state() {
         win::log("config: 给老配置补上横条翻译哨兵 @trans");
         config::save(&cfg);
     }
+    /* v2.23.129：内置软件引擎（欧路词典）。
+     *
+     * 只在「第一次跑到带内置引擎的版本」时写一次（apps_builtin_seeded 记着），
+     * 顺便把它的哨兵补进横条 —— 用户装完就能直接看到那一格。
+     * 路径先按常规目录 + 注册表 App Paths 猜；猜不到就写默认路径，
+     * 真点到的时候会问他要不要现在指定（见 open_app）。 */
+    if config::seed_builtin_apps(&mut cfg) {
+        win::log("config: 内置软件引擎首次播种完成（欧路词典；重复/同名/同 exe 的不会再写一条）");
+        config::save(&cfg);
+    }
     let _ = STATE.set(AppState {
         cfg: Mutex::new(cfg),
         geo: Mutex::new(Geo {
@@ -19253,6 +19558,8 @@ fn main() {
                 // v2.23.10：磁盘上的 exe 换人了就自动交班（见函数注释）
                 // v2.23.93：binwatch + 设置窗回收合并成一条 housekeeping
                 spawn_housekeeping();
+                // v2.23.129：内置软件引擎（欧路词典）—— 启动后自动从 exe 抠一次图标
+                spawn_builtin_icon_pull();
                 // 2026-10-23：鼠标走远了自动收起（"这个横条我不会要了"）
                 spawn_bar_away_guard();
                 // 后台先把 UIA 热起来：第一次调用要加载 UIAutomationCore、
@@ -22825,6 +23132,8 @@ mod tests {
                 name: "好的".into(),
                 url: "weixin://".into(),
                 kind: "open".into(),
+                args: String::new(),
+                admin: false,
             },
             config::ExternalApp {
                 id: "evil".into(),
@@ -22832,6 +23141,8 @@ mod tests {
                 // 模拟「用户手改 config.json」塞进来的危险地址
                 url: "javascript:alert(1)".into(),
                 kind: "open".into(),
+                args: String::new(),
+                admin: false,
             },
             config::ExternalApp {
                 id: "wiki".into(),
@@ -22839,6 +23150,8 @@ mod tests {
                 // #135 搜索类：%s 代表选中的文字
                 url: "https://baike.baidu.com/item/%s".into(),
                 kind: "search".into(),
+                args: String::new(),
+                admin: false,
             },
         ];
         with_state_cfg(cfg, || {
@@ -23542,6 +23855,42 @@ mod tests {
             "同步命令跑在主线程上，里面不许 sleep / 阻塞打开：{bad:?} —— \
              要等就 std::thread::spawn 出去（见 fire_hotkey_engine / open_trans_window 的注释）"
         );
+    }
+
+    /// v2.23.128：本机程序搜索参数 —— 搜索词含空格时自动加引号，
+    /// %s 与 {query} 两种占位符都认（欧路词典写 -w {query}）。
+    #[test]
+    fn fill_app_args_quotes_query_and_supports_both_slots() {
+        assert_eq!(quote_app_arg("欧路"), "欧路");
+        assert_eq!(quote_app_arg("hello world"), "\"hello world\"");
+        assert_eq!(quote_app_arg(""), "\"\"");
+        assert_eq!(quote_app_arg("a\"b"), "\"a\\\"b\"");
+        assert_eq!(quote_app_arg("a b\\"), "\"a b\\\\\"");
+        assert_eq!(fill_app_args("-w {query}", "hello world"), "-w \"hello world\"");
+        assert_eq!(fill_app_args("-w %s", "欧路 词典"), "-w \"欧路 词典\"");
+        assert_eq!(fill_app_args("-w \"%s\"", "hello world"), "-w \"hello world\"");
+        assert_eq!(fill_app_args("-w \"{query}\"", "欧路 词典"), "-w \"欧路 词典\"");
+        assert_eq!(fill_app_args("--flag", "x"), "--flag");
+        // 查询词里自带占位符时不能被二次展开
+        assert_eq!(fill_app_args("%s {query}", "%s"), "%s %s");
+        assert_eq!(fill_app_args("%s {query}", "x{query}"), "x{query} x{query}");
+    }
+
+    /// 业务本体也要把 args / admin 原样落库（命令层只是加锁 + 保存）。
+    #[test]
+    fn add_app_impl_full_keeps_args_and_admin() {
+        let mut cfg = config::Config::default();
+        let exe = std::env::temp_dir().join(format!("qa-app-full-{}.exe", std::process::id()));
+        std::fs::write(&exe, b"stub").unwrap();
+        let path = exe.to_string_lossy().to_string();
+        let id = add_app_impl_full(&mut cfg, "欧路词典", &path, "search", "-w {query}", true)
+            .expect("本机程序被误拦");
+        assert_eq!(cfg.apps.len(), 1);
+        assert_eq!(cfg.apps[0].id, id);
+        assert_eq!(cfg.apps[0].args, "-w {query}");
+        assert!(cfg.apps[0].admin);
+        assert!(cfg.bar_list.contains(&config::app_sentinel(&id)));
+        let _ = std::fs::remove_file(&exe);
     }
 }
 

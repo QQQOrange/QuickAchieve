@@ -1495,7 +1495,8 @@ function renderBar(force) {
                 // 提示位被一段底层错误撑爆。
                 invoke('open_app', {
                     id: name.slice(QS_APP_PREFIX.length),
-                    text: kind === 'search' ? (currentText || null) : null,
+                    // 软件搜索优先用输入框里刚敲的字，其次才是划词那一条
+                    text: kind === 'search' ? appQueryText() : null,
                 }).catch((e) => showBarTip('打不开：' + String(e || '未知错误').slice(0, 60)));
             });
             enginesEl.appendChild(b);
@@ -5391,7 +5392,11 @@ function renderGrid(g) {
                         lb.textContent);
                 } else if (name.startsWith(QS_APP_PREFIX)) {
                     gridOpenThenClose(
-                        () => invoke('open_app', { id: name.slice(QS_APP_PREFIX.length), text: currentText || null }),
+                        () => {
+                            const app = qsAppBySentinel(name);
+                            const text = qsAppKind(app) === 'search' ? appQueryText() : null;
+                            return invoke('open_app', { id: name.slice(QS_APP_PREFIX.length), text });
+                        },
                         lb.textContent);
                 } else {
                     /* 收藏夹：产物是横条里的面板，不是"另一个窗口" —— 不能走闸门，
@@ -5449,6 +5454,12 @@ function renderGrid(g) {
     pushLayout();
 }
 
+/** 外部软件搜索要带的文字：输入框里刚敲的优先，其次才是划词那一条。
+ *  以前只传 currentText —— 用户在横条里打了字、再点软件格，拿去搜的还是旧选区。 */
+function appQueryText() {
+    return (inputQ.value.trim() || currentText) || null;
+}
+
 function runEngineSearch(engine, forceText) {
     if (!engine) return Promise.resolve();
     const kw = inputQ.value.trim();
@@ -5487,8 +5498,9 @@ function defaultEngine() {
 function activatePanelCell(cell) {
     if (!cell) return;
     if (cell.dataset.app) {
-        invoke('open_app', { id: cell.dataset.app, text: currentText || null })
-            .catch(() => {});
+        const app = (CONF.apps || []).find((a) => a.id === cell.dataset.app);
+        const text = qsAppKind(app) === 'search' ? appQueryText() : null;
+        invoke('open_app', { id: cell.dataset.app, text }).catch(() => {});
         return;
     }
     runEngineSearch(cell.dataset.engine).catch(() => { });

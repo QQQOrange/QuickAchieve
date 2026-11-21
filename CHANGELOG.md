@@ -5,6 +5,60 @@
 
 ---
 
+## v2.23.129 — 2026-11-21
+
+> 内置「欧路词典」查词引擎：不用自己配，装好就有一条；程序不在默认位置会自己找，
+> 实在找不到就问你一句，顺手把程序自带的图标抠过来当引擎图标。
+
+### 新增：内置软件引擎（欧路词典）
+
+- 首次启动写入内置引擎「欧路词典」（id 固定 `eudic`，横条哨兵 `@app:eudic`，
+  参数 `-w {query}`，类型「搜索」），并自动补进横条 —— 装完就能用。
+- 只写一次（`Config.apps_builtin_seeded`）：用户把它删掉是他的决定，之后启动
+  不再偷偷补回来。
+- 找 exe 分四层：`ProgramFiles` / `ProgramFiles(x86)` / `LOCALAPPDATA` /
+  `APPDATA` 下的 `eudic\eudic.exe`、两个默认安装路径、注册表
+  `App Paths\eudic.exe`（HKCU + HKLM，新增 `win::app_paths_exe`）、
+  开始菜单与桌面快捷方式（新增 `win::lnk_target` / `win::shortcut_exe_path`，
+  绿色安装版只剩一个 `.lnk` 时全靠这一层）。
+- 路径不在盘上时不再直接报「找不到这个程序」：弹一句问要不要现在指定，
+  选完写回**同一个 id**（横条格子、图标键都不变），然后继续查词；
+  整段在新线程里跑，不冻主线程。
+- 启动后自动从 exe 抠一次图标（256px PNG 落 `icons/`，写
+  `overrides["@app:eudic"]`）；已有图标不覆盖，失败只写日志。
+- 设置页软件表单新增「从程序取图标」按钮（手动口子：换了 exe 或自动那次没取到时用）。
+
+### 验证
+
+- `cargo test --bin QuickAchieve`：513 项 / 511 passed / 2 ignored / 0 failed；
+  新增 6 条单测（内置清单契约、只播种一次、同名不重复、探测路径必须真实存在、
+  `.lnk` 解析拒绝非快捷方式）。
+
+---
+
+## v2.23.128 — 2026-11-21
+
+> 软件引擎支持本机程序 + 启动参数 + 管理员启动：欧路词典这类
+> `exe -w {query}` 的查词工具可以直接放进横条或网格页。
+
+### 新增：本机程序软件引擎
+
+- `ExternalApp` 增加 `args` / `admin` 字段；设置页软件表单新增「选择程序…」、
+  「启动参数」和「以管理员身份打开」。
+- 本机路径支持裸盘符（含空格）、`file:///C:/…`、UNC；保存时校验文件存在。
+- 搜索词占位符支持 `%s` 与 `{query}`，本机程序走
+  `ShellExecuteW(path, args, runas?)`，搜索词按命令行规则加引号。
+- 横条 / 网格 / 全部引擎面板点软件格时，优先用输入框文字，其次划词。
+- 网页 / 协议软件保持原契约：必须 `协议://`，搜索类必须 `%s`，
+  不允许 args/admin。
+
+### 验证
+
+- `cargo test` 505 tests / 503 passed / 2 ignored；新增本机路径、参数占位符、
+  搜索词加引号、args/admin 落库等单测。
+
+---
+
 ## v2.23.127 — 2026-11-14
 
 > 修「识别结果页里选中文字，点淘宝有时不搜索」：横条拿到的是空文本，
@@ -238,7 +292,7 @@
 
 ### 变更：WebView2 缓存放临时目录，退出即清
 
-- 默认：`%TEMP%\QuickAchieve-WebView2-<pid>\`，**退出时删掉**。
+- 默认：`%TEMP%\QuickAchieve-WebView2-<pid>`，**退出时删掉**。
   目录名带 PID —— 新实例永远不会撞上旧实例的缓存，退出清理助手可以放心删；
   崩溃留下的残骸由**下次启动**统一清扫（`wv2: 清掉 N 个上次遗留的临时缓存目录`）。
 - 退出清理分两步：
@@ -275,15 +329,15 @@
 
 > 用户要求：「只想 QuickAchieve 只保留一个单 exe 文件，不会另外生成文件夹」。
 > 现在 **exe 旁边就只有一个 exe** —— 配置 / 图标 / 日志 / 备份 / WebView2 缓存
-> 全部收进 `%APPDATA%\QuickAchieve\`；想要绿色便携，放一个 `portable.flag` 就切回去。
+> 全部收进 `%APPDATA%\QuickAchieve`；想要绿色便携，放一个 `portable.flag` 就切回去。
 
 ### 变更：默认单 EXE 模式（数据搬到 %APPDATA%）
 
 - **存储策略**（`config::data_dir` 重写）：
-  - 默认：`%APPDATA%\QuickAchieve\`（配置 / 图标 / 日志 / WebView2 缓存），
-    备份在其下的 `back\`；
+  - 默认：`%APPDATA%\QuickAchieve`（配置 / 图标 / 日志 / WebView2 缓存），
+    备份在其下的 `back`；
   - 便携：exe 旁边放一个空文件 `portable.flag` → 仍用 exe 同级的
-    `Quick Achieve data\` + `Quick Achieve back\`（拷走文件夹就能换机）；
+    `Quick Achieve data` + `Quick Achieve back`（拷走文件夹就能换机）；
   - `QS_DATA_DIR` 显式指定 → 原样用它（测试 / 调试不变）。
 - **老用户自动迁移**：exe 旁边已有 `Quick Achieve data\config.json` 时，第一次
   启动自动搬到 `%APPDATA%\QuickAchieve`。顺序是「先复制 → 逐项校验

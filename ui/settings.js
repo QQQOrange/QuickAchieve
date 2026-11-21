@@ -2885,7 +2885,9 @@ function appManageRow(ap) {
     // 把地址也露出来：和自定义引擎一个理由 —— 最容易忘的就是当初填的什么
     const u = document.createElement('small');
     u.className = 'curl';
-    u.textContent = ap.url;
+    u.textContent = ap.url
+        + (ap.args ? '　' + ap.args : '')
+        + (ap.admin ? '　（管理员）' : '');
     nm.appendChild(u);
 
     const ops = document.createElement('span');
@@ -3000,16 +3002,41 @@ function setApKind(v) {
     syncApKindUI();
 }
 
-/** 类型一切换，地址框的占位符和说明跟着换：搜索类要提醒写 %s。 */
+/** 本机程序（exe）地址判定：盘符 / UNC / file:// —— 和 Rust 的 app_local_path 对齐。
+ *  只用来切提示文案，真正的校验在后端。 */
+function apIsLocalUrl(v) {
+    const s = String(v || '').trim().replace(/^"+|"+$/g, '');
+    const drive = s.length >= 2 && s.charCodeAt(1) === 58 && /[a-zA-Z]/.test(s.charAt(0));
+    const unc = s.length >= 2 && s.charCodeAt(0) === 92 && s.charCodeAt(1) === 92;
+    return drive || unc || s.slice(0, 7).toLowerCase() === 'file://';
+}
+
+/** 类型一切换，地址框的占位符和说明跟着换：
+ *  网页搜索要提醒写 %s；本机程序搜索则提醒写启动参数（-w {query}）。 */
 function syncApKindUI() {
     const url = $('w-apUrl');
     const note = $('apKindNote');
-    if (apKind() === 'search') {
-        if (url) url.placeholder = '软件自己的搜索地址，用 %s 标出搜索词，例如：weixin://search?q=%s';
-        if (note) note.innerHTML = '搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中';
+    const args = $('w-apArgs');
+    const local = apIsLocalUrl(url && url.value);
+    const search = apKind() === 'search';
+    if (args) {
+        args.placeholder = search
+            ? (local ? '搜索词位置，例如：-w {query}' : '本机程序才用这里；网页搜索词写在地址的 %s 里')
+            : '启动参数（本机程序），例如：--new-window';
+    }
+    if (url) {
+        url.placeholder = search
+            ? (local ? '本机程序路径，例如：C:/Program Files/eudic/eudic.exe'
+                     : '软件自己的搜索地址，用 %s 标出搜索词，例如：weixin://search?q=%s')
+            : 'https://… / weixin://… / C:/…/app.exe';
+    }
+    if (!note) return;
+    if (search && local) {
+        note.innerHTML = '搜索：拿选中的词启动这个程序 —— 启动参数里用 <b>%s</b> 或 <b>{query}</b> 标出位置，例如 <b>-w {query}</b>';
+    } else if (search) {
+        note.innerHTML = '搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中';
     } else {
-        if (url) url.placeholder = 'https://… / weixin://… / file:///C:/…/app.exe';
-        if (note) note.innerHTML = '打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜，地址里用 <b>%s</b> 标出搜索词的位置';
+        note.innerHTML = '打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜；本机程序在启动参数里用 <b>{query}</b> 标出搜索词的位置';
     }
 }
 
@@ -3020,6 +3047,8 @@ function fillAppForm(id) {
     apEditId = id;
     $('w-apName').value = ap.name;
     $('w-apUrl').value = ap.url;
+    $('w-apArgs').value = ap.args || '';
+    $('w-apAdmin').checked = !!ap.admin;
     setApKind(qsAppKind(ap));
     $('btnApSave').textContent = '保存修改';
     $('btnApCancel').hidden = false;
@@ -3039,6 +3068,8 @@ function resetAppForm() {
     apEditId = null;
     $('w-apName').value = '';
     $('w-apUrl').value = '';
+    $('w-apArgs').value = '';
+    $('w-apAdmin').checked = false;
     setApKind('open');
     $('btnApSave').textContent = '添加';
     $('btnApCancel').hidden = true;
@@ -3074,14 +3105,16 @@ async function submitAppForm() {
     const name = $('w-apName').value;
     const url = $('w-apUrl').value;
     const kind = apKind();
+    const args = $('w-apArgs').value;
+    const admin = $('w-apAdmin').checked;
     const editing = !!apEditId;
     try {
         if (editing) {
-            await invoke('update_app', { id: apEditId, name, url, kind });
+            await invoke('update_app', { id: apEditId, name, url, kind, args, admin });
             toast('已保存');
             resetAppForm();
         } else {
-            await invoke('add_app', { name, url, kind });
+            await invoke('add_app', { name, url, kind, args, admin });
             toast('已添加「' + name.trim() + '」并固定到横条');
             // 加完收回表单，回到方式选择那一层
             afterAddDone('app');
@@ -6301,7 +6334,38 @@ $('btnApCancel').addEventListener('click', () => {
     resetAppForm();
     renderAppList();
 });
-for (const id of ['w-apName', 'w-apUrl']) {
+/* 从「地址栏里那个程序」抠图标当引擎图标（v2.23.129）。
+ * 内置的欧路词典启动后会自己取一次（spawn_builtin_icon_pull）；这个按钮是手动口子：
+ * 换了 exe、或者自动那次没取到（那时显示的是首字徽标）。
+ * ⚠ 图标按 id 存（@app:<id>），新建态还没 id —— 和「选图标…」同一条约束。 */
+$('btnApIconFromExe').addEventListener('click', async () => {
+    const hint = $('apHint');
+    const url = ($('w-apUrl').value || '').trim();
+    if (!url) {
+        hint.textContent = '先填程序地址，或者点「选择程序…」';
+        return;
+    }
+    if (!apEditId) {
+        hint.textContent = '先点「添加」把它保存下来，再回来取图标';
+        return;
+    }
+    hint.textContent = '正在从程序里取图标…';
+    await invoke('app_icon_from_exe', { engine: QS_APP_PREFIX + apEditId, exe: url }).catch(() => {});
+    // 后端是在线程里干的，这里等一小会儿再把话说完
+    setTimeout(() => {
+        hint.textContent = '取完了：有图标就换上了，没变说明这个程序里没有图标资源';
+    }, 1200);
+});
+
+/* 选程序：把 exe 的完整路径直接填进地址框（和「智能直达」选文件同一个后端命令）。 */
+$('btnApPickExe').addEventListener('click', async () => {
+    const p = await invoke('pick_app').catch(() => null);
+    if (!p) return;
+    $('w-apUrl').value = p;
+    syncApKindUI();
+});
+$('w-apUrl').addEventListener('input', syncApKindUI);
+for (const id of ['w-apName', 'w-apUrl', 'w-apArgs']) {
     $(id).addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();

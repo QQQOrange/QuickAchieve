@@ -1144,12 +1144,15 @@ window.qsDirIconFor = function (name) {
 };
 
 /** 一条外部软件的用途分类（#135）：`'search'` / `'open'`。
- *  kind 为空（老配置）时按 url 里有没有 %s 现推 —— 和 Rust 侧
- *  config::app_kind、网页引擎的 qsEngineKind 同一个口径。 */
+ *  kind 为空（老配置）时按 url / 启动参数里有没有占位符现推 —— 和 Rust 侧
+ *  config::app_kind_full、网页引擎的 qsEngineKind 同一个口径。
+ *  本机程序（欧路词典这类）搜索词在 args 里，所以 args 也要一起看。 */
 window.qsAppKind = function (app) {
     if (!app) return 'open';
     if (app.kind === 'search' || app.kind === 'open') return app.kind;
-    return String(app.url || '').indexOf('%s') >= 0 ? 'search' : 'open';
+    const args = String(app.args || '');
+    return (String(app.url || '').indexOf('%s') >= 0
+        || args.indexOf('%s') >= 0 || args.indexOf('{query}') >= 0) ? 'search' : 'open';
 };
 
 /** 全部引擎的平铺列表（#136 设置页 / #140 横条面板的新「全部引擎」视图用）。

@@ -1575,13 +1575,24 @@
 
                 网页地址 <code>https://…</code> / 软件协议 <code>weixin://</code> /
 
-                本机程序 <code>file:///C:/…/app.exe</code> 都行；保存后自动固定到横条末尾。
+                本机程序 <code>C:/…/app.exe</code> 或 <code>file:///C:/…/app.exe</code> 都行；保存后自动固定到横条末尾。
 
             </div>
 
             <input class="txt" id="w-apName" placeholder="名字，例如：微信" spellcheck="false">
 
-            <input class="txt" id="w-apUrl" placeholder="https://… / weixin://… / file:///C:/…/app.exe" spellcheck="false">
+            <div class="cform-path">
+                <input class="txt" id="w-apUrl" placeholder="https://… / weixin://… / C:/…/app.exe" spellcheck="false">
+                <button class="btn ghost" id="btnApPickExe" type="button" title="从电脑里选一个 exe / 快捷方式，路径自动填进来">选择程序…</button>
+            </div>
+
+            <input class="txt" id="w-apArgs" placeholder="启动参数（本机程序），例如：-w {query}" spellcheck="false">
+
+            <div class="cform-admin">
+                <label class="sw"><input type="checkbox" id="w-apAdmin"><i></i></label>
+                <span class="ck-label">以管理员身份打开</span>
+                <span class="ck-note">会弹 UAC；只对本机程序有效</span>
+            </div>
 
             <div class="cform-kind">
 
@@ -1602,6 +1613,7 @@
             <div class="cform-acts">
 
                 <button class="btn ghost" id="btnApIcon">选图标…</button>
+                <button class="btn ghost" id="btnApIconFromExe" title="点一下：把上面那个程序自带的图标当作引擎图标（和「选图标…」效果一样，只是不用自己找图）">从程序取图标</button>
 
                 <img class="ce-icon" id="apIconPrev" alt="" hidden>
 
