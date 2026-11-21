@@ -3032,11 +3032,11 @@ function syncApKindUI() {
     }
     if (!note) return;
     if (search && local) {
-        note.innerHTML = '搜索：拿选中的词启动这个程序 —— 启动参数里用 <b>%s</b> 或 <b>{query}</b> 标出位置，例如 <b>-w {query}</b>';
+        note.innerHTML = qsT('搜索：拿选中的词启动这个程序 —— 启动参数里用 <b>%s</b> 或 <b>{query}</b> 标出位置，例如 <b>-w {query}</b>');
     } else if (search) {
-        note.innerHTML = '搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中';
+        note.innerHTML = qsT('搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中');
     } else {
-        note.innerHTML = '打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜；本机程序在启动参数里用 <b>{query}</b> 标出搜索词的位置';
+        note.innerHTML = qsT('打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜；本机程序在启动参数里用 <b>{query}</b> 标出搜索词的位置');
     }
 }
 

@@ -1,0 +1,13 @@
+{
+  "选择程序…": "Choose program…",
+  "从程序取图标": "Use program icon",
+  "会弹 UAC；只对本机程序有效": "Triggers a UAC prompt · local programs only",
+  "从电脑里选一个 exe / 快捷方式，路径自动填进来": "Pick an .exe or shortcut on this PC — the path fills in automatically",
+  "点一下：把上面那个程序自带的图标当作引擎图标（和「选图标…」效果一样，只是不用自己找图）": "Click to use the icon built into the program above as the engine icon (same as Choose icon…, without hunting for an image)",
+  "启动参数（本机程序），例如：--new-window": "Launch arguments (local programs), e.g. --new-window",
+  "启动参数（本机程序），例如：-w {query}": "Launch arguments (local programs), e.g. -w {query}",
+  "打开直达链接": "Open link",
+  "搜索：拿选中的词启动这个程序 —— 启动参数里用 <b>%s</b> 或 <b>{query}</b> 标出位置，例如 <b>-w {query}</b>": "Search: launch this program with the selected text — mark the slot in the launch arguments with <b>%s</b> or <b>{query}</b>, e.g. <b>-w {query}</b>",
+  "搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中": "Search: hand the selected text to this app — the address must contain <b>%s</b> (it stands for the selected text); clicking with nothing selected shows a hint first",
+  "打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜；本机程序在启动参数里用 <b>{query}</b> 标出搜索词的位置": "Open: click to open this target directly (no selection needed) · Search: hand the selected text to this app; for local programs mark the query slot in the launch arguments with <b>{query}</b>"
+}

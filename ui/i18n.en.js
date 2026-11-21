@@ -146,11 +146,6 @@ window.QS_I18N.add({
     "切换后立刻生效，并写进本机配置（下次启动仍是这个语言）· 简体中文为默认": "Applies immediately and is saved to this machine (still in effect next launch) · Simplified Chinese is the default",
     "开机自动启动": "Start with Windows",
     "登录 Windows 后自动在后台待命": "Wait in the background right after you sign in",
-    /* v2.23.117：开关下面那一行的「立即修复 / 在系统设置里查看」。
-       动态拼出来的状态句（"已生效：计划任务…"）在 settings.js 里直接出英文，
-       不经字典 —— 它们是运行时拼的，进字典一定会漏。 */
-    "立即修复": "Repair now",
-    "在系统设置里查看": "Open Windows startup settings",
     "默认以管理员身份运行": "Always run as administrator",
     "只有管理员进程才能把 Ctrl+C 送进同样是管理员的软件（任务管理器、部分编辑器）。改完下次启动生效": "Only an elevated process can send Ctrl+C into apps that also run elevated (Task Manager, some editors). Takes effect on the next launch.",
     "启动密码": "Startup password",
@@ -765,7 +760,7 @@ window.QS_I18N.add({
     "把这个软件读进上面的表单": "Load this app into the form above",
     "还没有外部软件。到上面的「添加引擎」选「软件引擎」就能加一个。": "No external apps yet. Choose “App engine” under “Add engine” above to add one.",
     "软件自己的搜索地址，用 %s 标出搜索词，例如：weixin://search?q=%s": "The app's own search address, with %s marking the search words, e.g. weixin://search?q=%s",
-    "搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中": "Search: hands the selected words to this app — the address must contain <b>%s</b> (it stands for the selected text); clicking with nothing selected tells you to select something first",
+    "搜索：拿选中的词交给这个软件搜 —— 地址里必须带 <b>%s</b>（它代表选中的文字），没有选中文字时点了会提示先选中": "Search: hand the selected text to this app — the address must contain <b>%s</b> (it stands for the selected text); clicking with nothing selected shows a hint first",
     "打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜，地址里用 <b>%s</b> 标出搜索词的位置": "Open: clicking opens this address directly (no selected text needed) · Search: hands the selected words to this app, with <b>%s</b> marking where the keyword goes",
     "先点「添加」把它保存下来，再回来挑图标": "Click “Add” to save it first, then come back and pick an icon",
     "（默认后缀，留空则不加）": "(default suffix; leave empty for none)",
@@ -1415,7 +1410,19 @@ window.QS_I18N.add({
     "底板透明度": "Background opacity",
     "% · 只改横条底板（非图标部分）；图标浓淡仍由「横条不透明度」控制 · 100 = 完全透出背后内容 · 0 = 实色底板": "% · Only the bar backing (not the icons); icon strength still follows “Bar opacity” · 100 = fully see-through · 0 = solid backing",
     "Ctrl+Shift+G 网格页 · Ctrl+Alt+O 文字识别 · 其余热键可在设置里改": "Ctrl+Shift+G grid page · Ctrl+Alt+O text recognition · the rest are configurable",
-    "把「收藏这段文字」放到横条上，之后可以拖到任意位置": "Put “Save this text” on the bar; you can drag it anywhere afterwards"
+    "把「收藏这段文字」放到横条上，之后可以拖到任意位置": "Put “Save this text” on the bar; you can drag it anywhere afterwards",
+    "立即修复": "Repair now",
+    "在系统设置里查看": "Open Windows startup settings",
+    "选择程序…": "Choose program…",
+    "从程序取图标": "Use program icon",
+    "会弹 UAC；只对本机程序有效": "Triggers a UAC prompt · local programs only",
+    "从电脑里选一个 exe / 快捷方式，路径自动填进来": "Pick an .exe or shortcut on this PC — the path fills in automatically",
+    "点一下：把上面那个程序自带的图标当作引擎图标（和「选图标…」效果一样，只是不用自己找图）": "Click to use the icon built into the program above as the engine icon (same as Choose icon…, without hunting for an image)",
+    "启动参数（本机程序），例如：--new-window": "Launch arguments (local programs), e.g. --new-window",
+    "启动参数（本机程序），例如：-w {query}": "Launch arguments (local programs), e.g. -w {query}",
+    "打开直达链接": "Open link",
+    "搜索：拿选中的词启动这个程序 —— 启动参数里用 <b>%s</b> 或 <b>{query}</b> 标出位置，例如 <b>-w {query}</b>": "Search: launch this program with the selected text — mark the slot in the launch arguments with <b>%s</b> or <b>{query}</b>, e.g. <b>-w {query}</b>",
+    "打开：点一下直接打开这个地址（不要求选中文字）· 搜索：拿选中的词交给这个软件搜；本机程序在启动参数里用 <b>{query}</b> 标出搜索词的位置": "Open: click to open this target directly (no selection needed) · Search: hand the selected text to this app; for local programs mark the query slot in the launch arguments with <b>{query}</b>"
 });
 
 /* 整块替换：帮助页那种静态长文（见 i18n.js 的 data-i18n-block）。 */
