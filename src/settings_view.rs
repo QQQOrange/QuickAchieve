@@ -155,17 +155,9 @@ pub(crate) fn config_view_of(cfg: &config::Config) -> Value {
         "barDimAlpha": cfg.bar_dim_alpha,
         // 渐隐延迟（毫秒）：弹出后先不透明，过了它才淡到 barDimAlpha。
         "barDimDelayMs": cfg.bar_dim_delay_ms,
-        // 液态玻璃一组。前端按这些参数驱动 WebGL2 渲染器（liquidGL 移植版数学）。
-        "barGlass": cfg.bar_glass,
-        "barGlassRefraction": cfg.bar_glass_refraction,
-        "barGlassBevel": cfg.bar_glass_bevel,
-        "barGlassFrost": cfg.bar_glass_frost,
-        "barGlassAberration": cfg.bar_glass_aberration,
-        "barGlassSpec": cfg.bar_glass_spec,
-        "barGlassTint": cfg.bar_glass_tint,
-        "barGlassLive": cfg.bar_glass_live,
-        // v1.3.0：实时刷新帧率上限（0 = 跟随显示器）
-        "barGlassFps": cfg.bar_glass_fps,
+        /* v2.23.131：这里原本有 `barGlass*`（9 个）和 `barBlur` / `barBgAlpha`
+         * 两组键 —— 液态玻璃和磨砂两套外观已从产品里摘掉，字段和下发一起删了。
+         * 前端 `bar.js` 只认「横条不透明度 + 主题底色」这一套。 */
         "iconStyle": cfg.icon_style,
         "unifyIcons": cfg.unify_icons,
         "barPadding": cfg.bar_padding,
@@ -173,9 +165,6 @@ pub(crate) fn config_view_of(cfg: &config::Config) -> Value {
         "theme": cfg.theme,
         "animations": cfg.animations,
         "shadow": cfg.shadow,
-        "barBlur": cfg.bar_blur,
-        // v2.23.83：磨砂样式下横条底板（非图标部分）的不透明度。
-        "barBgAlpha": cfg.bar_bg_alpha,
         "anchorAtMouse": cfg.anchor_at_mouse,
         // v1.5.4：横条弹出位置（"above" = 文字上方 / "below" = 下方）。
         // 贴鼠标弹（anchorAtMouse / Ctrl+C 触发）时本项无效。

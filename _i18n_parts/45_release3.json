@@ -1,0 +1,3 @@
+{
+  "横条是普通的不透明 / 半透明浮层：不抓屏、不跑 WebGL、不对抓屏隐身，截图和录屏里都能正常拍到它。底色跟「界面主题」走，浓淡由「横条不透明度」控制。": "The bar is a plain opaque / translucent overlay: it never captures the screen, never runs WebGL and is never hidden from screen capture — screenshots and recordings pick it up normally. Its colour follows “Interface theme”, and the tint is controlled by “Bar opacity”."
+}

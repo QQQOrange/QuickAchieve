@@ -1,4 +1,4 @@
-//! 自动明暗：看**当前页面 / 当前软件的 UI** 是深色还是浅色，横条与网格跟着换皮。
+﻿//! 自动明暗：看**当前页面 / 当前软件的 UI** 是深色还是浅色，横条与网格跟着换皮。
 //!
 //! # 为什么要"多帧"
 //!
@@ -18,7 +18,7 @@
 use std::sync::Mutex;
 use std::time::Instant;
 
-use crate::glass;
+use crate::screencap;
 use crate::win;
 
 /// 最多抓几帧（判不出来时才补到这么多）
@@ -50,7 +50,7 @@ const SAMPLE_H: i32 = 260;
 pub fn detect() -> Option<bool> {
     let c = win::cursor_pos();
     let (x, y, w, h) = sample_rect(c.x, c.y);
-    let mut frames: Vec<glass::Snap> = Vec::with_capacity(FRAMES);
+    let mut frames: Vec<screencap::Snap> = Vec::with_capacity(FRAMES);
 
     /* 快速路径：先抓 3 帧（约 60ms 等待 + 3 次抓屏）。
      * 静态 UI 到这里就能判出来；判不出来（视频/动画/灰区）再补 2 帧，
@@ -59,7 +59,7 @@ pub fn detect() -> Option<bool> {
         if i > 0 {
             std::thread::sleep(std::time::Duration::from_millis(FAST_GAP_MS));
         }
-        if let Some(s) = glass::capture_rect(x, y, w, h) {
+        if let Some(s) = screencap::capture_rect(x, y, w, h) {
             frames.push(s);
         }
     }
@@ -68,7 +68,7 @@ pub fn detect() -> Option<bool> {
     if out.is_none() && frames.len() >= 2 {
         while frames.len() < FRAMES {
             std::thread::sleep(std::time::Duration::from_millis(EXTRA_GAP_MS));
-            match glass::capture_rect(x, y, w, h) {
+            match screencap::capture_rect(x, y, w, h) {
                 Some(s) => frames.push(s),
                 None => break,
             }
@@ -143,7 +143,7 @@ pub fn needs_detection(theme: &str) -> bool {
 
 /// 以光标为中心取一块，钳在虚拟屏幕内。
 fn sample_rect(cx: i32, cy: i32) -> (i32, i32, i32, i32) {
-    let (vx, vy, vw, vh) = glass::virtual_screen();
+    let (vx, vy, vw, vh) = screencap::virtual_screen();
     let w = SAMPLE_W.min(vw.max(1));
     let h = SAMPLE_H.min(vh.max(1));
     let x = (cx - w / 2).clamp(vx, vx + vw - w);
@@ -152,13 +152,13 @@ fn sample_rect(cx: i32, cy: i32) -> (i32, i32, i32, i32) {
 }
 
 /// 纯逻辑：从若干帧里判明暗。抽出来是为了能单测（不需要真的抓屏）。
-pub fn decide(frames: &[glass::Snap]) -> Option<bool> {
+pub fn decide(frames: &[screencap::Snap]) -> Option<bool> {
     decide_inner(frames, true)
 }
 
 /// [`decide`] 的实现；`verbose` 控制“稳定像素太少”的日志。
 /// 快速路径先静默试 3 帧，避免判不出来时同一条日志打两遍。
-fn decide_inner(frames: &[glass::Snap], verbose: bool) -> Option<bool> {
+fn decide_inner(frames: &[screencap::Snap], verbose: bool) -> Option<bool> {
     if frames.len() < 2 {
         return None;
     }
@@ -242,12 +242,12 @@ fn decide_inner(frames: &[glass::Snap], verbose: bool) -> Option<bool> {
 mod tests {
     use super::*;
 
-    fn snap(w: i32, h: i32, rgb: [u8; 3]) -> glass::Snap {
+    fn snap(w: i32, h: i32, rgb: [u8; 3]) -> screencap::Snap {
         let mut rgba = Vec::with_capacity((w * h * 4) as usize);
         for _ in 0..(w * h) {
             rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
         }
-        glass::Snap {
+        screencap::Snap {
             x: 0,
             y: 0,
             w,

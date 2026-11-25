@@ -1823,59 +1823,14 @@ pub struct Config {
     /// qs-dim —— 横条一出现就是半透明的。
     #[serde(default = "default_dim_delay_ms")]
     pub bar_dim_delay_ms: u32,
-    /// 液态玻璃总开关。开 = 横条弹出时抓一块背后的桌面当纹理，由前端 WebGL2
-    /// 按 liquidGL 同款数学渲染（真折射 / 倒角 / 色差 / 高光）。
-    /// 关 = 回到普通磨砂底板（`data-blur` 那套）。
-    pub bar_glass: bool,
-    /// 折射强度（0-60，实际值 = 该数 / 1000）。liquidGL 默认 0.01；
-    /// 横条矮（60px 上下），边缘可读的扭曲需要更陡的梯度，默认 20（=0.02）。
-    pub bar_glass_refraction: u32,
-    /// 倒角深度（0-30，实际值 = 该数 / 100）。liquidGL 默认 0.08。
-    /// 控制"玻璃有多厚"—— 边缘处背景被放大的程度。
-    pub bar_glass_bevel: u32,
-    /// 磨砂半径（CSS px，0-12）。0 = 完全清晰（真玻璃默认就是清的）。
-    pub bar_glass_frost: u32,
-    /// 色差强度（0-100）。蓝移大于红移，模拟真玻璃的色散 ——
-    /// 这是"一眼看出不是塑料"的关键线索，默认 35。
-    pub bar_glass_aberration: u32,
-    /// 高光 / 边缘亮线强度倍率（0-200，100 = 基准）。同时驱动
-    /// 指针跟随的镜面光斑和上下缘的锐利亮线。
-    pub bar_glass_spec: u32,
-    /// 染色强度（0-100）。玻璃本体微微带色（亮色下偏白、暗色下偏深蓝），
-    /// 由前端按明暗主题选色，这里只给强度。
-    pub bar_glass_tint: u32,
-    /// 实时刷新：横条开着的时候持续重抓背后的桌面（背后放视频也能跟着动）。
-    /// 关 = 只在弹出时抓一次（零成本、零闪烁）。
-    pub bar_glass_live: bool,
-    /// **实时刷新的帧率上限**（0 = 跟随显示器）。
-    ///
-    /// # 为什么要有这个选项
-    ///
-    /// 用户报：「滚动网页时横条里的液态玻璃**不跟随**，像卡住了一样」。
-    /// 根因是我给实时抓屏链限了 15fps（66ms 一轮），滚动时背景变化
-    /// 肉眼可见地滞后。
-    ///
-    /// # 各档位的代价（**实测**，不是估的）
-    ///
-    /// 关键发现：抓屏里的 `BitBlt` 有 **6.24ms 的固定开销，与抓取面积无关**
-    /// （实测 16×16 和 852×176 都是 6.24ms，1920×1080 才 12.5ms）。
-    /// 那是 Windows 上从**屏幕 DC** 抓取的固有代价（要等 DWM 合成 / GPU 回读），
-    /// 换 API 或减少拷贝都省不掉。所以抓屏频率**直接**换算成 CPU：
-    ///
-    /// | 上限 | 抓屏占单核 |
-    /// |---|---|
-    /// | **30（默认）** | **18.7%** |
-    /// | 60  | 37.4% |
-    /// | 120 | 74.8% |
-    /// | 0（跟随显示器，实测 85） | ≈53% |
-    ///
-    /// 定 **30** 作默认，是按用户的原话"能接受为美观增加的合理开销，但一定要合理"：
-    /// 30fps 已经完全看不出滞后（滚动、放视频都跟得上），而开销压在单核 19% 以内。
-    /// **"跟随显示器"仍然保留** —— 它最跟手，但代价明确标在设置页上，由用户自己选。
-    ///
-    /// ⚠ **15 那一档已删**（用户要求）：它正是"卡住"的来源，留着只会让人误选。
-    ///   所以白名单是 0/30/60/120 四档，别再往回加。
-    pub bar_glass_fps: u32,
+    /* v2.23.131：这里原本是「液态玻璃」的九颗配置项 —— `bar_glass`（总开关）、
+     * `bar_glass_refraction` / `bar_glass_bevel` / `bar_glass_frost` /
+     * `bar_glass_aberration` / `bar_glass_spec` / `bar_glass_tint`（材质参数）、
+     * `bar_glass_live` / `bar_glass_fps`（实时抓屏）。
+     *
+     * 两套外观（液态玻璃 + 磨砂）已从产品里摘掉，横条只保留默认底板，
+     * 这九项连字段一起删除。老 config.json 里的 `barGlass*` 会被 serde
+     * 忽略（未知字段不报错），升级无感 —— 也正是"回到默认外观"想要的结果。 */
     /// 图标风格："auto" = 用内置图标（缺图标时退字母）；"letter" = 一律字母徽标
     pub icon_style: String,
     /// 「统一图标大小」：自动量出每个图标**实际画面**的大小，把自带透明留白的
@@ -1912,26 +1867,10 @@ pub struct Config {
     /// 默认**关闭**：投影会占掉一圈窗口空间，且深浅底下的观感差别很大，
     /// 交给用户自己按需打开。
     pub shadow: bool,
-    /// 横条磨砂（背景模糊）强度（0-32，滑块值；0 = 关）。
-    ///
-    /// 用 `backdrop-filter: blur()` 把横条底下的屏幕糊掉，让横条有「玻璃感」。
-    /// 0 = 完全不模糊（默认，原来的实色横条）；滑块值经 `qsBlurPx()` 换算成
-    /// 实际模糊半径（1→2.3px … 32→24px 封顶），blur 只负责"糊"。
-    ///
-    /// 磨砂必须**配上半透明背景**才看得出效果：把「不透明度」调低即可
-    /// （alpha 滑块是唯一的透明度控制，前后端一个口径）。
-    pub bar_blur: u32,
-    /// v2.23.83：**横条底板（非图标部分）的不透明度**（0-100，默认 55）。
-    ///
-    /// 「磨砂」的 blur 只负责"糊"，底板透不透明由这颗滑块**单独**控制：
-    ///   · 100 = 实色底板（老观感）；
-    ///   · 55（默认）= 透明磨砂，背后透出来一截；
-    ///   · 0 = 完全透明，只剩图标（深色桌面下可能看不清，自己权衡）。
-    ///
-    /// 只在磨砂样式（`bar_blur > 0`）下生效；图标本身的浓淡仍由 `alpha` 管，
-    /// 两颗滑块互不干扰 —— 这正是用户要的"非图标部分单独调"。
-    #[serde(default = "default_bar_bg_alpha")]
-    pub bar_bg_alpha: u32,
+    /* v2.23.131：`bar_blur`（磨砂强度 0-32）和 `bar_bg_alpha`（磨砂底板透明度）
+     * 连同 `default_bar_bg_alpha()` 一起删除 —— 磨砂整套外观没了，这两颗
+     * 滑块留在这里只会让设置页显示两个不起作用的控件。
+     * 底板回到纯色：`--qs-bg-fill` 的 alpha 恒等于「横条不透明度」。 */
     /// 横条固定出现在鼠标指针位置。
     ///
     /// false（默认）= 贴着选中的文字弹（文字下方放不下就自动翻到上方）；
@@ -2673,21 +2612,7 @@ impl Default for Config {
             alpha: 100,
             bar_dim_alpha: 45,
             bar_dim_delay_ms: default_dim_delay_ms(),
-            bar_glass: true,
-            // 与 settings.js GLASS_PRESETS 的 standard 档一致（#133 质感重调）——
-            // 两边对不上的话，新装机的预设徽标会显示「自定义」而不是「标准」。
-            bar_glass_refraction: 30,
-            bar_glass_bevel: 18,
-            bar_glass_frost: 2,
-            bar_glass_aberration: 50,
-            bar_glass_spec: 110,
-            bar_glass_tint: 14,
-            bar_glass_live: false,
-            /* 30fps：按**实测**的 6.24ms/次固定开销算，占单核约 18.7%。
-             * 够跟手（滚动网页、背后放视频都不滞后），又压在"合理"范围内。
-             * 想更跟手可以自己在设置里选「跟随显示器」（代价在设置页写明了：
-             * 实测 85fps ≈ 53% 单核）。 */
-            bar_glass_fps: 30,
+            // v2.23.131：玻璃/磨砂那批默认值随字段一起删了（见字段那边的注释）
             icon_style: "auto".to_string(),
             unify_icons: true,
             bar_padding: 5,
@@ -2697,8 +2622,6 @@ impl Default for Config {
             theme_migrated: true,
             animations: true,
             shadow: false,
-            bar_blur: 0,
-            bar_bg_alpha: default_bar_bg_alpha(),
             anchor_at_mouse: false,
             bar_pos: default_bar_pos(),
             favorites: Vec::new(),
@@ -4465,11 +4388,6 @@ fn default_bar_idle_sec() -> u32 {
 
 /// 鼠标离开多远自动收起的默认像素（400 —— 大约是 1080p 屏宽的 1/5，够区分
 /// "顺手挪一下"和"人已经去干别的了"）。
-/// v2.23.83：磨砂样式下横条底板的默认不透明度（55% = 透明磨砂）。
-fn default_bar_bg_alpha() -> u32 {
-    55
-}
-
 fn default_bar_away_px() -> i32 {
     400
 }
@@ -4860,9 +4778,6 @@ pub(crate) fn sanitize(mut c: Config) -> Config {
             c.bar_idle_sec
         ));
         c.bar_idle_sec = 300;
-    }
-    if c.bar_bg_alpha > 100 {
-        c.bar_bg_alpha = default_bar_bg_alpha();
     }
     if !(0..=4000).contains(&c.bar_away_px) {
         crate::win::log(&format!(
@@ -8301,22 +8216,6 @@ mod sanitize_tests {
     /// 2026-10-23：横条「自己收起来」两条阈值的读入归一。
     ///
     /// 配置文件是明文可编辑的，也可能是老版本/别的机器恢复过来的 ——
-    /// v2.23.83：磨砂底板透明度的默认值与归一。
-    ///
-    /// 默认 **55**（透明磨砂）；超过 100 的脏值回到默认；0 是合法的
-    /// 「完全透明」—— 用户明确要求能单独调到只剩图标。
-    #[test]
-    fn bar_bg_alpha_defaults_to_translucent_and_clamps() {
-        let _serial = big_lock();
-        assert_eq!(Config::default().bar_bg_alpha, 55);
-        let mut dirty = Config::default();
-        dirty.bar_bg_alpha = 300;
-        assert_eq!(sanitize(dirty).bar_bg_alpha, 55, "超过 100 要回到默认 55");
-        let mut zero = Config::default();
-        zero.bar_bg_alpha = 0;
-        assert_eq!(sanitize(zero).bar_bg_alpha, 0, "0 是合法的完全透明");
-    }
-
     /// `bar_idle_sec: 99999`（永远不收）和 `bar_away_px: -20`（一动就收）都得夹回去；
     /// 而 **0 是"关掉这条"的合法值**，不能被当成非法值改回默认。
     #[test]

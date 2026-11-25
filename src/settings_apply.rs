@@ -148,33 +148,12 @@ pub(crate) fn apply_one_setting(cfg: &mut crate::config::Config, key: &str, valu
         "barDimDelayMs" => {
             cfg.bar_dim_delay_ms = value.as_u64().unwrap_or(1500).min(10_000) as u32;
         }
-        // 液态玻璃一组。set_setting 是白名单式的，不登记就是"看着有反应其实没存"。
-        "barGlass" => cfg.bar_glass = value.as_bool().unwrap_or(true),
-        "barGlassRefraction" => {
-            cfg.bar_glass_refraction = value.as_u64().unwrap_or(20).clamp(0, 60) as u32;
-        }
-        "barGlassBevel" => {
-            cfg.bar_glass_bevel = value.as_u64().unwrap_or(12).clamp(0, 30) as u32;
-        }
-        "barGlassFrost" => {
-            cfg.bar_glass_frost = value.as_u64().unwrap_or(0).clamp(0, 12) as u32;
-        }
-        "barGlassAberration" => {
-            cfg.bar_glass_aberration = value.as_u64().unwrap_or(35).clamp(0, 100) as u32;
-        }
-        "barGlassSpec" => {
-            cfg.bar_glass_spec = value.as_u64().unwrap_or(100).clamp(0, 200) as u32;
-        }
-        "barGlassTint" => {
-            cfg.bar_glass_tint = value.as_u64().unwrap_or(12).clamp(0, 100) as u32;
-        }
-        "barGlassLive" => cfg.bar_glass_live = value.as_bool().unwrap_or(false),
-        // v1.3.0：实时刷新帧率上限。允许 0（跟随）/ 30 / 60 / 120。
-        // 夹到合法集合里：别的值一律当 0（跟随显示器），免得手改配置写出个怪值。
-        "barGlassFps" => {
-            let v = value.as_u64().unwrap_or(0) as u32;
-            cfg.bar_glass_fps = if matches!(v, 0 | 30 | 60 | 120) { v } else { 30 };
-        }
+        /* v2.23.131：`barGlass` / `barGlassRefraction` / `barGlassBevel` /
+         * `barGlassFrost` / `barGlassAberration` / `barGlassSpec` /
+         * `barGlassTint` / `barGlassLive` / `barGlassFps` / `barBlur` /
+         * `barBgAlpha` 这一组白名单分支随外观一起删除。
+         * `set_setting` 是白名单式的：删了之后老前端再发这些键会被当成
+         * 「未知键」忽略掉，不会写进配置，也不会报错。 */
         "iconStyle" => {
             let s = value.as_str().unwrap_or("auto");
             cfg.icon_style = if s == "letter" { "letter".to_string() } else { "auto".to_string() };
@@ -197,14 +176,6 @@ pub(crate) fn apply_one_setting(cfg: &mut crate::config::Config, key: &str, valu
         }
         "animations" => cfg.animations = value.as_bool().unwrap_or(true),
         "shadow" => cfg.shadow = value.as_bool().unwrap_or(false),
-        "barBlur" => {
-            cfg.bar_blur = value.as_u64().unwrap_or(0).clamp(0, 32) as u32;
-        }
-        /* v2.23.83：横条底板（非图标部分）的不透明度。只在磨砂样式下生效，
-         * 但阈值本身任何时候都允许改（切回磨砂时立即按新值画）。 */
-        "barBgAlpha" => {
-            cfg.bar_bg_alpha = value.as_u64().unwrap_or(55).min(100) as u32;
-        }
         "anchorAtMouse" => cfg.anchor_at_mouse = value.as_bool().unwrap_or(false),
         "delayMs" => {
             cfg.delay_ms = value.as_u64().unwrap_or(0).min(5000) as u32;
@@ -631,21 +602,9 @@ pub(crate) fn apply_view(v: &Value, cfg: &mut crate::config::Config) {
     // 消失看不见，和「它在那儿只是淡」是两回事。
     if let Some(x) = n("barDimAlpha") { cfg.bar_dim_alpha = x.clamp(10, 100) as u32; }
     if let Some(x) = n("barDimDelayMs") { cfg.bar_dim_delay_ms = x.min(10_000) as u32; }
-    // 玻璃一组：恢复备份时原样灌回（老备份没有这些键 → 保持默认，不强行开）
-    if let Some(x) = b("barGlass") { cfg.bar_glass = x; }
-    if let Some(x) = n("barGlassRefraction") { cfg.bar_glass_refraction = x.clamp(0, 60) as u32; }
-    if let Some(x) = n("barGlassBevel") { cfg.bar_glass_bevel = x.clamp(0, 30) as u32; }
-    if let Some(x) = n("barGlassFrost") { cfg.bar_glass_frost = x.clamp(0, 12) as u32; }
-    if let Some(x) = n("barGlassAberration") { cfg.bar_glass_aberration = x.clamp(0, 100) as u32; }
-    if let Some(x) = n("barGlassSpec") { cfg.bar_glass_spec = x.clamp(0, 200) as u32; }
-    if let Some(x) = n("barGlassTint") { cfg.bar_glass_tint = x.clamp(0, 100) as u32; }
-    if let Some(x) = b("barGlassLive") { cfg.bar_glass_live = x; }
-    // v1.3.0：实时刷新帧率上限。白名单夹取（只认 0/30/60/120），
-    // 别的值一律当 0（跟随显示器）—— 免得手改配置写出个怪值。
-    if let Some(x) = n("barGlassFps") {
-        let v = x as u32;
-        cfg.bar_glass_fps = if matches!(v, 0 | 30 | 60 | 120) { v } else { 30 };
-    }
+    /* v2.23.131：这里原本会把备份里的 `barGlass*` / `barBlur` / `barBgAlpha`
+     * 原样灌回。两套外观删掉之后这些键不再读 —— 老备份恢复进来也只会被
+     * 忽略，结果就是「默认外观」，正是要的。 */
     if let Some(x) = n("barPadding") { cfg.bar_padding = x.clamp(0, 12) as u32; }
     if let Some(x) = n("itemRadius") { cfg.item_radius = x.clamp(0, 18) as u32; }
     if let Some(x) = s("theme") {
@@ -657,8 +616,6 @@ pub(crate) fn apply_view(v: &Value, cfg: &mut crate::config::Config) {
     if let Some(x) = b("unifyIcons") { cfg.unify_icons = x; }
     if let Some(x) = b("animations") { cfg.animations = x; }
     if let Some(x) = b("shadow") { cfg.shadow = x; }
-    if let Some(x) = n("barBlur") { cfg.bar_blur = x.clamp(0, 32) as u32; }
-    if let Some(x) = n("barBgAlpha") { cfg.bar_bg_alpha = x.clamp(0, 100) as u32; }
     if let Some(x) = b("anchorAtMouse") { cfg.anchor_at_mouse = x; }
     if let Some(x) = n("delayMs") { cfg.delay_ms = x.clamp(0, 5000) as u32; }
     /* 恢复备份：老备份里没有这三个键 → 保持当前默认值（不要硬写 0，

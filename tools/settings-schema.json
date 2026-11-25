@@ -18,8 +18,6 @@
     "previewDark": "预览主题按钮（本地状态）",
     "previewDarkB": "预览主题按钮（本地状态）",
     "exportEncrypt": "导出弹窗的本地勾选",
-    "barStyle": "派生值（barGlass / barBlur），不单独存",
-    "glassPreset": "玻璃预设按钮（本地状态）",
     "ceKind": "自定义引擎表单的本地类型",
     "apKind": "应用绑定表单的本地类型",
     "clipHistEnabled": "走 clip_hist_* 命令，不在 config_view 里",

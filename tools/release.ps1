@@ -49,9 +49,11 @@ try {
     $m = Select-String -Path 'Cargo.toml' -Pattern '^version = "([0-9.]+)"' | Select-Object -First 1
     $cargoVer = $m.Matches[0].Groups[1].Value
     if ($cargoVer -ne $Version) { Fail "Cargo.toml 是 $cargoVer，与 -Version $Version 不一致" }
-    $minor = $Version.Split('.')[-1]
-    if (-not (Select-String -Path 'app.rc' -Pattern "FILEVERSION 2,23,$minor,0" -Quiet)) {
-        Fail "app.rc 的 FILEVERSION 没跟到 $Version"
+    # rc 的版本号是手写在 app.rc 里的，格式 `X,Y,Z,0`（逗号分隔）。
+    # v3.0：原来这里写死了 `2,23,$minor`，换成任意版本号就会误判。
+    $rcVer = ($Version -replace '\.', ',') + ',0'
+    if (-not (Select-String -Path 'app.rc' -Pattern "FILEVERSION $rcVer" -Quiet)) {
+        Fail "app.rc 的 FILEVERSION 没跟到 $Version（应为 FILEVERSION $rcVer）"
     }
     if (-not (Test-Path $Notes)) { Fail "缺少发布说明 $NotesRel（先写好，里面留一行 **SHA256: ...**）" }
     Ok "版本号一致（Cargo.toml / app.rc = $Version），发布说明存在"

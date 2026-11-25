@@ -471,37 +471,9 @@
 
         <h2>横条外观</h2>
 
-        <div class="row col">
-
-            <div class="rt"><b>横条样式</b><small>三选一，页面只显示当前样式的项；液态玻璃需要 WebGL2，不支持时自动退回磨砂（详见<b>帮助 ②</b>）</small></div>
-
-            <div class="seg" id="s-barStyle">
-
-                <button type="button" data-v="default">默认</button>
-
-                <button type="button" data-v="frost">磨砂</button>
-
-                <button type="button" data-v="glass">液态玻璃</button>
-
-            </div>
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>玻璃预设</b><small>一键切整套参数；动过下面任意滑块就变成<b>自定义</b></small></div>
-
-            <div class="seg" id="s-glassPreset">
-
-                <button type="button" data-v="light">轻量</button>
-
-                <button type="button" data-v="standard">标准</button>
-
-                <button type="button" data-v="custom" class="on">自定义</button>
-
-            </div>
-
-        </div>
+        <!-- v2.23.131：这里原本是「横条样式」三分段（默认 / 磨砂 / 液态玻璃）
+             和「玻璃预设」那一排。两套外观已从产品里摘掉，横条只剩默认外观，
+             所以整组控件（连同 HTML、CSS 分段规则、JS 绑定）一起删除。 -->
 
         <div class="row">
 
@@ -589,112 +561,6 @@
 
         </div>
 
-        <div class="row col" data-style="frost" hidden>
-
-            <div class="rt"><b>磨砂强度</b><small><span id="s-barBlurVal">关</span> · 值越大雾面越浓（静态磨砂，不抓屏、不吃 GPU）；0 = 不磨砂</small></div>
-
-            <input type="range" id="s-barBlur" min="0" max="32" step="1">
-
-        </div>
-
-        <div class="row col" data-style="frost" hidden>
-
-            <div class="rt"><b>底板透明度</b><small><span id="s-barBgAlphaVal">55</span> % · 只改横条底板（非图标部分）；图标浓淡仍由「横条不透明度」控制 · 100 = 完全透出背后内容 · 0 = 实色底板</small></div>
-
-            <input type="range" id="s-barBgAlpha" min="0" max="100" step="1">
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>玻璃折射强度</b><small><span id="s-barGlassRefractionVal">30</span> ‰ · 横条边缘处背景被扭曲的程度。太小看不出"厚玻璃"，太大会让边缘的文字糊成一团</small></div>
-
-            <input type="range" id="s-barGlassRefraction" min="0" max="60" step="1">
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>玻璃厚度</b><small><span id="s-barGlassBevelVal">18</span> ‰ · 模拟玻璃有多厚：越大，边缘处的背景被放大得越厉害</small></div>
-
-            <input type="range" id="s-barGlassBevel" min="0" max="30" step="1">
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>玻璃色差</b><small><span id="s-barGlassAberrationVal">50</span> % · 红蓝通道分离，一眼看出「不是塑料」；0 = 关</small></div>
-
-            <input type="range" id="s-barGlassAberration" min="0" max="100" step="1">
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>高光与边缘亮线</b><small><span id="s-barGlassSpecVal">110</span> % · 鼠标跟随的镜面光斑 + 上下缘的锐利亮线，玻璃的立体感全靠它</small></div>
-
-            <input type="range" id="s-barGlassSpec" min="0" max="200" step="1">
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>玻璃染色</b><small><span id="s-barGlassTintVal">14</span> % · 玻璃本体微微带色（亮色下偏白、暗色下压一层深蓝，自动跟着明暗主题走）</small></div>
-
-            <input type="range" id="s-barGlassTint" min="0" max="100" step="1">
-
-        </div>
-
-        <div class="row col" data-style="glass" hidden>
-
-            <div class="rt"><b>玻璃磨砂</b><small><span id="s-barGlassFrostVal">2 px</span> · 玻璃<b>内部</b>的磨砂 —— 糊的是<b>折射进来的桌面</b>，不是横条底板</small></div>
-
-            <input type="range" id="s-barGlassFrost" min="0" max="12" step="1">
-
-        </div>
-
-        <div class="row" data-style="glass" hidden>
-
-            <div class="rt"><b>实时折射</b><small>持续重抓背后桌面（背后放视频也跟得上）；开启后横条对<b>抓屏</b>隐身，关 = 只抓一次</small></div>
-
-            <label class="sw"><input type="checkbox" id="s-barGlassLive"><i></i></label>
-
-        </div>
-
-        <!-- v1.3.0：实时刷新的帧率上限。
-
-             用户报「滚动网页时玻璃不跟随、像卡住」——根因是上一版把抓屏
-
-             限到了 15 帧/秒。这里把上限交给用户。
-
-
-
-             ⚠ 括号里的占用是**实测**值，不是估的：抓屏里的 BitBlt 有约
-
-               6ms 的固定开销、与抓取面积无关（16×16 和 852×176 一样），
-
-               所以频率直接换算成 CPU。把代价摆在选项上，用户才好自己权衡。 -->
-
-        <div class="row col" data-style="glass" id="rowGlassFps" hidden>
-
-            <div class="rt"><b>刷新帧率</b><small>横条跟随桌面变化的频率。抓屏一次约 <b>6 ms</b>（与抓取大小无关，是系统抓屏的固有开销），
-
-                频率越高越费 CPU。默认 <b>30</b>：滚动网页、放视频都已看不出滞后</small></div>
-
-            <div class="seg" id="segGlassFps">
-
-                <button type="button" data-v="30" title="默认：滚动网页、放视频都不滞后，约单核 19%">30（推荐）</button>
-
-                <button type="button" data-v="60" title="更顺滑，约单核 37%">60</button>
-
-                <button type="button" data-v="120" title="很费，约单核 75%">120</button>
-
-                <button type="button" data-v="0" title="最跟手，跟着显示器刷新率跑（这台机器实测约 85 帧/秒）">跟随显示器</button>
-
-            </div>
-
-        </div>
-
     </section>
 
     </div>
@@ -723,7 +589,7 @@
 
             同一套 DOM 结构（<code>.bar.qs-grid</code> + 格子），所以布局、尺寸、间距、圆角、
 
-            颜色、阴影、磨砂都跟真弹出来的一致。改下面任何一项，这里<b>立刻</b>跟着变。
+            颜色、阴影、不透明度都跟真弹出来的一致。改下面任何一项，这里<b>立刻</b>跟着变。
 
         </div>
 
@@ -815,7 +681,7 @@
 
         <div class="hint">
 
-            颜色、阴影、磨砂、不透明度这些跟<b>横条外观</b>走（网格页不单独配色），
+            颜色、阴影、不透明度这些跟<b>横条外观</b>走（网格页不单独配色），
 
             要换主题去「横条外观」改。
 
@@ -3375,23 +3241,23 @@
 
                             Windows 的日 / 夜间模式走，也可以锁死亮色或暗色；</li>
 
-                        <li><b>样式（三选一）</b>：在「<b>横条外观 → 横条外观</b>」里切换，页面只显示当前样式的配置项 ——
+                        <!-- v2.23.131：这三条原本讲「样式三选一」/「玻璃预设」/「磨砂强度」。
 
-                            <b>默认</b> = 纯色底板；<b>磨砂</b> = 盖一层静态雾面（省 GPU，背后内容直接透出）；<b>液态玻璃</b> = 抓一块背后的桌面
+                            液态玻璃和磨砂两套外观已从产品里摘掉，横条只有一种默认外观
 
-                            当纹理，做真折射 / 色差 / 边缘亮线，背后在放视频时还能开「实时折射」跟着动。
+                            （主题底色 + 横条不透明度），所以整段换成一句事实陈述。 -->
 
-                            液态玻璃需要 WebGL2，显卡不支持时自动退回磨砂，不用手动操心；</li>
+                        <li><b>外观</b>：横条只有一种外观 —— 「<b>界面主题</b>」定的底色，
 
-                        <li><b>玻璃预设</b>：选了液态玻璃样式后，顶部有「轻量 / 标准」两档一键参数（另有「自定义」= 你手动调过之后的状态），
+                            加上「<b>横条不透明度</b>」调的浓淡。没有额外的磨砂 / 玻璃样式，
 
-                            下面任意滑块动过就变成「自定义」—— 预设只是快捷方式，不会和手动调节打架；</li>
+                            也没有需要显卡支持的可选渲染路径；</li>
 
                         <li><b>位置</b>：默认贴着选中的文字弹（下面放不下会自动翻到上方）；
 
                             打开「<b>横条跟随鼠标位置</b>」就一律贴着鼠标。</li>
 
-                        <li><b>大小</b>：图标大小、内边距、不透明度、磨砂强度都能调，
+                        <li><b>大小</b>：图标大小、内边距、不透明度都能调，
 
                             「<b>横条外观 → 预览</b>」里改完立刻能看到真实效果。</li>
 
@@ -4505,13 +4371,7 @@
 
         <div class="about">
 
-            <p>「液态玻璃」横条样式的折射 / 色差由 WebView2 里的 <b>WebGL2</b> 着色器实时渲染，
-
-               抓的是横条背后那块真实桌面。它需要系统支持 WebGL2 —— 不支持时自动退回磨砂效果，
-
-               功能不受影响；开了「实时折射」后横条会对<b>抓屏</b>隐身（截图 / 录屏里看不到横条），
-
-               这是无闪烁持续刷新的代价，关闭实时折射即恢复参与抓屏。</p>
+            <p>横条是普通的不透明 / 半透明浮层：不抓屏、不跑 WebGL、不对抓屏隐身，截图和录屏里都能正常拍到它。底色跟「界面主题」走，浓淡由「横条不透明度」控制。</p>
 
             <p>图标在数据目录的 <code>icons\</code> 里，配置是同目录的 <code>config.json</code>（便携优先：默认就在 exe 同级的 <code>Quick Achieve data\</code>；那里写不进去才退回 <code>%APPDATA%\QuickAchieve\</code>）——
 

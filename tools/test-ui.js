@@ -1403,7 +1403,10 @@ async function testBar() {
     console.log('');
     console.log('=== 横条（ui/index.html）===');
     const env = makeEnv('ui/index.html', baseConf());
-    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js', 'ui/glass.js']);
+    /* v3.0：`ui/glass.js` 已随液态玻璃/磨砂一起删除，不再加载。
+     * 那两套外观的守护断言改成了**反向**的（见 testBar 尾部的
+     * 「外观已移除」一组）—— 防的是有人把它们偷偷加回来。 */
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js']);
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
     /* ⚠ jsdom 不加载 <link> 外链 CSS，而 #148 起 --qs-bg 改由样式表两套
@@ -2061,74 +2064,53 @@ async function testBar() {
          *   画布留在 .bar 里就盖不到面板），选择器随之全变 —— 老断言于是全红，
          *   而 jsdom 那时根本没装，没人发现。这里按**现在的**结构重钉，
          *   并补上 r46 面板薄纱那几条。 */
-        const glassJs = fs.readFileSync(path.join(ROOT, 'ui/glass.js'), 'utf8');
-        ok('【液态玻璃】横条在玻璃态把背景全透（底色让位给抓屏画布）',
-            /\.stage\.qs-glass > \.bar\s*\{\s*background-color:\s*transparent/.test(css2));
-        ok('【液态玻璃】玻璃开着时磨砂让位（不吃双份模糊）—— **只有横条**让位，面板是普通页面',
-            /\.stage\.qs-glass\[data-blur\]:not\(\[data-blur="0"\]\) > \.bar\s*\{[^}]*backdrop-filter:\s*none/.test(css2)
-            && !/\.stage\.qs-glass\[data-blur\]:not\(\[data-blur="0"\]\) > \.panel/.test(css2));
-        ok('【液态玻璃】#qsGlass 画布默认不显示，只在玻璃态铺满**整个窗口**',
-            /#qsGlass\s*\{\s*display:\s*none/.test(css2)
-            && /\.stage\.qs-glass > #qsGlass\s*\{\s*display:\s*block/.test(css2)
-            && /\.stage\.qs-glass > #qsGlass\s*\{[^}]*position:\s*absolute/.test(css2)
-            && /\.stage\.qs-glass > #qsGlass\s*\{[^}]*inset:\s*0/.test(css2)
-            && /\.stage\.qs-glass > #qsGlass\s*\{[^}]*width:\s*100%/.test(css2)
-            && /\.stage\.qs-glass > #qsGlass\s*\{[^}]*height:\s*100%/.test(css2));
-        ok('【液态玻璃】画布点击穿透；圆角不再由 CSS 裁（改由 shader 逐块按各自圆角出）',
-            /\.stage\.qs-glass > #qsGlass\s*\{[^}]*pointer-events:\s*none/.test(css2)
-            && !/\.stage\.qs-glass > #qsGlass\s*\{[^}]*border-radius/.test(css2)
-            && /radiusOf/.test(glassJs));
-        ok('【液态玻璃】画布 z-index:0，内容（横条 + 面板）都 relative 抬到 z-index:1',
-            /\.stage\.qs-glass > #qsGlass\s*\{[^}]*z-index:\s*0/.test(css2)
-            && /\.stage\.qs-glass > \.bar,\s*\.stage\.qs-glass > \.panel\s*\{\s*position:\s*relative/.test(css2)
-            && /\.stage\.qs-glass > \.bar,\s*\.stage\.qs-glass > \.panel\s*\{[^}]*z-index:\s*1/.test(css2));
-        /* ---- r47：面板**不再是玻璃**，走普通页面（用户原话：「通过更多引擎
-         *   打开的页面就还是普通的页面，默认的页面不要液态玻璃了，就不管任何主题
-         *   都不会更改」）。
-         *   所以 r46 那三条"面板薄纱 / 文字阴影 / 吸附头薄纱"的断言**反过来钉**：
-         *   这些覆盖规则必须一条都不剩 —— 面板照常吃自己的主题底板。
-         *   ⚠ 注意只许钉 `.stage.qs-glass > .panel` 这种玻璃专用覆盖；
-         *   `.panel` 自己的底板规则（不加 qs-glass 前缀）当然要留着。 */
+        /* v3.0：液态玻璃 / 磨砂两套外观已从产品里删除。
+         *   这里原来钉的是它们的实现细节（画布铺满窗口、liquidGL shader 数学、
+         *   Rust 抓屏层、bar.js 五个钩子…）。现在**反过来钉「不许再出现」**
+         *   —— 防的是有人把它们偷偷加回来：
+         *     · 文件层面：glass.js / glass.rs 不该存在；
+         *     · 样式层面：没有任何 qs-glass / data-blur 规则；
+         *     · 接线层面：bar.js 不碰 QSGlass，index.html 不挂画布。 */
+        ok('【外观已移除】ui/glass.js 与 src/glass.rs 都不在了',
+            !fs.existsSync(path.join(ROOT, 'ui/glass.js'))
+            && !fs.existsSync(path.join(ROOT, 'src/glass.rs')));
+        const screencapRs = fs.readFileSync(path.join(ROOT, 'src/screencap.rs'), 'utf8');
+        ok('【外观已移除】抓屏原语保住在 src/screencap.rs（自动明暗还要用）',
+            /pub fn capture_rect/.test(screencapRs) && /pub fn virtual_screen/.test(screencapRs)
+            && /GetDIBits/.test(screencapRs) && /BitBlt/.test(screencapRs));
+        ok('【外观已移除】bar.css 里再没有任何 qs-glass / data-blur 规则',
+            !/qs-glass/.test(css2) && !/data-blur/.test(css2));
+        ok('【外观已移除】横条底板只吃 --qs-bg-fill（--qs-bar-fill / --qs-frost-veil 都删了）',
+            /\.bar\s*\{[^}]*background-color:\s*var\(--qs-bg-fill/.test(css2)
+            && !/--qs-bar-fill/.test(css2) && !/--qs-frost-veil/.test(css2));
+        /* ---- r47 的老结论仍然成立，只是原因换了 ----
+         * 面板从来就不吃玻璃（用户原话：「通过更多引擎打开的页面就还是普通的页面」），
+         * 现在连横条也不吃了，所以「面板不许有玻璃专用覆盖」这条守卫继续留着。 */
         const panelGlassRules = (css2.match(/\.stage\.qs-glass[^{}]*>?\s*\.panel[^{}]*\{[^}]*\}/g) || [])
             .filter((r) => !/z-index/.test(r));   // 抬层那条（position/z-index）必须留
-        ok('【液态玻璃】面板不再有任何玻璃专用覆盖规则（薄纱 / 文字阴影 / 吸附头薄纱全删）',
+        ok('【外观已移除】面板没有任何玻璃专用覆盖规则（薄纱 / 文字阴影 / 吸附头薄纱全删）',
             panelGlassRules.length === 0, '还剩：' + JSON.stringify(panelGlassRules));
-        ok('【液态玻璃】glass.js 不再给面板画玻璃（只画横条一块）',
-            !/getElementById\(\s*'panel'\s*\)/.test(glassJs)
-            && /drawBox\(barEl/.test(glassJs));
-        ok('【液态玻璃】面板仍照常吃自己的主题底板（普通页面 = 不随主题/壁纸变）',
+        ok('【外观已移除】面板仍照常吃自己的主题底板（普通页面 = 不随主题/壁纸变）',
             /\.panel\s*\{[^}]*background(-color)?:/.test(css2));
-        // ---- glass.js：liquidGL 移植版 shader 必须在位（拒绝 CSS 模糊半成品）----
-        ok('【液态玻璃】glass.js 移植了 liquidGL 透镜数学（SDF/边缘法线/边缘因子）',
-            /udRoundBox/.test(glassJs) && /cornerNormal/.test(glassJs) && /edgeFactor/.test(glassJs));
-        ok('【液态玻璃】折射/色差/rim 增强项齐全（offsetAmt + chroma + u_rimStrength）',
-            /offsetAmt|edge\s*\*\s*u_refraction/.test(glassJs)
-            && /chroma\s*=\s*offset/.test(glassJs)
-            && /u_rimStrength/.test(glassJs));
-        ok('【液态玻璃】frost 多抽头模糊 + specular 双光斑（一个绕时间、一个盯指针）',
-            /u_frost/.test(glassJs) && /u_specStrength/.test(glassJs) && /u_pointer/.test(glassJs));
-        ok('【液态玻璃】画布只覆盖横条、u_bounds 透镜映射（liquidGL 同款机制）',
-            /boundsOf/.test(glassJs) && /u_bounds/.test(glassJs));
-        // ---- Rust 抓屏层 ----
-        const glassRs = fs.readFileSync(path.join(ROOT, 'src/glass.rs'), 'utf8');
-        ok('【液态玻璃】Rust 抓屏层 glass.rs 在位（BitBlt + GetDIBits top-down）',
-            /BitBlt/.test(glassRs) && /GetDIBits/.test(glassRs) && /biHeight/.test(glassRs));
-        /* 原生宿主层换掉 Tauri 之后，原始字节走的是自研的 `crate::t::ipc::Response`
-         * （见 src/glass.rs 的注释：不走 JSON / base64，省掉三分之一体积）。
-         * 这里只认"有原始字节通道 + BGR→RGBA 通道互换"这两件事，不绑死具体命名空间。 */
-        ok('【液态玻璃】快照走 16 字节小头 + RGBA 像素（ipc::Response 直传）',
-            /ipc::Response/.test(glassRs) && /0, 2/.test(glassRs));
-        // ---- 前端接线 ----
+        /* ---- 前端接线 ---- */
         const htmlIdx = fs.readFileSync(path.join(ROOT, 'ui/index.html'), 'utf8');
-        ok('【液态玻璃】index.html 挂了 glass.js 与 #qsGlass 画布（bar.js 之后）',
-            /<script src="glass\.js"><\/script>/.test(htmlIdx) && /id="qsGlass"/.test(htmlIdx));
+        /* 判据要去掉注释 —— index.html 里那条「原本是 canvas / glass.js」的
+         * 删除说明本身就带着这两个词，不去注释会自己把自己判红。 */
+        const htmlIdxCode = htmlIdx.replace(/<!--[\s\S]*?-->/g, '');
+        ok('【外观已移除】index.html 不再挂 #qsGlass 画布与 glass.js',
+            !/id="qsGlass"/.test(htmlIdxCode) && !/glass\.js/.test(htmlIdxCode));
         const barJs = fs.readFileSync(path.join(ROOT, 'ui/bar.js'), 'utf8');
-        ok('【液态玻璃】bar.js 五钩齐全（config→applyConf / theme→kick / glass→onFresh / show→onShow / hidden→onHidden）',
-            /QSGlass\.applyConf/.test(barJs) && /QSGlass\.kick/.test(barJs)
-            && /QSGlass\.onFresh/.test(barJs) && /QSGlass\.onShow/.test(barJs)
-            && /QSGlass\.onHidden/.test(barJs));
-        ok('【液态玻璃】glass.js 在 jsdom 里安全降级（WebGL2 缺失不炸、保持磨砂路）',
-            /getContext\('webgl2'/.test(glassJs) && /if \(!gl\) return false/.test(glassJs));
+        /* 判据要去掉注释再匹配 —— bar.js 里那些「原本调 QSGlass.xxx」的删除说明
+         * 本身就带着这个词（有块注释也有行注释），不去注释会自己把自己判红。 */
+        const barJsCode = barJs
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/(^|\n)\s*\/\/[^\n]*/g, '');
+        ok('【外观已移除】bar.js 不再引用 QSGlass（含 onShow / kick / onFresh / setBarGhost）',
+            !/QSGlass/.test(barJsCode));
+        ok('【外观已移除】bar.js 不再写 data-blur / --qs-blur（磨砂那段早删了）',
+            !/dataset\.blur/.test(barJsCode) && !/--qs-blur/.test(barJsCode));
+        ok('【外观已移除】bar.js 不再监听 qs://glass 事件',
+            !/qs:\/\/glass/.test(barJsCode));
         ok('【删净玻璃】横条 box-shadow 只留 --qs-shadow 一段（默认全透明占位）',
             /\.bar\s*\{[^}]*box-shadow:\s*var\(--qs-shadow\)\s*;/.test(css2),
             'bar.css 的 .bar 规则');
@@ -2168,28 +2150,14 @@ async function testBar() {
                 fs.readFileSync(path.join(ROOT, 'ui/settings.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')));
     }
 
-    // ---- 磨砂强度 ----
-    // 写起来确认走配置 → applyLook → --qs-blur 和 data-blur 的链路。
-    // ⚠ 轮 20 起滑块值**不直接当 px**：走 qsBlurPx() 换算（前段陡、封顶 24px）。
-    //   18 → min(24, 1.6 + 18*0.70) = 14.2px。断言必须跟这条曲线一致，
-    //   否则改曲线时这里会假红。
-    env.pushConfig(baseConf({ barBlur: 18 }));
+    /* ---- 磨砂强度：整组断言已删除（v3.0）----
+     * 这里原本钉的是「滑块 → data-blur → --qs-blur → qsBlurPx 换算」那条链路：
+     * 18 → 14.2px 的曲线、饱和/亮度增益、0 时归零。磨砂外观已从产品里删除 ——
+     * bar.js 不写 data-blur、shared.js 没有 qsBlurPx、bar.css 没有 [data-blur]
+     * 规则，上面那组【外观已移除】已经把这件事守住，这里不再重复。
+     * 唯一保留的是「推一份配置不炸」这条链路本身。 */
+    env.pushConfig(baseConf({}));
     await flush();
-    ok('磨砂强度 > 0 时 stage 标 data-blur（记的是滑块原始值）',
-        $('stage').dataset.blur === '18');
-    ok('  --qs-blur CSS 变量同步（走 qsBlurPx 换算，不是 1:1）',
-        $('stage').style.getPropertyValue('--qs-blur') === '14.2px');
-    ok('  饱和/亮度增益一起写进去（只有 blur 时玻璃感太弱）',
-        Number($('stage').style.getPropertyValue('--qs-blur-sat')) > 1
-        && Number($('stage').style.getPropertyValue('--qs-blur-bright')) > 1);
-    ok('  换算曲线：低档位也看得见、高档位封顶 24px',
-        w.qsBlurPx(1) >= 2 && w.qsBlurPx(1) < 3 && w.qsBlurPx(32) === 24);
-    env.pushConfig(baseConf({ barBlur: 0 }));
-    await flush();
-    ok('磨砂强度 = 0 时 data-blur 归零（CSS 不再开 backdrop-filter）',
-        $('stage').dataset.blur === '0');
-    ok('  0 时模糊半径也必须是 0（不能留个封顶值糊着）',
-        w.qsBlurPx(0) === 0);
 
     // ---- 背景色：磨砂关着时也必须是**实色**（用户报的「莫名透明」回归） ----
     // ⚠ 液态玻璃已整套删除（#27）；#148 起底色归 CSS 两套配色，syncBarBg 恒写
@@ -3400,7 +3368,7 @@ async function testTrans() {
      *   哨兵在配置里仍保留（用户下次开开关它就回到原位）。 */
     {
         const env = makeEnv('ui/index.html', baseConf({ barList: ['百度', '@trans', 'Google'] }));
-        runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js', 'ui/glass.js']);
+        runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js']);
         const { w } = env;
         const $ = (id) => w.document.getElementById(id);
         const styleEl = w.document.createElement('style');
@@ -4587,7 +4555,7 @@ async function testFavTools() {
         ],
         barList: ['百度', '@fav:g1', '@fav:g2'],
     }));
-    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js', 'ui/glass.js']);
+    runScripts(env, ['ui/shared.js', 'ui/bar-panel-lazy.js', 'ui/bar.js']);
     await flush();
     const { w } = env;
     const $ = (id) => w.document.getElementById(id);
@@ -5239,12 +5207,16 @@ async function testSectionReset() {
     /* 先清掉 boot 可能已经装上的按钮：那些闭包拿的是 undefined（点击时才取
      * Rust 默认值），这里要测“直接注入默认值”的路径，必须重新装一遍。 */
     env.w.document.querySelectorAll('.card-reset').forEach((b) => b.remove());
-    env.w.eval('installCardResets({ barBlur: 12, barBgAlpha: 55, alpha: 100 },'
-        + ' { barBlur: 21, barBgAlpha: 0, alpha: 100 })');
+    /* v3.0：原来这里拿 `barBlur` / `barBgAlpha` 当样本（磨砂那两颗滑块）。
+     *   两套外观删掉后它们不存在了，改用同一张「横条外观」卡里仍在的
+     *   `barPadding` —— 这个测试要验的是「按钮怎么装、点了发什么」，
+     *   跟具体是哪颗滑块无关。 */
+    env.w.eval('installCardResets({ barPadding: 5, alpha: 100 },'
+        + ' { barPadding: 12, alpha: 100 })');
     const doc = env.w.document;
-    const btn = doc.querySelector('#s-barBlur')
-        && doc.querySelector('#s-barBlur').closest('.card').querySelector('.card-reset');
-    ok('磨砂卡片上有「恢复本节默认」', !!btn);
+    const btn = doc.querySelector('#s-barPadding')
+        && doc.querySelector('#s-barPadding').closest('.card').querySelector('.card-reset');
+    ok('横条外观卡片上有「恢复本节默认」', !!btn);
     if (!btn) return;
 
     const before = env.calls.length;
@@ -5253,13 +5225,11 @@ async function testSectionReset() {
     const call = env.calls.slice(before).find((c) => c.cmd === 'set_settings');
     ok('点一下会提交 set_settings', !!call);
     const pairs = call ? call.args.pairs : [];
-    ok('只提交改过的字段（含 barBlur / barBgAlpha，不含没变的 alpha）',
-        pairs.some((p) => p[0] === 'barBlur')
-        && pairs.some((p) => p[0] === 'barBgAlpha')
+    ok('只提交改过的字段（含 barPadding，不含没变的 alpha）',
+        pairs.some((p) => p[0] === 'barPadding')
         && !pairs.some((p) => p[0] === 'alpha'), JSON.stringify(pairs));
-    ok('提交的是默认值 12 / 55',
-        pairs.some((p) => p[0] === 'barBlur' && p[1] === 12)
-        && pairs.some((p) => p[0] === 'barBgAlpha' && p[1] === 55), JSON.stringify(pairs));
+    ok('提交的是默认值 5',
+        pairs.some((p) => p[0] === 'barPadding' && p[1] === 5), JSON.stringify(pairs));
 }
 
 /** 设置项搜索（v2.23.41）：输入 → 出结果（带分页）→ 回车 → 跳到那一页并高亮。 */

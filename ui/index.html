@@ -14,16 +14,10 @@
 
 <div class="stage" id="stage">
 
-    <!-- 液态玻璃画布：铺满**整个窗口**（不是只铺横条），pointer-events:none。
-         ⚠ 2026-10-16（需求 6）从 .bar 里搬到了 stage 上：面板（#panel）是 .bar 的
-         **兄弟**节点，画布留在 .bar 里就只能覆盖横条胶囊 —— 面板那块区域压根没有
-         玻璃，用户看到的就是"更多引擎页 / 收藏夹页还是纯色卡片"。
-         现在画布铺满窗口，glass.js 给每一块玻璃（横条、面板）各画一遍：每遍只改
-         viewport / u_resolution / u_boxSize / u_bounds —— v_uv 来自顶点属性而不是
-         gl_FragCoord，viewport 一变它自动就是"块内 0..1"，shader 一行都不用动。
-         背景仍由 Rust 抓屏（src/glass.rs），渲染数学见 glass.js（liquidGL 移植版）。
-         玻璃关掉或 WebGL2 不可用时不挂 qs-glass 类，此画布完全不出现。 -->
-    <canvas id="qsGlass" aria-hidden="true"></canvas>
+    <!-- v2.23.131：这里原本是 `<canvas id="qsGlass">` —— 液态玻璃/磨砂的 WebGL2
+         画布，铺满整个窗口、由 `glass.js` 按 Rust 抓来的桌面纹理渲染。
+         两套外观摘掉之后画布、脚本、抓屏链路一起删除；横条回到「主题底色 +
+         横条不透明度」这一套，`.stage > .bar` 直接是实色/半透明底板。 -->
 
     <!-- ---------------- 横条本体 ---------------- -->
     <!-- v2.23.50：横条上不再有「⋯ 更多引擎」按钮（见 bar.css 的 .ico.qs-more），
@@ -125,6 +119,5 @@
 <script src="i18n.en.js"></script>
 <script src="bar-panel-lazy.js"></script>
 <script src="bar.js"></script>
-<script src="glass.js"></script>
 </body>
 </html>

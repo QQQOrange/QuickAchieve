@@ -35,20 +35,14 @@
             <ul>
                 <li><b>Color</b>: the backdrop follows “<b>Appearance theme</b>” — “Follow system” tracks
                     Windows light / dark mode, and you can also pin it to light or dark;</li>
-                <li><b>Style (pick one)</b>: switch under “<b>Bar look → Bar style</b>”; the page only shows the
-                    options belonging to the current style — <b>Default</b> = a solid plate; <b>Frosted</b> =
-                    blurs the screen behind the bar; <b>Liquid glass</b> = grabs a patch of the desktop behind
-                    it as a texture and does real refraction / chromatic aberration / rim light, and with video
-                    playing behind you can turn on “live refraction” so it follows along. Liquid glass needs
-                    WebGL2; on a GPU that can't do it the bar drops back to frosted automatically, nothing to
-                    manage by hand;</li>
-                <li><b>Glass preset</b>: once liquid glass is selected, two one-click presets (“Light” /
-                    “Standard”) appear at the top; touch any slider below and it becomes “Custom” — a preset is
-                    just a shortcut and never fights your manual tuning;</li>
+                <li><b>Look</b>: the bar has exactly one look — the backing colour comes from
+                    “<b>Interface theme</b>”, and “<b>Bar opacity</b>” controls how strong it is.
+                    There is no separate frosted / liquid-glass style, and no optional render path that
+                    needs GPU support;</li>
                 <li><b>Position</b>: by default it pops up hugging the selected text (flipping above when there
                     is no room below); turn on “<b>Anchor the bar to the pointer</b>” and it always follows the
                     mouse.</li>
-                <li><b>Size</b>: icon size, padding, opacity and frost strength are all adjustable — change them
+                <li><b>Size</b>: icon size, padding and opacity are all adjustable — change them
                     under “<b>Bar look → Preview</b>” and the real thing updates immediately.</li>
                 <li>The bar's position comes from where it pops up (next to the selection / the pointer —
                     see “Bar look → Position”); press <b>Esc</b> to put it away.</li>

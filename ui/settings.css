@@ -2669,62 +2669,12 @@ body.idx-on .to-top { bottom: 56px; }
     opacity: var(--pv-alpha, 1);
 }
 
-/* 预览里的磨砂：和横条真身同一套（blur + saturate + brightness），
-   参数由 renderPreview 从 qsBlurPx()/qsBlurTone() 写进 --pv-blur*。
-   ⚠ 只有在「不透明度」调低时才看得出 —— 不透明度 100% 时横条是实心的，
-   背后什么都透不过来，这正是真身的口径，预览不搞例外。 */
-.qs-preview[data-blur]:not([data-blur="0"]) {
-    -webkit-backdrop-filter: blur(var(--pv-blur, 0px))
-        saturate(var(--pv-blur-sat, 1.4)) brightness(var(--pv-blur-bright, 1));
-    backdrop-filter: blur(var(--pv-blur, 0px))
-        saturate(var(--pv-blur-sat, 1.4)) brightness(var(--pv-blur-bright, 1));
-    /* v2.23.83：磨砂样式的底板按「底板透明度」压透明，预览才和真身一致。
-       用 color-mix 直接吃百分比变量；不支持时自动落回上面 .qs-preview 的
-       实色 background-color（声明失效不改变已有背景）。 */
-    background-color: color-mix(in srgb, var(--pv-card, var(--card)) var(--pv-bg-alpha, 100%), transparent);
-}
+/* v2.23.131：磨砂预览整段删除（[data-blur] 那条）。预览不再写 data-blur，
+   也就不再有 --pv-blur / --pv-bg-alpha 那套 backdrop-filter。 */
 
-/* ==========================================================================
- * 液态玻璃预览（#137）
- *
- * 真折射要 WebGL2 抓屏幕（glass.js 的 liquidGL），设置页预览抓不到桌面，
- * 这里用可实现的层叠效果把玻璃的**样子**学过来（渲染口径见 settings.js
- * renderPreview 里的玻璃分支）：
- *   · 半透明染色本体（亮色偏白 / 暗色压深蓝）
- *   · 内部磨砂 backdrop-filter（「玻璃磨砂」滑块）
- *   · 上下缘亮线（高光滑块定强度，色差滑块让下缘带冷色偏移）
- *   · 一道斜向镜面反光
- * 不透明度 / 待机淡度那套照旧生效（玻璃横条该淡也淡）。
- * ========================================================================== */
-.qs-preview[data-lg="1"] {
-    /* 染色基色：亮色预览偏白，深色预览压一层深蓝（和真身玻璃染色同思路） */
-    --pv-lg-tint-rgb: 255, 255, 255;
-    background-color: transparent;
-    background-image:
-        /* 斜向镜面反光：一道从左上扫向右下的高光 */
-        linear-gradient(115deg,
-            rgba(255, 255, 255, calc(.10 * var(--pv-lg-spec, 1))) 0%,
-            rgba(255, 255, 255, 0) 42%),
-        /* 本体染色 */
-        linear-gradient(rgba(var(--pv-lg-tint-rgb), var(--pv-lg-tint-a, .3)),
-            rgba(var(--pv-lg-tint-rgb), var(--pv-lg-tint-a, .3)));
-    -webkit-backdrop-filter: blur(var(--pv-lg-frost, 0px)) saturate(1.3);
-    backdrop-filter: blur(var(--pv-lg-frost, 0px)) saturate(1.3);
-    box-shadow:
-        /* 上缘亮线（暖白 —— R 通道先到） */
-        inset 0 1px 0 rgba(255, 246, 219, calc(.55 * var(--pv-lg-spec, 1))),
-        /* 下缘亮线（冷白 —— B 通道分离量跟色差滑块走） */
-        inset 0 -1px 0 rgba(214, 232, 255,
-            calc((.26 + .34 * var(--pv-lg-ab, 0)) * var(--pv-lg-spec, 1))),
-        /* 左右缘各一道细线：厚度感 = 折射/厚度两个滑块 */
-        inset calc(1px * var(--pv-lg-edge, .5)) 0 0 rgba(255, 255, 255, calc(.13 * var(--pv-lg-spec, 1))),
-        inset calc(-1px * var(--pv-lg-edge, .5)) 0 0 rgba(255, 255, 255, calc(.13 * var(--pv-lg-spec, 1))),
-        var(--pv-shadow);
-}
-
-.preview-stage[data-dark="1"] .qs-preview[data-lg="1"] {
-    --pv-lg-tint-rgb: 10, 20, 42;
-}
+/* v2.23.131：液态玻璃预览整段删除（[data-lg] 那条 + 它的深色变体）。
+   预览不再挂 data-lg，原本靠它画的染色本体 / 边缘亮线 / 斜向反光全部没了，
+   只剩 .qs-preview 自己的底色 —— 也就是横条真身现在的样子。 */
 
 /* 深色预览：舞台、横条本身、横条上的图标三块都要改调，否则等于换了一块深色底、
    横条还是亮色，对比反而更扎眼。 */

@@ -138,52 +138,13 @@ gba(14,116,144,.10) 那个旧品牌青色的写死回退，和蓝色强调色不
         0 8px 22px -4px rgba(0, 0, 0, .42);
 }
 
-/* ---------------------------- 磨砂玻璃（横条/面板/右键菜单） ----------------------------
-   --qs-blur 由设置面板的「磨砂强度」滑块写进来（**长度**，如 "18px"），0 = 不模糊（默认）。
-
-   ⚠⚠ 「背景变透」这件事**由 JS 算好一个完整的 rgba 写进 --qs-bg-fill**
-      （见 bar.js 的 syncBarBg），绝不在这里用 `color-mix(...) + calc()` 推。
-
-   踩过的坑（用户报的「设置成 100% 不透明却莫名透明」就是这个）：
-     原来这里写的是
-         --qs-bg-alpha: clamp(0.45, 1 - var(--qs-blur) * 0.018, 1);
-     而 --qs-blur 是长度（"18px"），`1 - 18px * 0.018` 是「数字减长度」——
-     **本身就是非法表达式**，--qs-bg-alpha 于是变成无效值；
-     接着 `background-color: color-mix(in srgb, var(--qs-bg) calc(var(--qs-bg-alpha) * 100%), transparent)`
-     里的 calc 也失效 → 整条 background-color 声明被浏览器丢弃 →
-     横条**完全没有背景色 = 全透明**。
-
-   现在只留 --qs-blur 给 backdrop-filter 用；背景色一律走
-   `var(--qs-bg-fill, var(--qs-bg))`，JS 没跑到时自动退回纯色，永远不会透明。
-
-   ---- 轮 20：让这个选项"真的有用" ----
-   用户原话：「磨砂强度的选项我感觉好像没什么用啊……能不能把它优化一下，
-   让它的效率更高」。三处一起改：
-
-   ① **半径换算**：滑块值不再 1:1 当 px 用，走 `qsBlurPx()`（shared.js，唯一口径）。
-      前段陡（滑块刚离开 0 就看得见）、后段封顶 24px —— backdrop-filter 的代价
-      随半径超线性涨，32px 在横条这种小窗口上纯属白烧 GPU。
-   ② **玻璃感**：只做 blur 时观感很弱（底色偏灰几乎看不出来），补 saturate + brightness。
-   ③ **合成层**：提前声明 `will-change: backdrop-filter` —— 这个属性一开一关会
-      重建合成层，拖动/缩放时那一帧的重建就是肉眼可见的顿挫。 */
-.stage { --qs-blur: 0px; --qs-blur-sat: 1.4; --qs-blur-bright: 1; }
-
-/* 磨砂：面板、右键菜单两块都吃这一套（横条自 v2.23.85 改成静态雾面，
-   不再参与 backdrop-filter —— 透明窗里糊不到桌面，纯白烧 GPU）。 */
-/* v2.23.86：**.bar 不再吃 backdrop-filter** —— 透明悬浮窗里它取样的是
-   页面自己的背后（空的），糊不到桌面，纯白烧一层 GPU 合成；磨砂改由
-   下面那条静态雾面规则负责。面板 / 右键菜单仍保留（它们背后是页面内容）。 */
-.stage[data-blur]:not([data-blur="0"]) .panel,
-.stage[data-blur]:not([data-blur="0"]) .menu {
-    -webkit-backdrop-filter: blur(var(--qs-blur)) saturate(var(--qs-blur-sat, 1.4)) brightness(var(--qs-blur-bright, 1));
-    backdrop-filter: blur(var(--qs-blur)) saturate(var(--qs-blur-sat, 1.4)) brightness(var(--qs-blur-bright, 1));
-    /* ⚠ `will-change` 只声明真正会变的那两个（transform / opacity）。
-     *   `backdrop-filter` 不是"会变的属性"，写进 will-change 等于让浏览器
-     *   为它长期维持一个额外的合成层 —— 开着磨砂时三块浮层各背一层，
-     *   GPU 内存白涨、低端显卡还会掉帧。磨砂本身已经由上面的规则常驻了，
-     *   不需要"提前告知"。 */
-    will-change: transform, opacity;
-}
+/* v2.23.131：磨砂玻璃整段删除。
+   这里原本是 --qs-blur / --qs-blur-sat / --qs-blur-bright 一族变量，
+   加上 .stage[data-blur] 那两条 backdrop-filter 规则（面板和右键菜单吃它）。
+   「磨砂」外观已从产品里摘掉：
+     - bar.js 不再写 data-blur，也不再写 --qs-blur；
+     - 浮层回到纯色 / 半透明底板；
+     - 透明度仍只有一颗滑块在管 —— --qs-bg-fill 的 alpha（bar.js 的 syncBarBg）。 */
 
 /* ------------------- 收藏夹（横条上的 @fav:<id> + 面板） ------------------- */
 /* 默认徽标：没换图标也没给目录设图时的**首字徽标**（用户要求）——
@@ -660,7 +621,7 @@ button.fav-grp-head:focus-visible {
     /* v2.23.83：横条底板单独一颗变量 —— 磨砂样式下它才是半透明的，
        面板 / 右键菜单仍然吃 --qs-bg-fill（实色，保证可读）。
        兜底链最后仍然是纯色 --qs-bg，JS 没跑到也不会莫名全透明。 */
-    background-color: var(--qs-bar-fill, var(--qs-bg-fill, var(--qs-bg)));
+    background-color: var(--qs-bg-fill, var(--qs-bg));
     /* 投影：用户开「浮层阴影」时的两层（默认全透明占位，见 .stage）。 */
     box-shadow: var(--qs-shadow);
     opacity: var(--qs-alpha, 1);
@@ -671,40 +632,11 @@ transition: background-color .14s ease, opacity .22s ease;
     will-change: transform, opacity;
 }
 
-/* v2.23.86：**静态磨砂雾面**。
- *
- * 一层白色薄纱 + 一张固定的细颗粒纹理，叠在 `--qs-bar-fill`（半透明底板）
- * 上面。它不抓屏、不做真实模糊、不跑 rAF —— 背后的内容直接从底板透明处
- * 透出来，滚动时自然跟着动，零额外算力。
- *
- * 颗粒图是内联 SVG（feTurbulence 生成的灰度噪点，静态缓存，浏览器只栅格化
- * 一次）；用 overlay 混合，让雾面有"玻璃"的细微质感，而不是一块平板色。 */
-.stage {
-    --qs-frost-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
-}
-/* 用伪元素叠雾面 / 颗粒，而不是改 .bar 自己的 background-image：
-   基础规则保持「只有 background-color」的既有约定（test-ui 的【删净玻璃】
-   就是守这条）。图标等子元素抬到雾面之上，按钮仍可点。 */
-.stage[data-blur]:not([data-blur="0"]):not(.qs-glass) > .bar::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    z-index: 0;
-    background-image:
-        linear-gradient(var(--qs-frost-veil, transparent), var(--qs-frost-veil, transparent)),
-        var(--qs-frost-noise);
-    background-size: 100% 100%, 120px 120px;
-    background-repeat: no-repeat, repeat;
-    background-blend-mode: normal, overlay;
-    /* 一层极淡的内高光，模拟玻璃片的边缘 —— 不加投影，省合成。 */
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22);
-}
-.stage[data-blur]:not([data-blur="0"]):not(.qs-glass) > .bar > * {
-    position: relative;
-    z-index: 1;
-}
+/* v2.23.131：静态磨砂雾面整段删除。
+   这里原本是 --qs-frost-noise（feTurbulence 生成的灰度噪点内联 SVG），
+   加上 .stage[data-blur] > .bar::before 那层乳白薄纱 + 颗粒，
+   以及给子元素抬 z-index 的配套规则。
+   磨砂外观从产品里摘掉之后，横条只有一层纯色/半透明底板。 */
 
 /* ---- 待机淡度：横条弹出后、鼠标还没过来时先淡着 ----
  * 透明度由设置里的「悬停前透明度」给（JS 写 --qs-dim-alpha，默认 .45）。
@@ -722,63 +654,11 @@ transition: background-color .14s ease, opacity .22s ease;
     transition: none;
 }
 
-/* ---- 液态玻璃模式（glass.js 渲染，背景由 Rust 抓屏）----
- * 玻璃画布接管**横条**的"底"：底板色和磨砂全部让位（磨砂留着没用 ——
- * 它取样的是页面内元素背后，透明悬浮窗里那后面是空的，纯浪费一层合成）。
- *
- * ⚠ 2026-10-16（需求 6）：画布从 `.bar` 里搬到了 `.stage` 上，类也改挂 stage。
- *   为什么：面板（#panel）是 `.bar` 的**兄弟**节点，画布留在 `.bar` 里就只能
- *   覆盖横条胶囊 —— 面板那块区域压根没有玻璃。
- *   画布本身不裁圆角，每块玻璃自己的圆角由 shader 的 SDF 出。
- *   `.bar` 上仍留一份 `qs-glass` 类（glass.js 两处都挂）：老探针和老选择器
- *   不用改。
- * ⚠ 2026-10-16 r47（用户报「通过更多引擎打开的页面就还是普通的页面，默认的
- *   页面不要液态玻璃了，就不管任何主题都不会更改」）：画布仍然铺满窗口，
- *   但 **glass.js 只给横条画玻璃** —— 面板一律走本来的主题底板，
- *   也就是**普通页面**。横条与面板从此是两种界面，不再是"一套观感"。
- * ⚠ canvas 是定位元素，会把兄弟节点盖在身下 —— 所以 .bar / .panel 一律
- *   position:relative 抬到 z-index:1；pointer-events:none 保证点击穿透。
- * 投影不动（画布只铺框内，投影在框外，照常显示）。 */
-.stage.qs-glass > .bar {
-    background-color: transparent;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-/* ⚠ 上面那两条 backdrop-filter:none 会和「磨砂」那条规则抢：
- *   `.stage[data-blur]:not([data-blur="0"]) .bar`（第 168 行）选择器更重，
- *   玻璃模式下如果配置里还留着磨砂值，**横条**会被它重新加上 backdrop-filter
- *   （透明悬浮窗里它取样的是"页面自己的背后"= 空的，纯浪费一层合成）。
- *   面板**不在此列**：它是普通页面，配置里的磨砂照常生效。 */
-.stage.qs-glass[data-blur]:not([data-blur="0"]) > .bar {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-#qsGlass {
-    display: none;
-}
-.stage.qs-glass > #qsGlass {
-    display: block;
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-}
-.stage.qs-glass > .bar,
-.stage.qs-glass > .panel {
-    position: relative;
-    z-index: 1;
-}
-/* ⚠ 2026-10-16 r47：面板**不再是玻璃**，这里不再有任何
- *   `.stage.qs-glass > .panel` 的覆盖规则 —— 它照常吃 `.panel` 自己那层
- *   主题实色底板（= 普通页面），r46 那层 20% 薄纱、文字阴影、吸附头薄纱
- *   全部删除。两块界面从此是两种：
- *     · 横条 = 液态玻璃（用户点名要的效果）；
- *     · 面板（更多引擎 / 收藏夹 / 通过它们打开的页面）= 普通页面，
- *       **不管什么主题都一个样**。
- *   为什么：面板里是密排正文（引擎列表、收藏夹条目），玻璃的折射让每一行
- *   都在动、小字发虚，用户原话「就还是普通的页面，默认的页面不要液态玻璃了」。 */
+/* v2.23.131：液态玻璃段整段删除。
+   这里原本是 .stage.qs-glass 那一整套覆盖规则：横条底板透明让位给 WebGL 画布、
+   #qsGlass 铺满窗口、.bar/.panel 抬到 z-index:1 盖在画布上方，以及 r47 撤回
+   「面板也是玻璃」时留下的那段说明。画布和 glass.js 都删掉了，
+   横条直接就是主题底色，不需要任何覆盖。 */
 
 @keyframes qs-bar-in {
     from { transform: translateY(4px) scale(.97); }

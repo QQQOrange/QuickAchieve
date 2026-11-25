@@ -3249,8 +3249,7 @@ const SWITCHES = [
     ['s-ocrCleanUnwrap', 'ocrCleanUnwrap'],
     ['s-webdavOnStart', 'webdavOnStart'],
     ['s-webdavOnExit', 'webdavOnExit'],
-    // 液态玻璃一组：实时折射（总开关已被「横条样式」三分段取代）
-    ['s-barGlassLive', 'barGlassLive'],
+    // 液态玻璃一组：实时折射（总开关已被「横条样式」三分段取代）
     /* r80：AI 抠图总开关（图标编辑器功能的开关）。
      *
      * ⚠ 它**必须**在这张表里，不能自己手写 change 监听 ——
@@ -3308,48 +3307,11 @@ const SWITCH_DEFAULT = {
     ocrMulti: [],
     webdavOnStart: false,
     webdavOnExit: false,
-    barGlassLive: false,
 };
 
-/* ==========================================================================
- * 横条样式三主题（默认 / 磨砂 / 液态玻璃）
- *
- * 刻意**不新增配置字段**，三态由既有字段推导：
- *   glass  = barGlass 开（横条抓桌面做 WebGL2 真折射）
- *   frost  = barGlass 关且 barBlur > 0（backdrop-filter 磨砂）
- *   default= 两者都关（纯色底板）
- * 这样老 config.json 零迁移，bar.css / bar.js / glass.js 的既有链路
- * 一行都不用动。设置页按推导结果显示当前主题的配置行，其余行隐藏。
- * ========================================================================== */
-function qsBarStyle(c) {
-    if (c && c.barGlass) return 'glass';
-    return (c && Number(c.barBlur) || 0) > 0 ? 'frost' : 'default';
-}
-
-function syncStyleUI() {
-    const st = qsBarStyle(CONF);
-    const seg = $('s-barStyle');
-    if (seg) {
-        for (const b of seg.querySelectorAll('button')) {
-            b.classList.toggle('on', b.dataset.v === st);
-        }
-    }
-    for (const el of document.querySelectorAll('[data-style]')) {
-        el.hidden = el.dataset.style !== st;
-    }
-    /* r95：切样式也要重刷帧率那一行。
-     *
-     * `data-style` 那轮循环只会把 `rowGlassFps` 设为**可见**（玻璃样式下），
-     * 而它的最终可见性还有第二个条件（实时折射开着没）—— 那条件由
-     * `syncGlassFpsUI` 判。以前只有「开关实时折射」才会调它，于是
-     * 「玻璃+实时折射开着 → 切到默认/磨砂」这条路把帧率行留在了界面上：
-     * 默认/磨砂下玻璃画布不跑，这一行的四个按钮全是无效的。
-     *
-     * ⚠ 必须排在 data-style 循环**之后** —— 反了会被那边改回可见。 */
-    syncGlassFpsUI();
-    // 玻璃参数预设的高亮跟着配置走（拖过滑块就变成「自定义」）
-    syncGlassPreset();
-}
+/* v2.23.131：横条样式三分段整块删除（qsBarStyle / syncStyleUI）。
+ * 样式只剩「默认」一种，不再需要从 barGlass / barBlur 推导，
+ * 也不需要按 data-style 显示/隐藏配置行。 */
 
 /* v1.5.4：弹出位置控件跟着「横条跟随鼠标位置」联动。
  *
@@ -3364,109 +3326,8 @@ function syncBarPosUI() {
     for (const b of seg.querySelectorAll('button')) b.disabled = off;
 }
 
-/* ==========================================================================
- * 液态玻璃参数预设（#129）
- *
- * 六个滑块（折射 / 厚度 / 色差 / 高光 / 染色 / 内部磨砂）单独调很难一次
- * 调出好看的一整套，这里给两档「一键全套」（#150 删掉了原来的「深度」）：
- *   light    轻量：折射弱、高光低，老机器 / 集成显卡也流畅
- *   standard 标准：默认那套，最像真玻璃
- *   custom   自定义：六个值不全命中任何一档就是它（默认态）
- *
- * 刻意**不含** barGlassLive（实时折射）—— 那是开销开关不是外观参数，
- * 不随预设变，用户开了就留着。命中判定是「六个值全中」，任一不同即自定义，
- * 所以预设永远只是快捷方式，不会和手动调节打起来。
- * #150：老配置里存的深度参数不会丢，只是再没有对应档位，照样显示「自定义」。
- * ========================================================================== */
-const GLASS_PRESETS = [
-    /* #133 质感重调：用户原话「不够透、折射差」。两档整体加强 ——
-     *   折射（边缘扭曲）和厚度（边缘放大）是"像不像厚玻璃"的主线索；
-     *   高光给到能看出镜面反光的量；染色略升让本体有"玻璃有感"的通透；
-     *   内部磨砂 light 档从 0 改成 1 —— 完全清亮的玻璃在花桌面上一片糊，
-     *   一点点内部磨砂反而更像真玻璃（真玻璃也极少全透明）。 */
-    { key: 'light', values: { barGlassRefraction: 18, barGlassBevel: 10, barGlassAberration: 30, barGlassSpec: 70, barGlassTint: 10, barGlassFrost: 1 } },
-    { key: 'standard', values: { barGlassRefraction: 30, barGlassBevel: 18, barGlassAberration: 50, barGlassSpec: 110, barGlassTint: 14, barGlassFrost: 2 } },
-];
-
-/** 当前配置命中哪个预设；六个值全中才算，任一不同即「自定义」。 */
-function currentGlassPreset() {
-    for (const p of GLASS_PRESETS) {
-        let all = true;
-        for (const k of Object.keys(p.values)) {
-            if (Number(CONF[k] || 0) !== p.values[k]) { all = false; break; }
-        }
-        if (all) return p.key;
-    }
-    return 'custom';
-}
-
-function syncGlassPreset() {
-    const seg = $('s-glassPreset');
-    if (!seg) return;
-    const cur = currentGlassPreset();
-    for (const b of seg.querySelectorAll('button')) {
-        b.classList.toggle('on', b.dataset.v === cur);
-    }
-}
-
-/** 点预设：六个参数**一次**写库（set_settings 批量命令，一次保存一次广播）。
- *
- *  ⚠ 以前是六个 set_setting 一人一次广播 —— 每次广播回来 syncGlassPreset
- *    都会重算，写到一半的中间状态（比如折射已改、高光未改）谁都不命中，
- *    于是「自定义」会**闪一下**再跳回目标档。用户报「点预设时自定义闪一下」。
- *    现在批量一次落库，广播只有一份、且已是终态，不会再闪。 */
-function bindGlassPreset() {
-    const seg = $('s-glassPreset');
-    if (!seg) return;
-    for (const b of seg.querySelectorAll('button')) {
-        b.addEventListener('click', () => {
-            const p = GLASS_PRESETS.find((x) => x.key === b.dataset.v);
-            if (!p) return;   // 「自定义」只是状态显示，点了不做事
-            const pairs = Object.keys(p.values).map((k) => [k, p.values[k]]);
-            // 立刻生效：不等后端广播回来（广播到达时 renderPreview 还会再画一次，
-            // 两次都是终态，不会出现中间态闪烁）
-            for (const [k, v] of pairs) CONF[k] = v;
-            invoke('set_settings', { pairs }).catch(() => {});
-            syncGlassPreset();
-        });
-    }
-}
-
-/** 点三分段：一次改动写两个既有键（barGlass / barBlur）。
- *  · 默认：两个都关；
- *  · 磨砂：关玻璃、磨砂强度没设过就给 12（低档位就能看出效果）；
- *  · 玻璃：开玻璃、磨砂强度**原样保留** —— 面板和右键菜单的磨砂吃的
- *    还是这个值（CSS 只把 .bar 自己的 backdrop-filter 让位给玻璃画布），
- *    从磨砂主题切过来的用户面板观感不变。 */
-function bindBarStyle() {
-    const seg = $('s-barStyle');
-    if (!seg) return;
-    for (const b of seg.querySelectorAll('button')) {
-        b.addEventListener('click', () => {
-            const v = b.dataset.v;
-            const glass = v === 'glass';
-            /* ⚠ 「玻璃」**不能把 barBlur 清零**（注释里承诺的就是"原样保留"）。
-             *   面板 / 右键菜单的磨砂吃的正是这个值，清零等于让它们失去磨砂，
-             *   而且滑块在玻璃模式下被隐藏，用户当场看不到、也改不回来。 */
-            const cur = Number(CONF.barBlur) > 0 ? Number(CONF.barBlur) : 0;
-            let blur;
-            if (v === 'default') blur = 0;
-            else if (v === 'frost') blur = cur > 0 ? cur : 12;
-            else blur = cur;              // glass：沿用
-            Object.assign(CONF, { barGlass: glass, barBlur: blur });
-            syncStyleUI();
-            renderPreview();
-            /* ⚠ 一次写完两个键。
-             *   以前是两条 `set_setting`，每条各自 save + 广播 ——
-             *   「磨砂→玻璃」「玻璃→默认」都会广播出一个中间态，
-             *   syncStyleUI 按 qsBarStyle(CONF) 推导时会闪一下
-             *   （文件里 2613 行那段注释说的就是这个病，这里是漏改的一处）。 */
-            invoke('set_settings', {
-                pairs: [['barGlass', glass], ['barBlur', blur]],
-            }).catch(() => {});
-        });
-    }
-}
+/* v2.23.131：液态玻璃参数预设整块删除（GLASS_PRESETS / currentGlassPreset /
+ * syncGlassPreset / bindGlassPreset）。两档一键全套的滑块都没了，预设没有意义。 */
 
 const SEGS = [
     // v1.5.13：界面语言（简体中文 / English）。走泛型通路：值是字符串，
@@ -3502,69 +3363,8 @@ const SEGS = [
  * 改一边另一边要跟着改 —— 那边注释里写着了。 */
 const RECENT_MAX_CHOICES = [5, 10, 15, 20];
 
-/* v1.3.0：实时折射的**刷新帧率上限**。
- *
- * # 为什么要单独写而不进 SEGS
- *
- * 和 `recentMax` 同一个理由：SEGS 的泛型通路把 `data-v` 当**字符串**发给后端，
- * 而 `barGlassFps` 在 Rust 那边是 u32（走 `value.as_u64()`），收到 "30" 这种
- * 字符串会解析失败、静默退回默认值 —— 用户选了「30」结果还是跟着显示器。
- * 所以这里自己发**数字**。
- *
- * # 各档位的代价（**实测**，详见 config.rs 里那段表）
- *
- * 抓屏里的 BitBlt 有约 6ms 的**固定开销、与抓取面积无关**（实测 16×16 与
- * 852×176 都是 6.24ms），所以频率直接换算成单核占用：
- *   30 → 19%    60 → 37%    120 → 75%    跟随显示器(实测85) → 53%
- *
- * 默认 30（后端 config.rs 里也是 30）：够跟手，又压在合理范围。
- *
- * ⚠ 后端 `set_setting` 对 barGlassFps 做了白名单夹取（只认 0/30/60/120），
- *   这里列的档位必须和那边一致，改一边要改另一边。 */
-const GLASS_FPS_CHOICES = [0, 30, 60, 120];
-function bindGlassFps() {
-    const seg = $('segGlassFps');
-    if (!seg) return;
-    for (const b of seg.querySelectorAll('button')) {
-        b.addEventListener('click', () => {
-            const v = Number(b.dataset.v);
-            for (const x of seg.querySelectorAll('button')) x.classList.toggle('on', x === b);
-            CONF.barGlassFps = v;
-            window.CONF.barGlassFps = v;
-            /* 发数字（不是字符串）。后端白名单夹取会再兜一层。 */
-            invoke('set_setting', { key: 'barGlassFps', value: v }).catch(() => {});
-        });
-    }
-}
-
-/** 把帧率档位的高亮同步到当前配置，并决定那一行的显隐。
- *  ⚠ 必须**容错**：配置里可能是老版本没有这个键（undefined），
- *    也可能是个白名单外的值（手改配置）。两种都当 30（默认档）。 */
-function syncGlassFpsUI() {
-    const seg = $('segGlassFps');
-    if (!seg) return;
-    const raw = Number(CONF && CONF.barGlassFps);
-    const cur = GLASS_FPS_CHOICES.includes(raw) ? raw : 30;
-    for (const b of seg.querySelectorAll('button')) {
-        b.classList.toggle('on', Number(b.dataset.v) === cur);
-    }
-    /* r95：这一行要**两个条件同时成立**才显示：
-     *   ① 当前是「液态玻璃」样式；
-     *   ② 「实时折射」开着。
-     *
-     * 为什么①也要算（用户新报）：
-     *   `data-style="glass"` 只挡掉了「默认 / 磨砂」下**整组玻璃参数**的显示，
-     *   可用户一旦开过玻璃样式再切回默认/磨砂，`barGlassLive` 这个布尔值**不会
-     *   跟着复位**（它是开销开关，不属于外观参数，见 GLASS_PRESETS 的注释）——
-     *   于是 `CONF.barGlassLive` 仍是 true，帧率那一行就又冒出来了。
-     *   而在默认 / 磨砂样式下玻璃画布压根不跑，帧率设多少都不起作用。
-     *
-     * ②的理由：实时折射关着时实时链根本不跑，帧率同样设了也白设。 */
-    const row = $('rowGlassFps');
-    if (row) {
-        row.hidden = !(CONF && CONF.barGlassLive && qsBarStyle(CONF) === 'glass');
-    }
-}
+/* v2.23.131：刷新帧率那一组整块删除（GLASS_FPS_CHOICES / bindGlassFps /
+ * syncGlassFpsUI）。它只服务「液态玻璃实时折射」，玻璃删了就没有抓屏可限速。 */
 
 function bindRecentMax() {
     const seg = $('s-recentMax');
@@ -3603,38 +3403,21 @@ const SLIDERS = [
     // 2026-10-23：横条自己收起来的两条阈值（0 = 不收起）
     ['s-barIdle', 's-barIdleVal', 'barIdleSec', 5],
     ['s-barAway', 's-barAwayVal', 'barAwayPx', 400],
-    // v2.23.83：磨砂样式下横条底板（非图标部分）的透明度
-    ['s-barBgAlpha', 's-barBgAlphaVal', 'barBgAlpha', 55],
     // v2.6.8：右下角内置提示的显示时长（1~15 秒，后端 apply_one_setting 再夹一次）
     ['s-notifySeconds', 's-notifySecondsVal', 'notifySeconds', 3],
-    ['s-barBlur', 's-barBlurVal', 'barBlur', 0],
-    // 液态玻璃一组（单位见 SLIDER_LABEL：折射/厚度是‰，磨砂是 px）
-    // 缺省值与 GLASS_PRESETS 的 standard 档一致（#133）
-    ['s-barGlassRefraction', 's-barGlassRefractionVal', 'barGlassRefraction', 30],
-    ['s-barGlassBevel', 's-barGlassBevelVal', 'barGlassBevel', 18],
-    ['s-barGlassAberration', 's-barGlassAberrationVal', 'barGlassAberration', 50],
-    ['s-barGlassSpec', 's-barGlassSpecVal', 'barGlassSpec', 110],
-    ['s-barGlassTint', 's-barGlassTintVal', 'barGlassTint', 14],
-    ['s-barGlassFrost', 's-barGlassFrostVal', 'barGlassFrost', 2],
 ];
 
 /** 这几项改了会让横条的样子变化，拖动时预览要跟着走 */
-const PREVIEW_KEYS = new Set(['iconSize', 'barPadding', 'itemRadius', 'alpha', 'barDimAlpha', 'barBlur', 'barBgAlpha',
-    // 液态玻璃六个（#137：切到玻璃样式后，拖这些滑块预览要立刻看到玻璃的变化）
-    'barGlassRefraction', 'barGlassBevel', 'barGlassAberration', 'barGlassSpec', 'barGlassTint', 'barGlassFrost']);
+const PREVIEW_KEYS = new Set(['iconSize', 'barPadding', 'itemRadius', 'alpha', 'barDimAlpha']);
 
 /** 滑块的"数值标签"用不同方式显示：barBlur 的 0 是「关」，要写"关"不要写"0"。 */
 const SLIDER_LABEL = {
-    barBlur: (v) => (v === 0 ? '关' : qsBlurPx(v) + ' px'),
     /* 「无操作收起 / 鼠标移远收起」：0 是"不收起"，写成 0 秒 / 0 px 会让人
      * 以为"立刻收"，必须显式说出来。 */
     barIdleSec: (v) => (Number(v) === 0 ? '不收起' : v + ' 秒'),
     barAwayPx: (v) => (Number(v) === 0 ? '不收起' : v + ' px'),
     barDimDelayMs: (v) => (Number(v) === 0 ? '立即' : (Number(v) / 1000) + ' 秒'),
     notifySeconds: (v) => v + ' 秒',
-    barGlassFrost: (v) => (v === 0 ? '关' : v + ' px'),
-    barGlassRefraction: (v) => v + ' ‰',
-    barGlassBevel: (v) => v + ' ‰',
 };
 
 const TEXTS = [
@@ -3807,66 +3590,10 @@ function renderPreview() {
         box.style.setProperty('--pv-shadow',
             CONF.shadow ? 'var(--shadow)' : '0 0 0 0 rgba(0, 0, 0, 0)');
 
-        // 磨砂预览：预览舞台是**带纹理**的底（见 settings.css 的 .preview-stage），
-        // 所以这里的 backdrop-filter 真能看出效果 —— 以前舞台是纯色，
-        // 糊完还是同一块纯色，用户调滑块看不到任何变化，才会觉得"这选项没用"。
-        // 半径同样走 qsBlurPx()（和横条真身、滑块标签一个口径）。
-        const blur = Math.max(0, Math.min(32, Number(CONF.barBlur) || 0));
-        const tone = qsBlurTone(blur);
-        box.dataset.blur = String(blur);
-        box.style.setProperty('--pv-blur', qsBlurPx(blur) + 'px');
-        box.style.setProperty('--pv-blur-sat', String(tone.sat));
-        box.style.setProperty('--pv-blur-bright', String(tone.bright));
-        /* v2.23.83：磨砂预览的底板透明度（和真身同一个判据：只在磨砂样式
-         * 下吃 barBgAlpha，其它样式 100%）。 */
-        const pvRaw = Number(CONF.barBgAlpha);
-        const pvBg = blur > 0
-            ? Math.max(0, Math.min(100, Number.isFinite(pvRaw) ? pvRaw : 55))
-            : 0;
-        /* v2.23.84：语义是「透明度」——100 = 完全透出磨砂背景，所以这里
-         * 卡片底色的**不透明度**要反过来（100 - 透明度）。 */
-        box.style.setProperty('--pv-bg-alpha', (100 - pvBg) + '%');
-
-        /* 液态玻璃预览（#137）。
-         *
-         * 用户原话：「设为玻璃样式后预览要能显示该样式」。以前预览只有
-         * 「默认/磨砂」两套画法，切到液态玻璃时预览仍是那块实色底板 ——
-         * 六个玻璃滑块拖着，预览纹丝不动，根本看不出自己调的是什么。
-         *
-         * 真折射是 WebGL2 抓屏幕的活（glass.js 的 liquidGL），设置页预览
-         * 抓不到桌面，这里用可实现的层叠效果把玻璃的**样子**学过来：
-         *   · 半透明染色本体（亮色偏白 / 暗色压深蓝，跟预览明暗联动）
-         *   · 内部磨砂 backdrop-filter（「玻璃磨砂」滑块）
-         *   · 上下缘亮线（高光滑块定强度；色差滑块让下缘带冷色偏移，
-         *     模拟 R/B 通道分离 —— 这是"一眼看出不是塑料"的线索）
-         *   · 一道斜向镜面反光（同走高光滑块）
-         * 折射/厚度滑块映射到边缘亮线的厚度感（--pv-lg-edge）。 */
-        /* 判据必须走 qsBarStyle(CONF) 推导，不能读 CONF.barStyle ——
-         * 样式从来不是配置键，是由 barGlass/barBlur 推出来的（见 qsBarStyle）。
-         * 以前这里读一个永远不存在的 CONF.barStyle，玻璃样式下预览永远
-         * 挂不上 data-lg（round30 E 段五个 FAIL 的根因）。 */
-        const useGlass = qsBarStyle(CONF) === 'glass';
-        if (useGlass) {
-            box.dataset.lg = '1';
-            // 玻璃样式下不吃「磨砂」主题那套底板模糊（它是横条自己的底板用的），
-            // 否则两层 backdrop-filter 叠一起，预览糊成一团
-            box.dataset.blur = '0';
-            const spec = Math.max(0, Math.min(200, Number(CONF.barGlassSpec) || 0)) / 100;
-            const tint = Math.max(0, Math.min(100, Number(CONF.barGlassTint) || 0)) / 100;
-            const ab = Math.max(0, Math.min(100, Number(CONF.barGlassAberration) || 0)) / 100;
-            const frost = Math.max(0, Math.min(12, Number(CONF.barGlassFrost) || 0));
-            const refr = Math.max(0, Math.min(60, Number(CONF.barGlassRefraction) || 0)) / 60;
-            const bevel = Math.max(0, Math.min(30, Number(CONF.barGlassBevel) || 0)) / 30;
-            box.style.setProperty('--pv-lg-spec', String(Math.round(spec * 100) / 100));
-            box.style.setProperty('--pv-lg-ab', String(Math.round(ab * 100) / 100));
-            box.style.setProperty('--pv-lg-frost', frost + 'px');
-            box.style.setProperty('--pv-lg-edge', String(Math.round((refr * 0.6 + bevel * 0.4) * 100) / 100));
-            // 染色浓度：滑块 0 也留一丝丝本体（全透的玻璃在纹理底上会看不见边）
-            box.style.setProperty('--pv-lg-tint-a',
-                String(Math.round((tint * 0.30 + 0.12) * 1000) / 1000));
-        } else {
-            box.removeAttribute('data-lg');
-        }
+        /* v2.23.131：磨砂预览和液态玻璃预览两套画法整段删除。
+         * 前者写 --pv-blur / --pv-blur-sat / --pv-blur-bright / --pv-bg-alpha，
+         * 后者挂 data-lg 并写 --pv-lg-*；磨砂和玻璃都没了，预览只用默认底色。
+         * settings.css 里那些 var(--pv-*, 兜底) 会自动走兜底，不用改样式表。 */
 
         if (!list.length) {
             const s = document.createElement('span');
@@ -4096,18 +3823,8 @@ function bindAutoStart() {
 
 function bindSwitches() {
     applyTheme();
-    syncStyleUI();
     // v1.5.4：弹出位置控件的置灰态跟着「跟随鼠标」走（首屏 + 每次广播都刷）
     syncBarPosUI();
-    /* 帧率档位的高亮 + 那一行的显隐。
-     *
-     * 以前只在这里调一次，且注释写着"必须排在 syncStyleUI 之后"
-     * ——因为 syncStyleUI 会按 data-style 重设那一行的 hidden，
-     * 而这一行还要叠一个"实时折射开着吗"的条件，顺序反了会被改回去。
-     *
-     * r95：反过来的那条路（切样式时也要重刷）当时是漏的，现在补上了 ——
-     * 所以这里不再依赖调用顺序，留着这次调用只是兜底（幂等，没有副作用）。 */
-    syncGlassFpsUI();
     renderPreview();
     // r56：「最近使用」摆几个。每次广播都重建一遍（幂等）——
     // 广播可能来自别处改了 recentMax，这边得跟上。
@@ -4173,16 +3890,8 @@ function bindSwitches() {
                 renderCustomList();
                 renderAppList();
             }
-            /* r95：任何会改变「是不是玻璃样式 / 实时折射开不开」的改动都要刷帧率行。
-             *
-             * 以前只有 `barGlassLive` 这一支，于是屏幕上的两条真实路径各漏一半：
-             *   · 关「实时折射」→ 帧率行该消失（旧的，已覆盖）；
-             *   · 切到默认 / 磨砂 → 帧率行也该消失（**漏的**，用户报的就是它）。
-             *
-             * 样式是由 barGlass / barBlur 推导的（qsBarStyle），所以两个键都算上。 */
-            if (key === 'barGlassLive' || key === 'barGlass' || key === 'barBlur') {
-                syncGlassFpsUI();
-            }
+            /* v2.23.131：原来这里要刷「帧率那一行」的显隐（玻璃样式 + 实时折射
+             * 两个键变就刷）。两个开关都删了，没有要刷的行。 */
             /* v1.5.4：「跟随鼠标位置」决定「弹出位置」有没有意义 ——
              * 贴鼠标弹时选上/下方是空操作，控件置灰。 */
             if (key === 'anchorAtMouse') {
@@ -4298,16 +4007,8 @@ function bindSwitches() {
                 CONF[key] = Number(el.value);
                 renderPreview();
             }
-            /* v2.23.116：磨砂强度 / 底板透明度**拖动中就落库**。
-             * 以前只在 change（松手）时发，用户拖的时候横条完全不变，
-             * 看起来就像"调了没生效"。120ms 防抖，不会把 IPC 打爆；
-             * change 会清掉计时器再发一次，保证最终值一定落盘。 */
-            if (key === 'barBlur' || key === 'barBgAlpha') {
-                clearTimeout(el._qsLiveSave);
-                el._qsLiveSave = setTimeout(() =>
-                    invoke('set_setting', { key, value: Number(el.value) })
-                        .catch(() => { }), 120);
-            }
+            /* v2.23.131：磨砂强度 / 底板透明度拖动即落库那一段删除 ——
+             * 这两颗滑块都不在了，el._qsLiveSave 的清理在 change 那边也一并去掉。 */
         });
         el.addEventListener('change', () => {
             clearTimeout(el._qsLiveSave);
@@ -4380,9 +4081,7 @@ function bindSwitches() {
         console.warn('[qs] 找不到程序过滤列表 #s-filterList，已跳过');
     }
 
-    if (!bound) bindBarStyle();
-    if (!bound) bindGlassFps();
-    if (!bound) bindGlassPreset();
+    /* v2.23.131：bindBarStyle / bindGlassFps / bindGlassPreset 三个绑定已随外观删除。 */
 
     bound = true;
 }

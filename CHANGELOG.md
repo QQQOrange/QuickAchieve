@@ -5,6 +5,53 @@
 
 ---
 
+## v3.0.0 — 2026-11-25
+
+> 减法的版本：回退到 v2.23.129，把「液态玻璃」和「磨砂」两套横条外观整体摘除。
+> 横条只剩一种外观 —— 主题底色 + 横条不透明度。版本号跳到 3.0 划界。
+
+### 移除：两套横条外观
+
+- **液态玻璃**整套：ui/glass.js（1039 行 WebGL2 渲染器）、src/glass.rs
+  （600 行 BitBlt 抓屏层）、glass_take / glass_capture / glass_exclude
+  三个 IPC 命令、qs://glass 事件、index.html 的画布。
+- **磨砂**整套：ar.css 的 --qs-blur 一族与 [data-blur] 的 backdrop-filter、
+  静态雾面 ::before（乳白薄纱 + feTurbulence 颗粒）、--qs-bar-fill /
+  --qs-frost-veil 两条磨砂专用变量、shared.js 的 qsBlurPx / qsBlurTone。
+- **11 个配置字段**：ar_glass / ar_glass_refraction / ar_glass_bevel /
+  ar_glass_frost / ar_glass_aberration / ar_glass_spec / ar_glass_tint /
+  ar_glass_live / ar_glass_fps / ar_blur / ar_bg_alpha。
+- **设置页**：「横条样式」三分段、「玻璃预设」两档、6 颗玻璃滑块、磨砂强度、
+  底板透明度、实时折射、刷新帧率档位，以及它们背后的推导与绑定
+  （qsBarStyle / syncStyleUI / GLASS_PRESETS / indBarStyle / indGlassFps …）。
+- **帮助文案**：讲「样式三选一 / WebGL2 / 抓屏隐身」的段落改写成只有一种外观。
+
+合计 **18 个文件，-2761 / +177 行**。
+
+### 保留
+
+- **抓屏原语**挪进新的 src/screencap.rs（Snap / capture_rect /
+  irtual_screen）—— 自动明暗判定（utotheme）还要用，那是功能不是外观。
+- 横条不再调 SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)，
+  **截图和录屏里能正常拍到横条了**。
+
+### 兼容
+
+老 config.json 里那 11 个字段变成未知字段被忽略，启动即默认外观，**不需要手动清配置**；
+老备份恢复也灌不进去。
+
+### 验证
+
+- cargo test --release：511 passed / 0 failed / 2 ignored。
+- 前端五项自检全过：UI 金丝雀 874/874、页面冒烟 56/56、命令表一致、
+  英文覆盖残留 4 条（允许 5）、设置项一致性问题 0 条。
+- 测试本身跟着改了：原来钉玻璃实现细节的十几条断言**反过来钉「不许再出现」**；
+  三处 
+unScripts(... 'ui/glass.js') 去掉（文件没了会抛异常，而那个异常会把
+  后面所有断言静默跳过 —— 只报一条测试过程中不应抛异常，很隐蔽）。
+
+---
+
 ## v2.23.129 — 2026-11-21
 
 > 内置「欧路词典」查词引擎：不用自己配，装好就有一条；程序不在默认位置会自己找，

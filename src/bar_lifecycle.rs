@@ -1,11 +1,10 @@
-//! 横条收起 / 挂起收起。
+﻿//! 横条收起 / 挂起收起。
 use std::ffi::c_void;
 use std::sync::atomic::Ordering;
 
 use windows::Win32::Foundation::HWND;
 
 use crate::clip;
-use crate::glass;
 use crate::t::Emitter;
 use crate::win;
 use crate::{app, bar_hwnd, bar_win, st, BAR_DRAG_HOLD, DISMISS_EPOCH, FAV_PINNED, GEN, OFFSCREEN};
@@ -75,11 +74,9 @@ pub(crate) fn dismiss_bar_now() {
         win::log("dismiss_bar: 收藏面板原本钉着，随收起一并解除");
         let _ = app().emit_to("bar", "qs://fav-pinned", serde_json::json!({ "on": false }));
     }
-    // 横条收起 = 不再有实时抓屏：无条件解除「对抓屏隐身」。
-    // 实时模式开着的时候用户按了 Esc / 点了别处，前端可能来不及发
-    // glass_exclude(false)，窗口却已经不接受抓屏了 —— 那时用户截图
-    // 录屏里横条会凭空消失。在这里兜底，双保险。
-    glass::clear_exclude_from_capture(h);
+    // v2.23.131：这里原本有一句 `glass::clear_exclude_from_capture(h)` ——
+    // 兜底解除横条的「对抓屏隐身」（WDA_EXCLUDEFROMCAPTURE）。玻璃/磨砂两套
+    // 外观摘掉之后，横条再也不会对自己隐身了，这一句连同模块依赖一起删了。
     let restore = {
         let mut g = match st().geo.lock() {
             Ok(g) => g,

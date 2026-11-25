@@ -109,7 +109,7 @@ use ocr_plan::{
 mod config;
 mod cleanup;
 mod crypto;
-mod glass;
+mod screencap;
 mod hook;
 mod iconedit;
 // r54：识图搜索（框选截图 → 以图搜图）与「本地路径一键定位」
@@ -968,57 +968,18 @@ fn layout_bar(
     /* v2.23.91：右键兜底轮询已并入 bar-away 循环（横条显示时 70ms 一拍），
      * 这里不需要再唤醒独立线程。 */
 
-    /* ⭐ 液态玻璃的背景抓取：横条**首次上屏前**抓一块它将要占据的屏幕矩形。
+    /* v2.23.131：这里原本是「液态玻璃的背景抓取」—— 横条首次上屏前抓一块它
+     * 将要占据的屏幕矩形，连同下面 `!first_show` 那段「窗口矩形变了就记账」
+     * 一起，都是给玻璃纹理用的。玻璃和磨砂两套外观摘掉之后，抓手连同
+     * `qs://glass` 那条事件通道全部删除：横条不上屏时就只是一块纯色底板，
+     * 没有任何需要「看见外面」的地方。
      *
-     * 为什么是这个时机：此刻窗口还在屏外（启动时就在 (-20000,-20000)，
-     * dismiss_bar 也会把它挪回去），BitBlt 抓到的必然是"没有横条"的干净桌面 ——
-     * 不存在把自己抓进纹理的反馈环，也不需要隐藏-抓取-显示那套抖动。
-     *
-     * 为什么只抓首次：面板重排引起的重摆里，横条胶囊本身并不移动
-     * （锚在顶上，只有窗口往下长），玻璃要折射的背景没变；真正需要重抓的
-     * 是整扇窗户搬家（拖动面板 / 实时模式），那由前端显式调 glass_capture。
-     *
-     * 抓完只暂存不发事件：窗口这一刻还没可见，等下面 move_resize 落地后再
-     * 补发 qs://glass，前端收到再 glass_take 取字节 —— 那时 DOM 已布局，
-     * 算得出玻璃画布在窗口里的子矩形（shader 的 u_bounds）。 */
-    let mut glass_fresh = false;
-    /* v2.23.85：只有**液态玻璃**样式抓屏。磨砂样式改成纯 CSS 静态雾面
-     * （不抓屏、不跑 WebGL），用户明确要求省算力。 */
-    if first_show && cfg_with(|c| c.bar_glass) {
-        if let Some(s) = glass::capture_store(wx, wy, pw, ph) {
-            win::log(&format!(
-                "glass: 已抓背景 {}x{} @({},{})，{} 字节，等前端取",
-                s.w, s.h, s.x, s.y, s.rgba.len()
-            ));
-            glass_fresh = true;
-        } else {
-            win::log("glass: 抓屏失败（矩形出屏或 DC 异常），玻璃退化为纯色底板");
-        }
-    }
+     * 自动取色（`autotheme`）仍然会抓屏 —— 那是判断壁纸明暗用的，跟这里是
+     * 两条独立的路径，它抓完就扔。 */
 
     if std::env::var("QS_STATIC_POS").map(|v| v == "1").unwrap_or(false) {
         wx = 200;
         wy = 300;
-    }
-    /* ⭐ 面板开合 → 窗口矩形变了 → 把「上一块矩形」换成新的（**只记不抓**）。
-     *
-     * 需求 6：玻璃纹理必须覆盖整个窗口，否则面板那块区域"没有背景"。
-     * 首次上屏那一抓（上面）抓的是**胶囊**矩形；面板一展开窗口变高，纹理就
-     * 不够了 —— 用户看到的就是"更多引擎页 / 收藏夹页不跟主题走"。
-     * 这里只更新矩形：此刻窗口正在屏上可见，直抓会把横条自己拍进纹理（自拍）。
-     * 真正的重抓由前端 `QSGlass.refresh()` 发起（它会先把舞台隐藏、等两帧），
-     * 抓到的仍是干净桌面。 */
-    if !first_show {
-        let (lx, ly, lw, lh) = glass::last_rect();
-        // ⚠ 位置也要比：拖动面板 / 贴边重摆会让窗口**只挪不缩**，
-        //   那时纹理整块都错位（不只是缺一块），照样得重抓。
-        if (lx, ly, lw, lh) != (wx, wy, pw, ph) {
-            glass::store_rect_only(wx, wy, pw, ph);
-            win::log(&format!(
-                "glass: 窗口矩形变了 {}x{}@({},{}) → {}x{}@({},{})，已更新待抓矩形（等前端 refresh）",
-                lw, lh, lx, ly, pw, ph, wx, wy
-            ));
-        }
     }
     // ⚠ 尺寸和位置**必须一次 SetWindowPos 原子改掉**，不能 `set_size` + `set_position`
     //   分两步走：两者在 Tauri 里都是投递到事件循环的异步操作，中间必然有一帧
@@ -1046,11 +1007,8 @@ fn layout_bar(
             t_lb.elapsed().as_millis()
         ));
     }
-    // 玻璃背景已抓到位（见上面 glass_fresh）：窗口这刻真的可见了，通知前端
-    // 来取字节。取到之后它自己算画布子矩形、上传纹理、开渲。
-    if glass_fresh {
-        let _ = app().emit_to("bar", "qs://glass", json!({ "fresh": true }));
-    }
+    /* v2.23.131：`qs://glass` 事件随玻璃外观一起删除 —— 前端那条
+     * `listen('qs://glass', …)` 也一并摘掉了。 */
     /* ⭐ 端到端延迟：从 show_bar 被调用，到窗口真的可见（这一行 SetWindowPos 之后）。
      * 用户反复说"弹得慢"，光靠感觉调不动 —— 把总耗时落进日志，
      * 每次优化都能拿它对比（本行 = 前置 + 取色 + 前端渲染 + 一次 IPC 往返 + 摆位）。 */
@@ -3383,8 +3341,9 @@ fn show_ocr_only_bar() {
      * 我一度把它"优化"成"只做不涉及焦点的那部分收起，然后立刻 show，去掉 sleep"，
      * 理由是"dismiss 会把焦点还给上一个窗口、30ms 后又拿回来，用户看到焦点弹一下"。
      * **那个理由从来没有被实测证实，但改动引入的四个回归是真的**：
-     *   · 漏掉 `glass::clear_exclude_from_capture()` → 横条可能仍对抓屏隐身，
-     *     用户截图/录屏里横条会凭空消失；
+     *   · 漏掉 `dismiss_bar()` 里那整套状态复位（抓屏隐身已在 v2.23.131 随玻璃
+     *     外观一起删掉，但 focus / anchor / 拖拽挂起那几项还在）→ 状态会停在
+     *     错误的地方，横条该消失时不消失；
      *   · 漏掉 `win::set_noactivate(h, true)` → 窗口不再是无激活浮层，
      *     可能把焦点从用户正在打字的窗口抢走；
      *   · 漏掉 `bar_win()` 为 None 时的 `move_resize(..., false)` 兜底 →
@@ -17529,47 +17488,11 @@ fn open_link(text: Option<String>) {
     dismiss_bar();
 }
 
-/// 前端取走 Rust 预抓的玻璃背景（`layout_bar` 首次上屏前抓的那块）。
-/// 返回「16 字节小头（x,y,w,h，i32 LE）+ RGBA 字节块」，走原始 Response，
-/// 不过 JSON / base64。取走即清空，旧快照不会被反复用。
-#[crate::t::command]
-fn glass_take() -> crate::t::ipc::Response {
-    crate::t::ipc::Response::new(glass::encode(&glass::take()))
-}
-
-/// 前端主动请求重抓背景（实时模式轮询 / 拖动面板结束后的刷新）。
-/// 无参数：重抓的永远是上一块矩形（见 `glass::capture_encoded`）。
-///
-/// 前端调之前会把舞台整体置为隐藏（窗口变全透明），所以抓到的必然是纯桌面；
-/// 拿到响应后再恢复显示。一帧隐藏的代价换一个干净的背景，比把横条自己的
-/// 像素搅进纹理（反馈环）划算。
-///
-/// ⚠ r86：改走 `glass::capture_encoded()` 这条**零拷贝**路径。
-///   原来这里是 `encode(&recapture_last())`，一块 600KB 的像素数据要被
-///   拷三次（复用缓冲→Snap→暂存→encode 输出）。实时抓屏 85 帧/秒时，
-///   那等于每秒上百 MB 的无谓拷贝 —— 实测这一项就占主进程 CPU 的大头。
-///   现在改成"GetDIBits 直接写进最终输出缓冲"，只写一次。
-#[crate::t::command]
-fn glass_capture() -> crate::t::ipc::Response {
-    crate::t::ipc::Response::new(glass::capture_encoded())
-}
-
-/// 实时折射专用：把横条对**抓屏**隐身（`WDA_EXCLUDEFROMCAPTURE`）。
-///
-/// 前端开实时模式时先调这个：返回 true 之后 BitBlt 直接看穿横条，抓屏不再
-/// 需要「隐藏舞台 → 等两帧 → 抓 → 恢复」那套频闪动作；返回 false（旧系统）
-/// 时前端回退老路。关实时模式 / 收起横条时必须 `on=false` 解除 ——
-/// 否则用户截图、录屏、会议共享里横条会整个人间蒸发。
-///
-/// Rust 侧另有兜底：`dismiss_bar` 无条件解除，前端漏调也留不下隐身状态。
-#[crate::t::command]
-fn glass_exclude(on: bool) -> bool {
-    let h = bar_hwnd();
-    if h.0.is_null() {
-        return false;
-    }
-    glass::set_exclude_from_capture(h, on)
-}
+/* v2.23.131：这里原本有三个 IPC 命令 —— `glass_take`（前端取预抓的背景）、
+ * `glass_capture`（实时重抓）、`glass_exclude`（把横条对抓屏隐身）。
+ * 「液态玻璃」和「磨砂」两套外观摘掉之后它们没有任何调用方，全部删除。
+ * 前端 `bar.js` 里对应的 `invoke('glass_*')` 和 `listen('qs://glass')`
+ * 也一并摘掉了 —— 两边必须同时删，漏一边就是"调用了不存在的命令"。 */
 
 /* ================================================================== */
 /* 设置窗口 / 杂项                                                     */
@@ -19250,9 +19173,6 @@ fn main() {
             set_fav_pinned,            open_search,
             open_link,
             open_links,
-            glass_take,
-            glass_capture,
-            glass_exclude,
             pick_icon,
             pick_app,
             /* r88：把「绑定应用」的图标拿来当引擎图标（用户要求） */
@@ -22477,7 +22397,9 @@ mod tests {
         c.theme = "dark".to_string();
         c.animations = false;
         c.shadow = true;
-        c.bar_blur = 12;
+        // v2.23.131：原来这里还塞了 `c.bar_blur = 12`（磨砂强度）验证备份往返。
+        // 磨砂外观删掉后字段没了，换一个仍然存在的外观键来占位。
+        c.bar_dim_alpha = 41;
         c.anchor_at_mouse = true;
         c.delay_ms = 321;
         // 2026-10-23：横条自己收起来的两条阈值 + 误弹开关，也得跟着备份走
@@ -22888,7 +22810,7 @@ mod tests {
         assert_eq!(dst.item_radius, 2);
         assert_eq!(dst.theme, "dark");
         assert!(!dst.animations && dst.shadow);
-        assert_eq!(dst.bar_blur, 12);
+        assert_eq!(dst.bar_dim_alpha, 41);
         assert!(dst.anchor_at_mouse);
         assert_eq!(dst.delay_ms, 321);
         assert_eq!(dst.bar_idle_sec, 9, "「无操作收起」的秒数没还原");

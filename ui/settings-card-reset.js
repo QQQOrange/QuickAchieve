@@ -19,9 +19,6 @@ install(deps) {
     for (const it of sliders) {
         if (it && it.length >= 4) sliderDefault.set(String(it[2]), it[3]);
     }
-    /* 样式默认值 ≠ 全局默认值：磨砂这一节的「默认」应该是**磨砂开着**的
-     * 默认强度 12，而不是全局默认样式里的 0（0 会把磨砂关掉）。 */
-    const styleDefault = { barBlur: 12 };
     /** 一张卡里可以“恢复默认”的控件 → [配置 key, 默认值]。 */
     const keysOf = (card, D) => {
         const out = [];
@@ -29,9 +26,7 @@ install(deps) {
             if (!/^s-/.test(el.id)) continue;
             const key = el.id.slice(2);
             if (el.type === 'range') {
-                if (Object.prototype.hasOwnProperty.call(styleDefault, key)) {
-                    out.push([key, styleDefault[key]]);
-                } else if (sliderDefault.has(key)) {
+                if (sliderDefault.has(key)) {
                     out.push([key, sliderDefault.get(key)]);
                 }
                 continue;

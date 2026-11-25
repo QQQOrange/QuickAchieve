@@ -450,10 +450,8 @@ let panelScrollBound = false;
 let engineFilterText = '';
 // 上上一次未正常收尾的收藏面板拖拽的清理钩子（见 startFavResize）
 let favResizeCleanup = null;
-/* 上一次落盘的磨砂参数（滑块值 + 饱和 + 亮度）。
- * applyLook 每次布局都会跑，值没变就跳过写 CSS 变量 —— 反复重设
- * --qs-blur 会把 backdrop-filter 的合成层标脏、白算一遍模糊。 */
-let lastBlurKey = '';
+/* v2.23.131：`lastBlurKey` 已删除 —— 它只服务于磨砂那段"值没变就别重写
+ * --qs-blur"的优化，磨砂没了就没有要防的重复写。 */
 
 /** 目录名——用户没起名时给个能看的兜底。
  *
@@ -634,13 +632,9 @@ function renderFavPanel() {
             //     「一取消钉住就跳回横条刚出现的地方」。）
             // ⚠ 用 class 而不是 hidden：hidden 会把横条的盒子清零，钉住点就废了
             barEl.classList.toggle('ghost', favPinned);
-            /* r49（修 bug）：`.ghost` 只藏 DOM 那一层，**玻璃是画在画布上的** ——
-             * 不同时告诉玻璃层，画布上就还留着一整条玻璃空壳：用户看到
-             * 「横条里的图标全不见了，可横条还在」（2026-10-16 报的）。
-             * 这里必须挂/摘 class 的同时调它（两边永远一起动）。 */
-            if (window.QSGlass && window.QSGlass.setBarGhost) {
-                window.QSGlass.setBarGhost(favPinned);
-            }
+            /* v2.23.131：这里原本还要同时告诉玻璃层（`QSGlass.setBarGhost`），
+             * 因为 `.ghost` 只藏 DOM，画布上的玻璃会留一条空壳。玻璃画布删掉
+             * 之后 `.ghost` 就是纯 CSS 的 visibility，一处改到位。 */
             pushLayout();
             tipEl.textContent = favPinned ? '已钉在屏幕上' : '已取消钉住';
             tipEl.hidden = false;
@@ -1049,39 +1043,19 @@ function syncBarBg() {
     }
     /* 背景色由 JS 算好一个完整的 rgba 写进 --qs-bg-fill，alpha 就是**底色自身
      * 的 alpha**（CSS 两套是 hex，恒 1.000）—— "不透明度滑块是唯一的透明度
-     * 控制"这条口径分毫没动，磨砂只动 --qs-blur-* 增益，见 applyLook。 */
+     * 控制"这条口径分毫没动。 */
     const a = c.a;
     stage.style.setProperty('--qs-bg-fill',
         'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + a.toFixed(3) + ')');
-    /* v2.23.83：**磨砂样式的横条底板**单独一条变量。
+    /* v2.23.131：这里原本还要算两颗磨砂变量 —— `--qs-bar-fill`（磨砂样式下
+     * 单独压低的横条底板 alpha，吃 barBgAlpha）和 `--qs-frost-veil`（那层乳白
+     * 雾面，吃 barBlur）。
      *
-     * 用户口径：「现在的磨砂改为透明磨砂，也可以单独调整非图标部分横条的
-     * 透明度」。所以：
-     *   · 只有磨砂样式（barBlur > 0）才把底板压到 barBgAlpha（默认 55%）；
-     *   · 普通样式仍然是实色（不改变原来的观感）；
-     *   · 面板 / 右键菜单继续用 --qs-bg-fill（实色），不跟着变透 ——
-     *     里面有文字和按钮，透底会看不清。
-     * 图标不受影响：它们的浓淡仍由 --qs-alpha（「横条不透明度」）管。 */
-    /* v2.23.85：磨砂改成**静态雾面**（纯 CSS），不抓屏、不跑 WebGL。
-     *
-     * 用户口径：「不需要实时渲染，只要有一层磨砂效果，下面的东西直接透
-     * 出来，别浪费算力」。所以：
-     *   · 底板透明度（barBgAlpha）：100 = 完全透出背后内容，0 = 实色；
-     *   · 磨砂强度（barBlur）：只调那层白色雾面的浓度（越浓越像磨砂玻璃），
-     *     不再做真实模糊 —— 静态一层，滚动时内容自然透过去，零算力。 */
-    const frost = Math.max(0, Math.min(32, Number(CONF && CONF.barBlur) || 0)) > 0;
-    /* ⚠ 0 是合法值（完全实色），不能用 `|| 55` —— 那会把 0 变成默认 55。 */
-    const bgRaw = Number(CONF && CONF.barBgAlpha);
-    const bgPct = frost
-        ? Math.max(0, Math.min(100, Number.isFinite(bgRaw) ? bgRaw : 55))
-        : 100;
-    const barA = frost ? a * (1 - bgPct / 100) : a;
-    stage.style.setProperty('--qs-bar-fill',
-        'rgba(' + c.r + ', ' + c.g + ', ' + c.b + ', ' + barA.toFixed(3) + ')');
-    /* 白色雾面：强度随「磨砂强度」走。12 档约 0.14，32 档约 0.29。
-     * 这就是"磨砂玻璃"的那层乳白感，静态、不随滚动重绘。 */
-    const veil = frost ? 0.05 + 0.0075 * Math.min(32, Number(CONF && CONF.barBlur) || 0) : 0;
-    stage.style.setProperty('--qs-frost-veil', 'rgba(255, 255, 255, ' + veil.toFixed(3) + ')');
+     * 磨砂外观已经从产品里摘掉，所以：
+     *   · 横条底板 = `--qs-bg-fill` 原样（bar.css 的兜底链自动落到它）；
+     *   · 没有雾面、没有 backdrop-filter；
+     *   · 面板 / 右键菜单本来就用 --qs-bg-fill，一个字都不用改。
+     * 图标浓淡仍由 --qs-alpha（「横条不透明度」）管 —— 那是另一颗滑块。 */
 }
 
 /** 图标大小、不透明度、内边距、底板、动画这些外观项，统一落到 CSS 变量/类上 */
@@ -1112,24 +1086,10 @@ function applyLook() {
     // 窗口尺寸跟着变大，正好给投影留出绘制空间，不会被切边。
     stage.classList.toggle('qs-shadow', !!(CONF && CONF.shadow));
 
-    // 磨砂（backdrop-filter）—— 用 data-blur 标个**原始滑块值**，
-    // CSS 那边靠这个属性开关模糊规则（值为 0 时不生效，免得白白开 GPU 层）。
-    //
-    // ⚠ 滑块值不直接当 px 用：走 qsBlurPx() 换算（shared.js，和设置页标签、
-    //   设置页预览同一个口径）。低值区看得见、高值区不白烧 GPU，见那里的注释。
-    const blur = Math.max(0, Math.min(32, Number(CONF && CONF.barBlur) || 0));
-    const tone = qsBlurTone(blur);
-    const blurKey = blur + '|' + tone.sat + '|' + tone.bright;
-    // ⚠ 值没变就别重复写自定义属性：applyLook 每次布局都会跑，
-    //   反复重设 --qs-blur 会把 backdrop-filter 那条合成层标脏、白算一遍模糊。
-    if (blurKey !== lastBlurKey) {
-        lastBlurKey = blurKey;
-        const px = qsBlurPx(blur);
-        stage.dataset.blur = String(blur);
-        stage.style.setProperty('--qs-blur', px + 'px');
-        stage.style.setProperty('--qs-blur-sat', String(tone.sat));
-        stage.style.setProperty('--qs-blur-bright', String(tone.bright));
-    }
+    /* v2.23.131：这里原本是磨砂那段 —— 算 `qsBlurPx()`、写 `data-blur` 和
+     * `--qs-blur` / `--qs-blur-sat` / `--qs-blur-bright`，bar.css 靠
+     * `data-blur` 开关 backdrop-filter。磨砂外观摘掉之后整段删除，
+     * 横条不再有 `data-blur` 属性，也不会开那层合成。 */
 
     // 分隔线样式：细竖线 / 点状 / 纯留白。三档都用 CSS 类表达，
     // 免得在这里写一堆内联样式。
@@ -1137,7 +1097,7 @@ function applyLook() {
     stage.classList.toggle('qs-sep-dot', sep === 'dot');
     stage.classList.toggle('qs-sep-space', sep === 'space');
 
-    // 背景色最后算：它依赖 --qs-blur（上面刚写）和当前的 --qs-bg（样式表两套配色）。
+    // 背景色最后算：它只依赖当前的 --qs-bg（样式表两套配色）。
     syncBarBg();
 }
 
@@ -3156,8 +3116,8 @@ function togglePanel(force) {
     winOffX = 0;
     winOffY = 0;
     barEl.classList.remove('ghost');
-    // r49：和上面挂 ghost 的那一处对称 —— 摘掉隐身时也要让玻璃层恢复（否则横条再出来时是空的）
-    if (window.QSGlass && window.QSGlass.setBarGhost) window.QSGlass.setBarGhost(false);
+    // v2.23.131：原来这里对称地调 `QSGlass.setBarGhost(false)` 恢复玻璃层。
+    // 画布删了，`.ghost` 一摘就到位。
     invoke('set_fav_pinned', { on: false }).catch(() => {});
     panelEl.style.removeProperty('left');
     panelEl.style.removeProperty('top');
@@ -3241,28 +3201,16 @@ function togglePanel(force) {
     armIdle();
     // 布局变了，等一帧再量
     requestAnimationFrame(() => setTimeout(pushLayout, 0));
-    // 窗口矩形跟着变了 → 玻璃纹理要按新矩形重抓（需求 6）
-    glassRefit();
+    /* v2.23.131：原来这里还有 `glassRefit()` —— 面板开合后按新窗口矩形重抓
+     * 玻璃纹理。玻璃/磨砂删除后窗口矩形不再需要"对齐背景"，整条链路
+     * （含下面的 glassRefit 函数）一起删掉了。 */
 }
 
-/** 玻璃纹理跟着窗口矩形重新对齐（需求 6：面板也得是玻璃）。
+/* v2.23.131：`glassRefit()` 已删除。
  *
- *  玻璃纹理是 Rust 按**窗口矩形**抓的一整块。面板开合/拖动会改变窗口矩形 ——
- *  不重抓的话，新长出来那块区域没有背景（表现就是"面板不跟主题走"：其实底下
- *  根本没有玻璃）。Rust 在 layout_bar 里只更新"待抓矩形"（那一刻窗口正在屏上，
- *  直抓会把横条自己拍进去），真正的抓屏由这里发起：QSGlass.refresh() 会先把
- *  舞台隐藏、等两帧，所以抓到的仍是干净桌面。
- *
- *  ⚠ 必须等摆位落地：togglePanel 里 pushLayout 是 IPC 过去之后 Rust 才
- *    SetWindowPos，立刻 refresh 抓的还是旧矩形。两次（250/700ms）是为了兜
- *    "慢一拍的摆位"；refresh 自己有在途去重（captureBusy），多调一次不会叠加
- *    抓屏，也不会闪。 */
-function glassRefit() {
-    if (!window.QSGlass) return;
-    const once = () => { try { QSGlass.refresh(); } catch (e) { } };
-    setTimeout(once, 250);
-    setTimeout(once, 700);
-}
+ * 它原来干的事：面板开合 / 拖动会改变窗口矩形，玻璃纹理是按窗口矩形抓的
+ * 一整块，不重抓新长出来的区域就没有背景。现在横条只吃 CSS 底色，
+ * 窗口多大都无所谓，不需要任何"跟着重抓"。 */
 
 /* 引擎面板的一次搜索。
  *
@@ -6337,9 +6285,9 @@ listen('qs://show', (ev) => {
      *   盒模型再发一条 IPC，`qs://show` 实测一次触发 6 次，等于每次划词都白做
      *   六遍布局 + 六条 IPC。正式使用对这条数据没有任何消费方。 */
     if (CONF && CONF.debug) setTimeout(dumpState, 60);
-    // 液态玻璃：建上下文（首次）/ 重新起渲染循环。背景字节等 Rust 的
-    // qs://glass 事件（layout_bar 抓完了才发），到了再 onFresh。
-    if (window.QSGlass) QSGlass.onShow();
+    /* v2.23.131：这里原本是 `QSGlass.onShow()` —— 建 WebGL 上下文、起渲染
+     * 循环，等 Rust 的 `qs://glass` 事件来喂背景纹理。玻璃/磨砂删掉之后
+     * 横条只吃 CSS 底色，弹出时没有任何东西需要初始化。 */
     /* 弹出即开始"无操作计时"（配置里关掉 / 面板菜单开着时它自己会跳过）。
      * 放在最后：上面那些 pushLayout / 动画都不算用户操作。 */
     armIdle();
@@ -6405,8 +6353,6 @@ listen('qs://config', (ev) => {
     // 别名索引跟着重建（自定义引擎可增删改，别名表不能停在开机那一份）
     buildAliasIndex();
     applyLook();
-    // 液态玻璃参数跟着配置走（开/关、折射、色差、实时模式…）
-    if (window.QSGlass) QSGlass.applyConf(CONF);
     syncOcrBtn();
     // r54：配置广播也要刷新这两颗按钮 —— 用户在设置里改了「加到横条」/总开关，
     // 横条应该立刻跟上，而不是等下一次划词
@@ -6459,12 +6405,12 @@ listen('qs://theme', (ev) => {
     //  「更多引擎页还是上一版主题的颜色」）。
     lastThemePayload = ev.payload || null;
     applyThemePayload(ev.payload);
-    // 主题一切换，玻璃的染色（亮色提亮 / 暗色压深蓝）就要跟着变 —— 重画一帧
-    if (window.QSGlass) QSGlass.kick();
+    /* v2.23.131：原来这里跟一句 `QSGlass.kick()` 让玻璃重画一帧 —— 主题换了
+     * 染色要跟着变。现在横条色是纯 CSS 变量，`applyThemePayload` 写完就生效。 */
 });
 
-// 液态玻璃：Rust 在 layout_bar 首次上屏前抓好了背景，来取字节。
-listen('qs://glass', () => { if (window.QSGlass) QSGlass.onFresh(); });
+/* v2.23.131：`listen('qs://glass', …)` 已删除 —— Rust 不再发这条事件
+ * （背景抓取随玻璃外观一起删掉了）。 */
 
 // 全局快捷键唤起收藏夹：后端先弹横条再发这条事件，前端把收藏面板铺开。
 listen('qs://fav-open', () => openFavPanel(null));
@@ -6819,8 +6765,8 @@ listen('qs://hidden', () => {
     /* 横条收回去了：下一次 qs://show 是 隐藏→弹出 跳变，
      * 横条的入场动画该重放（见 barVisible / replayBarIn）。 */
     barVisible = false;
-    // 液态玻璃：停渲染循环和实时轮询（纹理留着，下次弹出 Rust 会重抓覆盖）
-    if (window.QSGlass) QSGlass.onHidden();
+    /* v2.23.131：原来这里调 `QSGlass.onHidden()` 停渲染循环和实时抓屏。
+     * 玻璃画布没了，收起时没有需要停的东西。 */
     // 悬停状态一并归零：横条下次弹出在别处，鼠标可不会"顺便"发一次 mouseleave
     barHovered = false;
     // 横条都收掉了，下一次弹出必然是"新的触发" → 清掉指纹，
@@ -6847,9 +6793,8 @@ listen('qs://hidden', () => {
      *   否则下次弹出时图钉按钮还显示"已钉住"，但后端已经不认了）。 */
     favPinned = false;
     barEl.classList.remove('ghost');
-    if (window.QSGlass && window.QSGlass.setBarGhost) {
-        window.QSGlass.setBarGhost(false);
-    }
+    /* v2.23.131：原来这里还要 `QSGlass.setBarGhost(false)` 把画布上那层玻璃
+     * 恢复回来。画布删了，摘 class 就完事。 */
 });
 
 /* 后端复位钉住状态时同步前端（dismiss_bar 里发的）。 */
@@ -6858,9 +6803,7 @@ listen('qs://fav-pinned', (ev) => {
     if (on === favPinned) return;
     favPinned = on;
     barEl.classList.toggle('ghost', favPinned);
-    if (window.QSGlass && window.QSGlass.setBarGhost) {
-        window.QSGlass.setBarGhost(favPinned);
-    }
+    /* v2.23.131：画布删了，这里不再需要同步玻璃层。 */
 });
 
 /* ------------------------------------------------------------------ */
@@ -6882,13 +6825,9 @@ async function boot() {
     // 别名索引（全表合并）—— 面板搜索框按别名找引擎靠它，见 buildAliasIndex
     buildAliasIndex();
     applyLook();
-    /* 液态玻璃：boot 里就把配置灌给 QSGlass。
-     * 它的 conf 只由 qs://config 广播填充，而**启动后没有任何一次广播** ——
-     * 第一次 qs://show（Ctrl+C 或 --bar）比任何广播都先到时，onShow 看到
-     * conf=null，glassOn(null)=false 直接返回：玻璃建不起来，表现为
-     * 「每次开软件，第一次唤出横条没有玻璃效果，第二次才有」。
-     * 和 qs://config 监听里那次调用保持同一条路。 */
-    if (window.QSGlass) QSGlass.applyConf(CONF);
+    /* v2.23.131：这里原本要把配置灌给 `QSGlass.applyConf()` —— 否则第一次
+     * `qs://show` 比任何配置广播都先到时玻璃建不起来（"第一次唤出没玻璃"）。
+     * 玻璃管线删了，`applyLook()` 已经把该写的 CSS 变量写完。 */
     renderBar(true);
     /* r54：识图入口 / 文件管理器图标这两颗按钮的初始状态。
      * 必须在这里补一次：它们跟 OCR 那颗不一样 —— OCR 由 renderBar 内部按配置
